@@ -1,0 +1,76 @@
+name: CI
+
+# GitHub Actions are pinned to major version tags (actions/checkout@v4,
+# actions/setup-python@v5) rather than immutable commit SHAs. For this pre-alpha
+# foundation, major-tag pinning is an acceptable, conventional trade-off: it
+# avoids the maintenance burden of tracking commit SHAs while still receiving
+# compatible bug-fix releases. This decision is revisited before any release
+# automation is introduced, at which point commit-SHA pinning may be required.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Quality (lint, type, test)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Ruff format check
+        run: ruff format --check .
+
+      - name: Ruff lint
+        run: ruff check .
+
+      - name: Strict mypy
+        run: mypy
+
+      - name: Pytest with coverage
+        run: |
+          pytest \
+            --cov=derivatrace \
+            --cov-branch \
+            --cov-report=term-missing \
+            --cov-fail-under=100
+
+  packaging:
+    name: Build and validate artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Validate wheel and sdist inventories
+        env:
+          DG_TEST_PACKAGING: "1"
+        run: pytest tests/test_packaging.py -v
