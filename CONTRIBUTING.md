@@ -11,12 +11,18 @@ its standards.
 
 ## Project stage
 
-DerivaTrace is at **Stage 1A** and is **pre-alpha** (not yet published). Stage 1A
-implements the contract semantics and validation bounded contexts as the typed,
-immutable `derivatrace.contracts` module. Contributions that introduce pricing,
-Greeks, Monte Carlo, PDEs, calibration, hedging, canonicalization, hashing, or
-engine functionality are **out of scope** for Stage 1A and should be discussed
-in an issue first (they belong to later stages).
+DerivaTrace is at **Stage 1B** (architecture baseline) and is **pre-alpha**
+(not yet published). Stage 1A implements the contract semantics and validation
+bounded contexts as the typed, immutable `derivatrace.contracts` module. The
+Stage 1B architecture baseline (canonical contract representation, canonical
+payoff graph, and canonical identity) is specified in `docs/canonicalization-
+spec.md`, `docs/payoff-graph-spec.md`, `docs/canonical-test-vectors.md`, and
+[ADR 0007](docs/adr/0007-canonical-contract-identity-and-payoff-graph.md) as a
+**design baseline**; no canonicalization, serialization, hashing, or payoff-
+graph code exists yet. Contributions that introduce pricing, Greeks, Monte
+Carlo, PDEs, calibration, hedging, canonicalization, hashing, or engine
+functionality are **out of scope** for the baseline and should be discussed in
+an issue first (implementation belongs to later stages).
 
 ## Development setup
 

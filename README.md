@@ -3,7 +3,9 @@
 > An open-source evidence-carrying derivatives compiler and model-risk laboratory.
 
 - **Current status:** Stage 1A implemented — Immutable contract algebra and
-  runtime type system. Stage 0 foundation complete.
+  runtime type system. Stage 1B architecture baseline established
+  (specification-only; no canonicalization, serialization, hashing, or
+  payoff-graph code). Stage 0 foundation complete.
 - **Release stage:** Pre-Alpha. **Not published.** Not available on PyPI.
 - **License:** [MIT](LICENSE)
 
@@ -64,8 +66,8 @@ settings, or validation outcomes.
 
 These capabilities are **planned** for later stages and do **not** exist today:
 
-- Immutable, typed contract algebra (delivered in Stage 1A) and canonical
-  payoff graph (planned for Stage 1B).
+- Immutable, typed contract algebra (delivered in Stage 1A) and a canonical
+  payoff graph (Stage 1B baseline specified; implementation planned).
 - Market snapshots with deterministic evidence identity.
 - Reference pricing engines (Black–Scholes, trees, Monte Carlo).
 - Evidence-carrying valuation certificates.
@@ -107,8 +109,12 @@ Explicitly unimplemented:
 - Calibration, hedging, or advanced contract logic.
 - Any financial calculation of any kind.
 - Market data, snapshots, or evaluation of observables.
-- A canonical payoff graph, canonicalization, canonical contract identity,
-  serialization, or hashing.
+- A canonical payoff graph **implementation**, canonicalization, canonical
+  contract identity, serialization, or hashing. (The Stage 1B architecture
+  baseline — `docs/canonicalization-spec.md`, `docs/payoff-graph-spec.md`,
+  `docs/canonical-test-vectors.md`, and
+  [ADR 0007](docs/adr/0007-canonical-contract-identity-and-payoff-graph.md) — is
+  specification-only; no runtime code exists.)
 - Equivalence checks or validation levels beyond Stage 1A structural checks.
 - An evidence certificate or reproducibility hash.
 - A published package or PyPI release.
