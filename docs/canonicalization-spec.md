@@ -1,7 +1,9 @@
 # Canonicalization specification (Stage 1B baseline)
 
-- **Status:** Specification only. **Not implemented.**
-- **Stage:** 1B (architecture baseline; implementation follows separate review).
+- **Status:** Implemented. This is the **Stage 1B architecture baseline** and the
+  **Stage 1B-R1 canonical runtime** (`derivatrace.canonical`).
+- **Stage:** 1B (architecture baseline Complete; canonical runtime Implemented;
+  payoff-graph runtime deferred to Stage 1B-R2).
 - **Schema name:** `derivatrace.contract.canonical`.
 - **Schema version:** `1.0.0` (semantic version; participates in identity, §9).
 - **Depends on:** Stage 1A (`derivatrace.contracts`) and ADR 0001–0006.
@@ -10,8 +12,9 @@ This document defines the **canonical contract representation** for DerivaTrace:
 how a validated Stage 1A contract graph is normalized into a single stable
 structure, how that structure is serialized to deterministic bytes, and how a
 deterministic **canonical contract identity** is derived. It is the design
-baseline for Stage 1B. No code, module, function, or class described here
-exists in the package yet.
+baseline for Stage 1B and is implemented by the canonical runtime; the payoff
+graph compilation described in `payoff-graph-spec.md` remains deferred to
+Stage 1B-R2.
 
 > **Conservative principle (binding).** Canonicalization may apply **only**
 > explicitly approved structural laws documented in this file. It must **not**
@@ -475,6 +478,34 @@ Normatively:
   bytes as the collision tie-breaker (§8).
 - **Cycles are rejected before canonical output is produced** (§2 step 2).
 
+## 7.1 Reachability pruning (semantic closure)
+
+After the iterative traversal produces all candidate canonical nodes
+(content-addressed and de-duplicated by identity), a **reachability pass**
+selects only the nodes that are actually referenced from the final canonical
+root. This ensures that:
+
+- **Flattened-away intermediate nodes** (e.g. an inner `Add` whose operands
+  were spliced into its parent `Add`) do not appear in the final node table.
+- **Folded-away literal nodes** (e.g. the operand `Number` nodes and the
+  operator node of an `Add(Number(1), Number(2))` that folds to `Number(3)`)
+  are removed from the final document.
+- **Branch-discarded nodes** (e.g. the unselected branch and the constant
+  `BooleanConstant` condition of a `ConditionalValue` or `ConditionalContract`
+  that folds to a single branch) do not participate in the canonical bytes.
+
+The reachability traversal starts from the `root` node id and follows **only
+the explicit reference fields defined per canonical node type** (§5.4). It does
+**not** infer references by heuristic (e.g. treating every 64-hex string as a
+node id). Currency codes, observable identifiers, and arbitrary string
+literals are never confused with node ids.
+
+The final node table contains exactly the **reachable canonical nodes**,
+sorted deterministically as above. The `node_count` in the public
+`CanonicalContract` result is the number of reachable records. Canonical
+contract identity is computed over the reachable-only document; internal
+processing history is never part of the canonical identity.
+
 ## 8. Deterministic graph-node identifiers and hashing
 
 Identities are SHA-256 digests over an **explicit byte-exact preimage** with
@@ -636,5 +667,7 @@ Canonical equivalence and identity are deliberately narrow:
 - The constitutional decision is recorded in
   [ADR 0007](./adr/0007-canonical-contract-identity-and-payoff-graph.md).
 
-> **Reminder:** This file is a specification. No canonicalization, hashing,
-> serialization, or payoff-graph code exists in Stage 1B's baseline.
+> **Reminder:** The canonical contract representation, its deterministic
+> serialization, and its canonical contract identity are implemented in the
+> Stage 1B-R1 canonical runtime. Payoff-graph compilation remains deferred to
+> Stage 1B-R2.

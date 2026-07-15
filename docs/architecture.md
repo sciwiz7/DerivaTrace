@@ -6,7 +6,10 @@ contract algebra (`derivatrace.contracts`); no pricing, valuation, model,
 engine, risk, or certificate functionality is implemented in Stage 1A. Stages
 1B (canonicalization and a canonical payoff graph) and 1C (serialization and
 evidence records) are planned. The Stage 1B architecture baseline is now
-specified (specification-only; no implementation) in
+Complete; the **Stage 1B-R1 canonical runtime is Implemented** in
+`derivatrace.canonical` (byte-exact canonicalization and canonical contract
+identity), while the **Stage 1B-R2 payoff-graph runtime remains Planned**. The
+specification is in
 [canonicalization-spec.md](./canonicalization-spec.md),
 [payoff-graph-spec.md](./payoff-graph-spec.md),
 [canonical-test-vectors.md](./canonical-test-vectors.md), and
@@ -105,6 +108,19 @@ The deterministic core is authoritative for:
 The core must remain pure, typed, and free of hidden state. External assistive
 features (for example, natural-language summaries) operate *around* the core and
 must not mutate its inputs or outputs.
+
+### Canonicalization and reachable-node pruning
+
+The Stage 1B-R1 canonical runtime (`derivatrace.canonical`) produces a canonical
+contract document containing **only nodes reachable from the canonical root**.
+After associative flattening, literal folding, and conditional branch selection,
+intermediate nodes (flattened-away collection operators, folded-away literals,
+discarded branches) are **pruned before serialization**. The public
+`CanonicalContract.node_count` reports the number of reachable nodes only.
+Canonical bytes represent the reachable normalized graph; internal processing
+history is never part of canonical identity. Reachability is determined by an
+explicit per-node-type reference-field schema (§7 of `canonicalization-spec.md`);
+no heuristic string matching is used.
 
 ## Plugin boundaries (planned for later)
 

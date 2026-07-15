@@ -31,11 +31,11 @@ adheres to semantic versioning once a stable release is published.
   payoff graph, models, numerical engines, market data, and evidence
   certificates remain outside Stage 1A.
 
-### Added (Stage 1B — Canonical architecture baseline, specification-only)
+### Added (Stage 1B — Canonical architecture baseline, Complete)
 
 - A rigorous Stage 1B design baseline specifying the canonical contract
-  representation and canonical payoff graph. No runtime canonicalization,
-  serialization, hashing, or payoff-graph code is introduced.
+  representation and canonical payoff graph (specification; no runtime code
+  belongs to the baseline spec itself).
 - `docs/canonicalization-spec.md` — canonical schema (`derivatrace.contract
   .canonical` `1.0.0`), canonical byte encoding (ASCII UTF-8 JSON, sorted keys),
   exact `Decimal` / UTC / currency / unit / enum encoding, per-node commutativity
@@ -51,11 +51,22 @@ adheres to semantic versioning once a stable release is published.
 - `docs/adr/0007-canonical-contract-identity-and-payoff-graph.md` — the
   constitutional decision recording the conservative, enumerated-law approach.
 
+### Added (Stage 1B-R1 — Canonical runtime, Implemented)
+
+- `derivatrace.canonical`: a canonical runtime that canonicalizes a validated
+  Stage 1A contract graph into byte-exact canonical JSON, content-addresses
+  nodes with deterministic ids, detects canonical collisions, and derives a
+  deterministic canonical contract identity (`canonical:sha256:<hex>`) with
+  SHA-256 domain separation and schema-version participation.
+- Normative test vectors in `docs/canonical-test-vectors.md` (CV-001–CV-011)
+  produced and verified by the canonical runtime.
+- 100% statement and branch coverage across `derivatrace.canonical`; strict mypy;
+  Ruff clean.
+
 ### Not implemented
 
-- Runtime canonicalization, serialization, hashing, canonical contract identity,
-  equivalence checks, and payoff-graph compilation remain unimplemented in the
-  Stage 1B baseline; they are deferred to the Stage 1B implementation phase.
+- Stage 1B-R2 payoff-graph compilation remains unimplemented; it is specified in
+  `docs/payoff-graph-spec.md` and deferred to Stage 1B-R2.
 - Pricing, valuation, Greeks, models, numerical engines, market data, and
   evidence certificates remain outside Stage 1B.
 

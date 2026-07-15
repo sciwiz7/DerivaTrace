@@ -1,8 +1,9 @@
 # ADR 0007 — Canonical contract identity and payoff graph
 
 - **Status:** Accepted (Stage 1B baseline)
-- **Stage:** 1B (specification-only baseline; **not implemented** — implementation
-  follows separate review)
+- **Stage:** 1B (architecture baseline Complete; **Stage 1B-R1 canonical runtime
+  Implemented** in `derivatrace.canonical`; **Stage 1B-R2 payoff-graph runtime
+  Planned**)
 - **Date:** 2026-07-15
 - **Supersedes:** — (builds on ADR 0001–0006)
 - **Superseded by:** —
@@ -123,6 +124,16 @@ grounded in documented node semantics, not mathematical convenience.
 - Canonicalization yields a **DAG**; identical subgraphs share one
   content-derived node id. Identity is **content-derived, not object-identity
   derived**, so shared and inlined copies coincide.
+- **Reachable-node pruning:** After all approved structural laws (flattening,
+  folding, conditional selection) are applied, the canonical document contains
+  **only nodes reachable from the final canonical root**. Intermediate nodes
+  produced during processing (flattened inner collections, folded-away literals,
+  unselected conditional branches) are **excluded** from the final node table.
+  Reachability is determined by an explicit per-node-type reference-field
+  schema; no heuristic (e.g. treating all 64-hex strings as ids) is used.
+  The public `CanonicalContract.node_count` counts reachable nodes only.
+  Canonical bytes and contract identity are computed over the reachable-only
+  document. Internal processing history is never part of canonical identity.
 
 ### Deterministic identifiers and hashing
 
@@ -224,7 +235,8 @@ version) requires a version bump.
 
 ## Follow-up work
 
-- Stage 1B implementation (canonicalization, serialization, hashing, payoff-
-  graph compilation) under this baseline.
+- Stage 1B-R1 canonical runtime (canonicalization, serialization, hashing,
+  canonical contract identity) is implemented under this baseline.
+- Stage 1B-R2 payoff-graph compilation remains planned.
 - Stage 1C: graded validation levels, equivalence reporting, structural
   diffing.
