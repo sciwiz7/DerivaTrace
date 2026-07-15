@@ -157,6 +157,9 @@ with pytest.raises(ContractInputError):
 
 `UnitKind` is `SCALAR` or `MONEY`. A scalar unit carries no currency; a money
 unit must carry exactly one currency. Contradictory states are rejected.
+`Unit.kind` must be exactly an approved `UnitKind`: a plain string such as
+`"scalar"` is rejected (even though `UnitKind` is a `StrEnum` and would otherwise
+compare equal to `UnitKind.SCALAR`).
 
 ```python
 from derivatrace.contracts import Unit, UnitKind, Currency, ContractInputError
@@ -172,6 +175,9 @@ assert money.currency.code == "EUR"
 
 with pytest.raises(ContractInputError):
     Unit(kind=UnitKind.MONEY, currency=None)  # money requires a currency
+
+with pytest.raises(ContractInputError):
+    Unit(kind="scalar", currency=None)  # plain strings rejected
 ```
 
 ## 8. ObservableId
@@ -194,7 +200,9 @@ assert oid.field == "spot"
 
 `ObservationTime` and `SettlementTime` are distinct runtime types so they
 cannot be substituted silently. Both wrap timezone-aware `datetime` values,
-normalized to UTC. Naive timestamps are rejected.
+normalized to UTC. Naive timestamps (no `tzinfo`) are rejected, and a
+`datetime` whose `tzinfo` reports a `None` `utcoffset()` is also rejected, since
+it is not a concrete, comparable instant.
 
 ```python
 from datetime import datetime, timezone
@@ -310,13 +318,18 @@ chosen = ConditionalContract(cond, pay, Zero())
 ## 13. ValidationLimits
 
 `ValidationLimits` bounds traversal. Defaults are `max_depth=64` and
-`max_unique_nodes=4096`.
+`max_unique_nodes=4096`. Both fields must be genuine integers strictly greater
+than zero; `bool` is rejected (it is a subclass of `int`).
 
 ```python
-from derivatrace.contracts import ValidationLimits
+from derivatrace.contracts import ValidationLimits, ContractInputError
+import pytest
 
 limits = ValidationLimits(max_depth=32, max_unique_nodes=512)
 assert limits.max_depth == 32
+
+with pytest.raises(ContractInputError):
+    ValidationLimits(max_depth=True, max_unique_nodes=10)  # bool rejected
 ```
 
 ## 14. ContractMetrics
@@ -481,6 +494,18 @@ class Rogue(ScalarExpression):
 with pytest.raises(ContractValidationError):
     validate_contract(Scale(Rogue(), pay))
 ```
+
+Graph validation also re-checks the **stored internal state** of every value
+object it relies on (`ExactNumber`, `Currency`, `Unit`, `ObservableId`,
+`ObservationTime`, `SettlementTime`, `ValidationLimits`). A value object mutated
+after construction via `object.__setattr__` — for example a `Currency._code`
+lowercased to `"usd"`, a `money` unit stripped of its currency, or an
+`ObservationTime._value` replaced by a naive `datetime` — is detected and
+rejected, because the revalidation reads the raw stored fields and re-derives
+the construction invariants rather than trusting the attributes or re-running
+the constructors (which would silently normalize forged-but-valid state).
+Deterministic value objects additionally require the exact approved type, so a
+subclass of `Currency` or `Unit`, for instance, is rejected by validation.
 
 ## 23. Immutability boundaries
 

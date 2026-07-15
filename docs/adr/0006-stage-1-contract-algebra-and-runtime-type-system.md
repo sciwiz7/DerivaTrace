@@ -74,6 +74,10 @@ are distinct.
 - A money unit must carry exactly one `Currency`.
 - Contradictory states (scalar with a currency, money without a currency) are
   rejected.
+- `Unit.kind` must be **exactly** an approved `UnitKind`. Because `UnitKind` is
+  a `StrEnum`, a plain string such as `"scalar"` would otherwise compare equal
+  to `UnitKind.SCALAR`; such strings are explicitly rejected, so only genuine
+  `UnitKind` members are accepted.
 
 `Multiply` allows `scalar × scalar`, `scalar × money`, and `money × scalar`,
 but rejects `money × money`. `Divide` requires a dimensionless denominator and
@@ -89,9 +93,11 @@ No market data is fetched or resolved.
 ## Separate observation and settlement runtime types
 
 `ObservationTime` and `SettlementTime` are distinct types wrapping
-timezone-aware `datetime` values normalized to UTC. Naive timestamps are
-rejected. Any timezone-aware `datetime` is accepted and converted to UTC with
-`astimezone(UTC)`; this preserves microsecond precision and means two
+timezone-aware `datetime` values normalized to UTC. Naive timestamps (no
+`tzinfo`) are rejected, and a `datetime` whose `tzinfo` reports a `None`
+`utcoffset()` is also rejected — such a value is not a concrete, comparable
+instant. Any genuinely timezone-aware `datetime` is accepted and converted to
+UTC with `astimezone(UTC)`; this preserves microsecond precision and means two
 timestamps that represent the same instant in different offsets compare equal
 (after normalization). The separation prevents silent substitution of an
 observation timestamp for a settlement timestamp.
@@ -177,6 +183,28 @@ re-derives unit fields and re-checks child types, arity, unit, and currency
 invariants on every node, so forged objects cannot bypass construction-time
 checks.
 
+## Value-object internal revalidation and exact-type policy
+
+Construction validates a value object's inputs immediately. Graph validation
+goes further and **re-checks the stored internal state** of every value object
+it relies on (`ExactNumber`, `Currency`, `Unit`, `ObservableId`,
+`ObservationTime`, `SettlementTime`, and `ValidationLimits`). The revalidation
+reads the private stored fields directly and re-derives the original
+construction invariants; it does **not** re-run the public constructors, which
+would silently normalize forged-but-valid state. Objects mutated after
+construction via `object.__setattr__` (for example a `Currency._code` changed to
+lowercase, a `Unit.kind` changed to a plain string, a `money` unit stripped of
+its currency, an `ExactNumber._value` changed to `NaN`/`Infinity`/non-`Decimal`,
+or an `ObservationTime._value` changed to a naive `datetime`) are therefore
+detected and rejected during validation.
+
+Deterministic value objects additionally require the **exact** approved type.
+A subclass of `Currency`, `Unit`, `ExactNumber`, `ObservableId`,
+`ObservationTime`, `SettlementTime`, or `ValidationLimits` could override
+`__eq__`, property access, or other behaviour, so `isinstance` is not
+sufficient; the revalidation requires `type(x) is T`. This exact-type policy is
+consistent with the closed, exact supported-node policy applied to AST nodes.
+
 ## Iterative traversal
 
 Traversal is an explicit stack, not recursion, so it cannot be exhausted by deep
@@ -216,8 +244,12 @@ A subexpression shared by reference is counted once.
 ## Complexity limits
 
 `ValidationLimits` defaults to `max_depth=64` and `max_unique_nodes=4096`.
-Exceeding either raises `ContractComplexityError` before traversal becomes
-expensive.
+Both fields must be genuine integers strictly greater than zero; `bool` is
+rejected (it is a subclass of `int` and must not be accepted as `1`/`0`). A
+forged `ValidationLimits` (for example one whose `max_depth` was mutated to a
+`bool` or zero) is revalidated at `validate_contract` entry, so it cannot bypass
+these invariants. Exceeding either limit raises `ContractComplexityError`
+before traversal becomes expensive.
 
 ## Stable error codes and structural paths
 

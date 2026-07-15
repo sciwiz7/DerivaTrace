@@ -187,14 +187,18 @@ class Unit:
         return cls(kind=UnitKind.MONEY, currency=currency)
 
     def __post_init__(self) -> None:
-        if self.kind == UnitKind.SCALAR:
+        # ``UnitKind`` is a ``StrEnum``, so a plain string such as ``"scalar"``
+        # would otherwise compare equal to ``UnitKind.SCALAR``. Reject anything
+        # that is not exactly an approved ``UnitKind`` first.
+        if not isinstance(self.kind, UnitKind):
+            raise ContractInputError("Unit.kind must be exactly a UnitKind")
+        if self.kind is UnitKind.SCALAR:
             if self.currency is not None:
                 raise ContractInputError("scalar unit cannot carry a currency")
-        elif self.kind == UnitKind.MONEY:
-            if not isinstance(self.currency, Currency):
-                raise ContractInputError("money unit requires a currency")
-        else:
-            raise ContractInputError("unknown unit kind")
+            return
+        # ``UnitKind`` is a closed enum, so any other member is ``MONEY``.
+        if not isinstance(self.currency, Currency):
+            raise ContractInputError("money unit requires a currency")
 
 
 class ObservableId:
@@ -292,6 +296,21 @@ class ObservationTime:
             raise ContractInputError(
                 "ObservationTime must be timezone-aware (naive rejected)"
             )
+        # ``tzinfo is not None`` is necessary but not sufficient: a custom
+        # ``tzinfo`` may still report a ``None`` UTC offset, which is not a
+        # concrete, comparable instant. Reject it explicitly and convert any
+        # unrelated failure to a ContractInputError rather than leaking it.
+        try:
+            offset = value.utcoffset()
+        except Exception as exc:
+            raise ContractInputError(
+                "ObservationTime has an invalid timezone (utcoffset failed)"
+            ) from exc
+        if offset is None:
+            raise ContractInputError(
+                "ObservationTime requires a concrete UTC offset "
+                "(tzinfo with a None utcoffset is rejected)"
+            )
         object.__setattr__(self, "_value", value.astimezone(UTC))
 
     def __setattr__(self, name: str, value: object) -> None:
@@ -335,6 +354,17 @@ class SettlementTime:
             raise ContractInputError(
                 "SettlementTime must be timezone-aware (naive rejected)"
             )
+        try:
+            offset = value.utcoffset()
+        except Exception as exc:
+            raise ContractInputError(
+                "SettlementTime has an invalid timezone (utcoffset failed)"
+            ) from exc
+        if offset is None:
+            raise ContractInputError(
+                "SettlementTime requires a concrete UTC offset "
+                "(tzinfo with a None utcoffset is rejected)"
+            )
         object.__setattr__(self, "_value", value.astimezone(UTC))
 
     def __setattr__(self, name: str, value: object) -> None:
@@ -368,10 +398,24 @@ class ValidationLimits:
     max_unique_nodes: int = 4096
 
     def __post_init__(self) -> None:
-        if not isinstance(self.max_depth, int) or self.max_depth <= 0:
-            raise ContractInputError("ValidationLimits.max_depth must be > 0")
-        if not isinstance(self.max_unique_nodes, int) or self.max_unique_nodes <= 0:
-            raise ContractInputError("ValidationLimits.max_unique_nodes must be > 0")
+        # ``bool`` is a subclass of ``int``; reject it explicitly so that
+        # ``True``/``False`` are not silently accepted as ``1``/``0``.
+        if (
+            isinstance(self.max_depth, bool)
+            or not isinstance(self.max_depth, int)
+            or self.max_depth <= 0
+        ):
+            raise ContractInputError(
+                "ValidationLimits.max_depth must be an int greater than zero"
+            )
+        if (
+            isinstance(self.max_unique_nodes, bool)
+            or not isinstance(self.max_unique_nodes, int)
+            or self.max_unique_nodes <= 0
+        ):
+            raise ContractInputError(
+                "ValidationLimits.max_unique_nodes must be an int greater than zero"
+            )
 
     @classmethod
     def default(cls) -> ValidationLimits:

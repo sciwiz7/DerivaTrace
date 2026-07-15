@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
+from decimal import Decimal
+
 from ._contracts import (
     Both,
     ConditionalContract,
@@ -35,6 +38,14 @@ from ._expressions import (
     Subtract,
 )
 from ._values import (
+    _CURRENCY_RE,
+    _IDENTIFIER_RE,
+    _SLUG_RE,
+    FIELD_MAX_LEN,
+    IDENTIFIER_MAX_LEN,
+    MAX_ABS_EXPONENT,
+    MAX_SIGNIFICANT_DIGITS,
+    NAMESPACE_MAX_LEN,
     ContractMetrics,
     Currency,
     ExactNumber,
@@ -159,12 +170,195 @@ def _multiply_unit(a: Unit, b: Unit) -> Unit:
     return Unit.scalar()
 
 
+# ---------------------------------------------------------------------------
+# Value-object invariant revalidation
+# ---------------------------------------------------------------------------
+#
+# Construction validates inputs immediately, but a frozen object can be mutated
+# after the fact via ``object.__setattr__``. Graph validation must therefore
+# re-check the *stored* internal state of every value object rather than trust
+# its attributes or re-run the public constructor (which would silently
+# normalize forged-but-valid state). Each validator below inspects the raw
+# private fields and re-derives the original construction invariants.
+#
+# Exact-type policy: deterministic value objects require the *exact* approved
+# type. A subclass of e.g. ``Currency`` could override ``__eq__`` or other
+# behaviour, so ``isinstance`` is not sufficient; we require ``type(x) is T``.
+
+
+def _validate_exact_number_invariants(
+    obj: ExactNumber, path: tuple[str | int, ...]
+) -> None:
+    if type(obj) is not ExactNumber:
+        raise ContractValidationError(
+            "ExactNumber must be exactly the approved type", path=path
+        )
+    value = obj._value
+    if not isinstance(value, Decimal):
+        raise ContractValidationError("ExactNumber._value must be a Decimal", path=path)
+    if not value.is_finite():
+        raise ContractValidationError(
+            "ExactNumber must be finite (NaN/Infinity rejected)", path=path
+        )
+    digits = value.as_tuple().digits
+    if len(digits) > MAX_SIGNIFICANT_DIGITS:
+        raise ContractValidationError(
+            "ExactNumber has too many significant digits", path=path
+        )
+    exponent = value.as_tuple().exponent
+    if isinstance(exponent, int) and abs(exponent) > MAX_ABS_EXPONENT:
+        raise ContractValidationError(
+            "ExactNumber exponent magnitude exceeds limit", path=path
+        )
+
+
+def _validate_currency_invariants(obj: Currency, path: tuple[str | int, ...]) -> None:
+    if type(obj) is not Currency:
+        raise ContractValidationError(
+            "Currency must be exactly the approved type", path=path
+        )
+    code = obj._code
+    if not isinstance(code, str):
+        raise ContractValidationError("Currency._code must be a str", path=path)
+    if not _CURRENCY_RE.match(code):
+        raise ContractValidationError(
+            "Currency must be exactly three uppercase ASCII letters", path=path
+        )
+
+
+def _validate_unit_invariants(obj: Unit, path: tuple[str | int, ...]) -> None:
+    if type(obj) is not Unit:
+        raise ContractValidationError(
+            "Unit must be exactly the approved type", path=path
+        )
+    kind = obj.kind
+    if not isinstance(kind, UnitKind):
+        raise ContractValidationError("Unit.kind must be exactly a UnitKind", path=path)
+    currency = obj.currency
+    if kind is UnitKind.SCALAR:
+        if currency is not None:
+            raise ContractValidationError(
+                "scalar unit cannot carry a currency", path=path
+            )
+        return
+    # ``UnitKind`` is a closed enum, so any other member is ``MONEY``.
+    if type(currency) is not Currency:
+        raise ContractValidationError("money unit requires a Currency", path=path)
+
+
+def _validate_observable_id_invariants(
+    obj: ObservableId, path: tuple[str | int, ...]
+) -> None:
+    if type(obj) is not ObservableId:
+        raise ContractValidationError(
+            "ObservableId must be exactly the approved type", path=path
+        )
+    namespace = obj.namespace
+    identifier = obj.identifier
+    field = obj.field
+    if not isinstance(namespace, str) or not namespace:
+        raise ContractValidationError("namespace must be a non-empty str", path=path)
+    if len(namespace) > NAMESPACE_MAX_LEN:
+        raise ContractValidationError(
+            f"namespace exceeds maximum length {NAMESPACE_MAX_LEN}", path=path
+        )
+    if not _SLUG_RE.match(namespace):
+        raise ContractValidationError(
+            "namespace must be a lowercase ASCII slug", path=path
+        )
+    if not isinstance(field, str) or not field:
+        raise ContractValidationError("field must be a non-empty str", path=path)
+    if len(field) > FIELD_MAX_LEN:
+        raise ContractValidationError(
+            f"field exceeds maximum length {FIELD_MAX_LEN}", path=path
+        )
+    if not _SLUG_RE.match(field):
+        raise ContractValidationError("field must be a lowercase ASCII slug", path=path)
+    if not isinstance(identifier, str) or not identifier:
+        raise ContractValidationError("identifier must be a non-empty str", path=path)
+    if len(identifier) > IDENTIFIER_MAX_LEN:
+        raise ContractValidationError(
+            f"identifier exceeds maximum length {IDENTIFIER_MAX_LEN}", path=path
+        )
+    if not _IDENTIFIER_RE.match(identifier):
+        raise ContractValidationError(
+            "identifier must be conservative ASCII", path=path
+        )
+
+
+def _validate_aware_datetime_invariants(
+    obj: object,
+    raw: datetime,
+    name: str,
+    path: tuple[str | int, ...],
+) -> None:
+    if not isinstance(raw, datetime):
+        raise ContractValidationError(f"{name}._value must be a datetime", path=path)
+    if raw.tzinfo is None:
+        raise ContractValidationError(f"{name} must be timezone-aware", path=path)
+    try:
+        offset = raw.utcoffset()
+    except Exception as exc:
+        raise ContractValidationError(
+            f"{name} has an invalid timezone offset", path=path
+        ) from exc
+    if offset is None:
+        raise ContractValidationError(
+            f"{name} requires a concrete UTC offset", path=path
+        )
+
+
+def _validate_observation_time_invariants(
+    obj: ObservationTime, path: tuple[str | int, ...]
+) -> None:
+    if type(obj) is not ObservationTime:
+        raise ContractValidationError(
+            "ObservationTime must be exactly the approved type", path=path
+        )
+    _validate_aware_datetime_invariants(obj, obj._value, "ObservationTime", path)
+
+
+def _validate_settlement_time_invariants(
+    obj: SettlementTime, path: tuple[str | int, ...]
+) -> None:
+    if type(obj) is not SettlementTime:
+        raise ContractValidationError(
+            "SettlementTime must be exactly the approved type", path=path
+        )
+    _validate_aware_datetime_invariants(obj, obj._value, "SettlementTime", path)
+
+
+def _validate_validation_limits_invariants(
+    obj: ValidationLimits, path: tuple[str | int, ...]
+) -> None:
+    if type(obj) is not ValidationLimits:
+        raise ContractValidationError(
+            "ValidationLimits must be exactly the approved type", path=path
+        )
+    depth = obj.max_depth
+    nodes = obj.max_unique_nodes
+    if isinstance(depth, bool) or not isinstance(depth, int) or depth <= 0:
+        raise ContractValidationError(
+            "ValidationLimits.max_depth must be an int greater than zero", path=path
+        )
+    if isinstance(nodes, bool) or not isinstance(nodes, int) or nodes <= 0:
+        raise ContractValidationError(
+            "ValidationLimits.max_unique_nodes must be an int greater than zero",
+            path=path,
+        )
+
+
 def _validate_scalar_node(node: ScalarExpression, path: tuple[str | int, ...]) -> None:
+    # Every scalar expression carries a Unit; revalidate its stored invariants
+    # before trusting it (e.g. in unit-arithmetic and mismatch checks below).
+    _validate_unit_invariants(node.unit, path)
     if isinstance(node, Number):
+        _validate_exact_number_invariants(node.value, path)
         _expect_type(node.value, ExactNumber, "Number.value", path)
-        _expect_type(node.unit, Unit, "Number.unit", path)
         return
     if isinstance(node, Observable):
+        _validate_observable_id_invariants(node.observable_id, path)
+        _validate_observation_time_invariants(node.observation_time, path)
         _expect_type(node.observable_id, ObservableId, "Observable.observable_id", path)
         _expect_type(
             node.observation_time,
@@ -172,7 +366,6 @@ def _validate_scalar_node(node: ScalarExpression, path: tuple[str | int, ...]) -
             "Observable.observation_time",
             path,
         )
-        _expect_type(node.unit, Unit, "Observable.unit", path)
         return
     if isinstance(node, Add):
         _expect_scalar_collection(node.operands, "Add.operands", path)
@@ -276,6 +469,9 @@ def _validate_contract_node(node: Contract, path: tuple[str | int, ...]) -> None
         return
     if isinstance(node, Payment):
         _expect_type(node.amount, ScalarExpression, "Payment.amount", path)
+        _validate_unit_invariants(node.amount.unit, path)
+        _validate_currency_invariants(node.currency, path)
+        _validate_settlement_time_invariants(node.settlement_time, path)
         _expect_type(node.currency, Currency, "Payment.currency", path)
         _expect_type(
             node.settlement_time, SettlementTime, "Payment.settlement_time", path
@@ -418,6 +614,10 @@ def validate_contract(
         limits = ValidationLimits.default()
     if not isinstance(limits, ValidationLimits):
         raise ContractTypeMismatchError("limits must be ValidationLimits")
+    # Revalidate the limits object itself so a forged ValidationLimits (for
+    # example one whose max_depth was mutated to a bool or zero) cannot bypass
+    # the invariants enforced here.
+    _validate_validation_limits_invariants(limits, ())
     if not isinstance(contract, Contract):
         raise ContractValidationError(
             "validate_contract requires a Contract root", path=()

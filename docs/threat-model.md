@@ -86,8 +86,18 @@ validator. The following threats are specific to that runtime type system.
 - **Forged immutable object** — an attacker subclasses a value or node type and
   bypasses its frozen `__setattr__` (for example, using `object.__setattr__`)
   to set an inconsistent field, such as a `Payment.amount` whose stored `unit`
-  disagrees with the amount's currency. Validation must re-derive dependent
-  fields (e.g. `Unit`) itself rather than trust the stored attribute.
+  disagrees with the amount's currency, or a `Currency._code` lowered to
+  `"usd"`, a `money` unit stripped of its currency, an `ExactNumber._value`
+  changed to `NaN`/`Infinity`/non-`Decimal`, or an `ObservationTime._value`
+  changed to a naive `datetime`. Validation must re-derive dependent fields
+  (e.g. `Unit`) itself rather than trust the stored attribute, and must
+  re-validate the *stored internal state* of every value object it relies on,
+  reading the raw private fields and re-deriving the construction invariants
+  rather than re-running the constructors (which would silently normalize
+  forged-but-valid state). Deterministic value objects additionally require the
+  exact approved type, so a subclass of `Currency`, `Unit`, `ExactNumber`,
+  `ObservableId`, `ObservationTime`, `SettlementTime`, or `ValidationLimits` is
+  rejected by validation.
 - **Unsupported subclass injection** — a crafted contract uses a third-party
   subclass of the abstract `ScalarExpression`, `BooleanExpression`, or
   `Contract` bases that is not one of the supported concrete node types, hoping
@@ -113,9 +123,10 @@ validator. The following threats are specific to that runtime type system.
 - **Unicode identifier confusion** — an `ObservableId` uses look-alike
   characters to impersonate a different observable. Identifiers must be
   validated against an explicit allowed pattern and normalized form.
-- **Naive timestamp** — an observation or settlement time is supplied as a
-  naive `datetime` lacking an explicit UTC offset. Validation must reject naive
-  timestamps.
+- **Naive or offset-less timestamp** — an observation or settlement time is
+  supplied as a naive `datetime` (no `tzinfo`) or as a `datetime` whose
+  `tzinfo` reports a `None` `utcoffset()`, which is not a concrete, comparable
+  instant. Validation must reject both.
 - **Misleading structural-validation claim** — a contract is presented as
   "fully validated" when only structural checks ran, or as canonical when it has
   not been canonicalized (canonicalization is not part of Stage 1A). Such claims
