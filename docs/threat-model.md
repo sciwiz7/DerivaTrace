@@ -1,7 +1,11 @@
 # Threat model
 
-This document analyzes the security threats relevant to DerivaTrace. It is part
-of the Stage 0 specification. All external inputs are treated as untrusted.
+This document analyzes the security threats relevant to DerivaTrace. All
+external inputs are treated as untrusted. Stage 1A introduces a concrete
+contract algebra (see [contract-api.md](./contract-api.md) and
+[ADR 0006](./adr/0006-stage-1-contract-algebra-and-runtime-type-system.md));
+the additional threats and mitigations for that runtime type system are
+documented below.
 
 ## Assets
 
@@ -72,6 +76,83 @@ of the Stage 0 specification. All external inputs are treated as untrusted.
 - **Dependency confusion** — an internal or expected package name is resolved
   from a public index that hosts a attacker-controlled same-named package,
   substituting a malicious dependency.
+
+## Contract-algebra (Stage 1A) runtime type-system threats
+
+Stage 1A ships a concrete contract algebra (`derivatrace.contracts`) with
+frozen, slotted value and node objects and a whole-graph `validate_contract`
+validator. The following threats are specific to that runtime type system.
+
+- **Forged immutable object** — an attacker subclasses a value or node type and
+  bypasses its frozen `__setattr__` (for example, using `object.__setattr__`)
+  to set an inconsistent field, such as a `Payment.amount` whose stored `unit`
+  disagrees with the amount's currency, or a `Currency._code` lowered to
+  `"usd"`, a `money` unit stripped of its currency, an `ExactNumber._value`
+  changed to `NaN`/`Infinity`/non-`Decimal`, or an `ObservationTime._value`
+  changed to a naive `datetime`. Validation must re-derive dependent fields
+  (e.g. `Unit`) itself rather than trust the stored attribute, and must
+  re-validate the *stored internal state* of every value object it relies on,
+  reading the raw private fields and re-deriving the construction invariants
+  rather than re-running the constructors (which would silently normalize
+  forged-but-valid state). Deterministic value objects additionally require the
+  exact approved type, so a subclass of `Currency`, `Unit`, `ExactNumber`,
+  `ObservableId`, `ObservationTime`, `SettlementTime`, or `ValidationLimits` is
+  rejected by validation. The re-validation is applied **recursively to nested
+  value objects**, so a forged inner value cannot be masked by an otherwise-valid
+  outer container: a `money` unit's `Currency` is re-checked from its stored
+  `_code` even when nested inside a `Number` inside a `Comparison` or `Payment`,
+  and unrelated genuinely-valid currencies elsewhere in the graph do not suppress
+  it. Two stored-state invariants are enforced explicitly:
+  - **Stored UTC invariant** — `ObservationTime`/`SettlementTime` must be stored
+    in canonical UTC (`tzinfo is UTC`), so a stored value shifted to a non-UTC
+    offset (e.g. `+02:00`) is rejected even though it remains timezone-aware.
+  - **Canonical zero invariant** — an `ExactNumber` must store the canonical
+    zero `Decimal("0")`; forged `Decimal("-0")` or `Decimal("0.0")` forms are
+    rejected because the stored representation must itself be canonical, not
+    merely numerically zero.
+- **Unsupported subclass injection** — a crafted contract uses a third-party
+  subclass of the abstract `ScalarExpression`, `BooleanExpression`, or
+  `Contract` bases that is not one of the supported concrete node types, hoping
+  to bypass per-type validation. Validation runs an exact-type check at the
+  start of every traversal frame and traverses in **post-order**, so an
+  unsupported child subclass is rejected (and cannot execute overridden field
+  access) before any parent reads its fields. Validation must reject any node
+  that is not an exact supported type.
+- **Deep recursion / resource exhaustion** — an attacker submits a contract
+  whose AST depth or unique-node count exceeds configured limits, exhausting
+  stack or memory. Validation must bound depth and total node count and fail
+  fast.
+- **Cyclic graph** — a self-referential or circular contract graph (a node
+  referencing an ancestor) causes unbounded traversal. Validation must detect
+  cycles during the iterative walk and reject them before any unbounded
+  expansion.
+- **Shared-node DAG confusion** — a contract that shares a sub-expression across
+  branches must be traversed once per shared node without double-counting or
+  re-expansion. Validation must track explored nodes and best-known depth.
+- **Currency or unit mismatch** — an amount carries a currency that conflicts
+  with its declared `Unit`, or operands of arithmetic combine incompatible
+  units. Validation must enforce currency/unit consistency.
+- **Extreme or non-exact numeric value** — a `Decimal` amount exceeds the
+  allowed precision/exponent, or is constructed from a `float`/`bool`/`NaN`/
+  `Infinity`. `ExactNumber` and validation must reject all such inputs.
+- **Unicode identifier confusion** — an `ObservableId` uses look-alike
+  characters to impersonate a different observable. Identifiers must be
+  validated against an explicit allowed pattern and normalized form.
+- **Naive or offset-less timestamp** — an observation or settlement time is
+  supplied as a naive `datetime` (no `tzinfo`) or as a `datetime` whose
+  `tzinfo` reports a `None` `utcoffset()`, which is not a concrete, comparable
+  instant. Validation must reject both.
+- **Misleading structural-validation claim** — a contract is presented as
+  "fully validated" when only structural checks ran, or as canonical when it has
+  not been canonicalized (canonicalization is not part of Stage 1A). Such claims
+  must be avoided in API, docs, and tests.
+
+Mitigations for the above are enforced by the validator and by the frozen,
+slotted, `object.__setattr__`-guarded object design documented in
+[ADR 0006](./adr/0006-stage-1-contract-algebra-and-runtime-type-system.md) and
+exercised by `tests/contracts/test_supported_node_policy.py`,
+`tests/contracts/test_validation.py`, and
+`tests/contracts/test_value_object_invariants.py`.
 
 ## Supply-chain threats
 

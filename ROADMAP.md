@@ -1,18 +1,19 @@
 # Roadmap
 
 This roadmap defines the staged evolution of DerivaTrace. Stage 0 is the
-foundation and system specification. All later stages are **planned** and their
-scope may change through architectural review.
+foundation and system specification. Stage 1 introduces the immutable contract
+algebra; it is delivered in three parts (1A, 1B, 1C). Later stages are
+**planned** and their scope may change through architectural review.
 
 Stages are marked as:
 
-- **In progress** — actively being established (Stage 0 until independently
-  reviewed and merged).
+- **Complete** — finished, reviewed, and merged.
+- **In progress** — actively being established.
 - **Planned** — not yet started.
 
 ## Stage 0 — Foundation and system specification
 
-- **Status:** In progress (until independently reviewed and merged).
+- **Status:** Complete.
 - **Objective:** Establish the project constitution, architecture, and a minimal
   dependency-free package.
 - **Main deliverables:** Package skeleton, deterministic metadata, full
@@ -22,15 +23,53 @@ Stages are marked as:
 - **Explicit exclusions:** Pricing, Greeks, Monte Carlo, PDEs, calibration,
   hedging, and advanced contract logic.
 
-## Stage 1 — Immutable contract algebra and canonical payoff graph
+## Stage 1 — Immutable contract algebra
+
+- **Status:** In progress.
+- **Sub-stages:** Stage 1A implemented; Stage 1B planned; Stage 1C planned.
+- **Objective:** Introduce an immutable, typed contract AST, a deterministic
+  structural validator, and (later) a canonical payoff graph.
+- **Explicit exclusions for the whole of Stage 1:** Numerical valuation, market
+  data, and any pricing engine.
+
+### Stage 1A — Contract algebra and runtime type system
+
+- **Status:** Implemented.
+- **Objective:** A strongly typed, immutable contract algebra with exact-domain
+  value objects and whole-graph structural validation.
+- **Main deliverables:** `ExactNumber`; `Currency`; `Unit`/`UnitKind`;
+  `ObservableId`; `ObservationTime`/`SettlementTime`; scalar expression nodes
+  (`Number`, `Observable`, `Add`, `Subtract`, `Multiply`, `Divide`, `Negate`,
+  `Maximum`, `Minimum`, `ConditionalValue`); boolean expression nodes
+  (`BooleanConstant`, `Comparison`, `AllOf`, `AnyOf`, `Not`); contract nodes
+  (`Zero`, `Payment`, `Both`, `Scale`, `ConditionalContract`); structural
+  validation with deterministic `ContractMetrics`; a stable error taxonomy.
+- **Acceptance criteria:** `validate_contract` runs iteratively; re-checks every
+  node's invariants; rejects forged objects, unsupported subclasses, cycles, and
+  excessive depth or node count; returns reproducible metrics.
+- **Explicit exclusions:** Canonicalization, canonical identity, serialization,
+  hashing, equivalence checks, the payoff graph, models, engines, market data,
+  and certificates.
+
+### Stage 1B — Canonical payoff graph and structural canonicalization
 
 - **Status:** Planned.
-- **Objective:** Introduce an immutable, typed contract AST and a canonical
-  payoff graph.
-- **Main deliverables:** Contract node primitives, canonicalization of contract
-  structure, equivalence checks, validation levels.
-- **Acceptance criteria:** Equivalent serialized contracts produce identical
-  canonical forms; contract semantics are separated from models.
+- **Objective:** Compile the validated contract graph into a canonical payoff
+  graph and produce a structural canonical form with a deterministic identity.
+- **Main deliverables:** Payoff-graph compilation, canonicalization of contract
+  structure, canonical contract identity, equivalence checks.
+- **Acceptance criteria:** Equivalent contracts produce identical canonical
+  forms and identities.
+- **Explicit exclusions:** Numerical valuation and market data.
+
+### Stage 1C — Validation levels and equivalence reporting
+
+- **Status:** Planned.
+- **Objective:** Define graded validation levels and equivalence reporting on
+  top of the canonical form.
+- **Main deliverables:** Validation levels, equivalence reports, structural
+  diffing.
+- **Acceptance criteria:** Validation levels are documented and reproducible.
 - **Explicit exclusions:** Numerical valuation and market data.
 
 ## Stage 2 — Market snapshots and deterministic evidence identity

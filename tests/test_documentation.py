@@ -313,3 +313,95 @@ def test_threat_model_covers_required_threats() -> None:
     ]
     missing = [t for t in required if t not in text]
     assert not missing, f"threat model missing coverage: {missing}"
+
+
+def _near(text: str, anchor_re: str, word: str, window: int = 200) -> bool:
+    text = text.lower()
+    for match in re.finditer(anchor_re, text):
+        if word in text[match.start() : match.start() + window]:
+            return True
+    return False
+
+
+def test_stage_status_claims() -> None:
+    road = (REPO_ROOT / "ROADMAP.md").read_text(encoding="utf-8")
+    assert _near(road, r"stage 0\b", "complete")
+    assert _near(road, r"stage 1\b", "in progress")
+    assert _near(road, r"stage 1a\b", "implement")
+    assert _near(road, r"stage 1b\b", "planned")
+    assert _near(road, r"stage 1c\b", "planned")
+    # Stage 1 as a whole must not be described as complete.
+    assert not _near(road, r"stage 1\b", "complete")
+
+
+def test_package_remains_prealpha_unpublished() -> None:
+    combined = (
+        (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        + "\n"
+        + (REPO_ROOT / "ROADMAP.md").read_text(encoding="utf-8")
+    ).lower()
+    assert "pre-alpha" in combined
+    assert ("not published" in combined) or ("unpublished" in combined)
+
+
+def test_no_pricing_functionality_in_docs() -> None:
+    for markdown in markdown_files():
+        text = markdown.read_text(encoding="utf-8")
+        offending = []
+        for claim in PRICING_CLAIMS:
+            if lines_without_negation(text, claim):
+                offending.append(claim)
+        assert not offending, f"{markdown}: pricing claims: {offending}"
+
+
+def test_stage_1a_exclusions_documented() -> None:
+    api = (DOCS_DIR / "contract-api.md").read_text(encoding="utf-8").lower()
+    for term in [
+        "canonical",
+        "hash",
+        "payoff graph",
+        "certificate",
+        "serialize",
+        "price",
+        "model",
+        "engine",
+    ]:
+        assert term in api, f"contract-api.md should discuss exclusion of '{term}'"
+
+
+def test_no_prohibited_capabilities_in_public_api() -> None:
+    import derivatrace.contracts as contracts
+
+    banned = [
+        "canonical",
+        "hash",
+        "payoff",
+        "certificate",
+        "price",
+        "evaluate",
+        "serialize",
+        "model",
+        "engine",
+    ]
+    public_names = [n for n in dir(contracts) if not n.startswith("_")]
+    for prefix in banned:
+        assert not any(n.startswith(prefix) for n in public_names), prefix
+
+
+def test_adr_0006_and_contract_api_exist() -> None:
+    assert (
+        DOCS_DIR / "adr" / "0006-stage-1-contract-algebra-and-runtime-type-system.md"
+    ).exists()
+    assert (DOCS_DIR / "contract-api.md").exists()
+
+
+def test_dependencies_remain_empty() -> None:
+    with open(REPO_ROOT / "pyproject.toml", "rb") as handle:
+        data = tomllib.load(handle)
+    assert data["project"]["dependencies"] == []
+
+
+def test_version_unchanged() -> None:
+    with open(REPO_ROOT / "pyproject.toml", "rb") as handle:
+        data = tomllib.load(handle)
+    assert data["project"]["version"] == "0.1.0.dev0"

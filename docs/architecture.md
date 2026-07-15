@@ -1,8 +1,11 @@
 # Architecture
 
-This document describes the architecture of DerivaTrace at Stage 0. It specifies
-intended structure and boundaries; no pricing functionality is implemented in
-Stage 0.
+This document describes the architecture of DerivaTrace. Stage 1A implements the
+**contract semantics** and **validation** bounded contexts as a concrete, typed
+contract algebra (`derivatrace.contracts`); no pricing, valuation, model,
+engine, risk, or certificate functionality is implemented in Stage 1A. Stages
+1B (canonicalization and a canonical payoff graph) and 1C (serialization and
+evidence records) are planned.
 
 ## Architectural principle
 
@@ -13,12 +16,17 @@ Stage 0.
 DerivaTrace is organized around seven bounded concerns. Each has a single,
 clear responsibility and must not silently absorb another's duty.
 
-1. **Contract semantics** — defines what an instrument pays.
+1. **Contract semantics** — defines what an instrument pays. In Stage 1A this is
+   the implemented `derivatrace.contracts` module: an immutable, typed contract
+   AST with exact numbers, explicit units, observable identity, and separated
+   observation/settlement times.
 2. **Market data** — captures observable inputs and snapshots.
 3. **Model** — declares stochastic assumptions.
 4. **Numerical engine** — performs calculations using a method.
 5. **Risk** — computes sensitivities and uncertainty.
-6. **Validation** — checks invariants and arbitrage conditions.
+6. **Validation** — checks invariants and arbitrage conditions. In Stage 1A this
+   is the implemented `validate_contract` whole-graph validator (structural and
+   semantic checks; no economic/arbitrage pricing checks, which remain planned).
 7. **Evidence certificate** — records what was calculated and how.
 
 ## Dependency direction
@@ -162,5 +170,7 @@ The following dependencies are explicitly forbidden:
 - No layer may absorb another layer's responsibility silently.
 
 See also [contract-semantics.md](./contract-semantics.md),
-[certificate-spec.md](./certificate-spec.md), and the ADRs under
-[./adr/](./adr/).
+[contract-api.md](./contract-api.md),
+[certificate-spec.md](./certificate-spec.md),
+[ADR 0006](./adr/0006-stage-1-contract-algebra-and-runtime-type-system.md),
+and the other ADRs under [./adr/](./adr/).

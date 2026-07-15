@@ -2,7 +2,8 @@
 
 > An open-source evidence-carrying derivatives compiler and model-risk laboratory.
 
-- **Current status:** Stage 0 — Foundation and system specification.
+- **Current status:** Stage 1A implemented — Immutable contract algebra and
+  runtime type system. Stage 0 foundation complete.
 - **Release stage:** Pre-Alpha. **Not published.** Not available on PyPI.
 - **License:** [MIT](LICENSE)
 
@@ -63,7 +64,8 @@ settings, or validation outcomes.
 
 These capabilities are **planned** for later stages and do **not** exist today:
 
-- Immutable, typed contract algebra and canonical payoff graph.
+- Immutable, typed contract algebra (delivered in Stage 1A) and canonical
+  payoff graph (planned for Stage 1B).
 - Market snapshots with deterministic evidence identity.
 - Reference pricing engines (Black–Scholes, trees, Monte Carlo).
 - Evidence-carrying valuation certificates.
@@ -78,26 +80,37 @@ These capabilities are **planned** for later stages and do **not** exist today:
 
 See [ROADMAP.md](ROADMAP.md) for the staged plan.
 
-## What exists today (Stage 0)
+## What exists today (Stage 1A)
 
-Stage 0 establishes the project foundation and its architectural constitution.
-It contains:
+Stage 1A delivers the immutable contract algebra and its runtime type system on
+top of the Stage 0 foundation. You can:
 
-- A minimal, importable, dependency-free Python package (`derivatrace`).
-- Deterministic project metadata (`__version__`, `project_metadata()`).
-- The full specification of the system's architecture, contract semantics,
-  canonicalization, numeric boundaries, certificate design, and threat model.
-- A staged roadmap and architectural decision records (ADRs).
-- Continuous integration configured for Python 3.11, 3.12, 3.13, and 3.14.
+- Create exact domain values: `ExactNumber`, `Currency`, `Unit`/`UnitKind`,
+  `ObservableId`, `ObservationTime`, `SettlementTime`.
+- Construct immutable scalar expressions (`Number`, `Observable`, `Add`,
+  `Subtract`, `Multiply`, `Divide`, `Negate`, `Maximum`, `Minimum`,
+  `ConditionalValue`) and boolean expressions (`BooleanConstant`, `Comparison`,
+  `AllOf`, `AnyOf`, `Not`).
+- Compose contractual obligations (`Zero`, `Payment`, `Both`, `Scale`,
+  `ConditionalContract`).
+- Structurally validate a contract graph with `validate_contract`, which
+  re-checks every node's invariants, rejects forged objects, unsupported
+  subclasses, cycles, and excessive depth or node count.
+- Inspect deterministic `ContractMetrics` (unique node count and maximum depth).
 
 ## What does not exist today
 
-Explicitly unimplemented in Stage 0:
+Explicitly unimplemented:
 
 - Any pricing, valuation, or Greeks computation.
 - Monte Carlo, PDE, tree, or closed-form numerical engines.
 - Calibration, hedging, or advanced contract logic.
 - Any financial calculation of any kind.
+- Market data, snapshots, or evaluation of observables.
+- A canonical payoff graph, canonicalization, canonical contract identity,
+  serialization, or hashing.
+- Equivalence checks or validation levels beyond Stage 1A structural checks.
+- An evidence certificate or reproducibility hash.
 - A published package or PyPI release.
 
 ## Intended users
@@ -118,6 +131,7 @@ DerivaTrace/
 │   ├── product-spec.md
 │   ├── architecture.md
 │   ├── contract-semantics.md
+│   ├── contract-api.md
 │   ├── certificate-spec.md
 │   ├── threat-model.md
 │   ├── glossary.md
@@ -126,7 +140,8 @@ DerivaTrace/
 │       ├── 0002-deterministic-canonicalization.md
 │       ├── 0003-evidence-carrying-results.md
 │       ├── 0004-exact-contract-terms-and-numerical-boundaries.md
-│       └── 0005-no-hidden-model-selection.md
+│       ├── 0005-no-hidden-model-selection.md
+│       └── 0006-stage-1-contract-algebra-and-runtime-type-system.md
 ├── src/derivatrace/
 ├── tests/
 ├── pyproject.toml
@@ -177,6 +192,7 @@ aspirational and subject to change.
 - [Product specification](docs/product-spec.md)
 - [Architecture](docs/architecture.md)
 - [Contract semantics](docs/contract-semantics.md)
+- [Contract API (Stage 1A)](docs/contract-api.md)
 - [Certificate specification](docs/certificate-spec.md)
 - [Threat model](docs/threat-model.md)
 - [Glossary](docs/glossary.md)
