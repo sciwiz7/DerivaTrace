@@ -2,15 +2,20 @@
 
 This is the documentation index for **DerivaTrace**, an open-source
 evidence-carrying derivatives compiler and model-risk laboratory. DerivaTrace is at
-**Stage 0** (pre-alpha, not published).
+**Stage 1A** (pre-alpha, not published).
 
 ## Project status
 
-- Stage 0 establishes the foundation and the architectural constitution.
+- Stage 0 established the foundation and the architectural constitution.
+- Stage 1A implements the **contract semantics** and **validation** bounded
+  contexts as a concrete, typed, immutable contract algebra
+  (`derivatrace.contracts`) with whole-graph validation.
+- Stages 1B (canonicalization and canonical payoff graph) and 1C
+  (serialization and evidence records) are planned.
 - No pricing, valuation, Greeks, Monte Carlo, PDE, calibration, or hedging
   functionality exists yet.
 - The deterministic core and evidence-certificate design are specified here,
-  not implemented.
+  not fully implemented.
 
 ## Core principle
 
@@ -24,8 +29,10 @@ evidence-carrying derivatives compiler and model-risk laboratory. DerivaTrace is
   success criteria.
 - [Architecture](./architecture.md) — bounded contexts, dependency direction,
   diagrams, and forbidden dependencies.
-- [Contract semantics](./contract-semantics.md) — future contract AST,
-  primitives, and validation levels.
+- [Contract semantics](./contract-semantics.md) — contract AST, primitives, and
+  validation levels.
+- [Contract API (Stage 1A)](./contract-api.md) — the implemented public API,
+  construction rules, and validation semantics with runnable examples.
 - [Certificate specification](./certificate-spec.md) — versioned evidence
   envelope and hashing procedure.
 - [Threat model](./threat-model.md) — assets, actors, attack surfaces, and
@@ -37,6 +44,7 @@ evidence-carrying derivatives compiler and model-risk laboratory. DerivaTrace is
   - [ADR 0003: Evidence-carrying results](./adr/0003-evidence-carrying-results.md)
   - [ADR 0004: Exact contract terms and numerical boundaries](./adr/0004-exact-contract-terms-and-numerical-boundaries.md)
   - [ADR 0005: No hidden model selection](./adr/0005-no-hidden-model-selection.md)
+  - [ADR 0006: Stage 1 contract algebra and runtime type system](./adr/0006-stage-1-contract-algebra-and-runtime-type-system.md)
 
 ## Related root documents
 

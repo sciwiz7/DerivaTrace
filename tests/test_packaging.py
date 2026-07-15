@@ -18,17 +18,40 @@ pytestmark = pytest.mark.skipif(
 
 pytest.importorskip("build")
 
+CONTRACTS_MODULES = [
+    "src/derivatrace/contracts/__init__.py",
+    "src/derivatrace/contracts/_errors.py",
+    "src/derivatrace/contracts/_values.py",
+    "src/derivatrace/contracts/_expressions.py",
+    "src/derivatrace/contracts/_contracts.py",
+    "src/derivatrace/contracts/_validation.py",
+]
+
+CONTRACT_TESTS = [
+    "tests/contracts/test_values.py",
+    "tests/contracts/test_expressions.py",
+    "tests/contracts/test_contracts.py",
+    "tests/contracts/test_validation.py",
+    "tests/contracts/test_validation_coverage.py",
+    "tests/contracts/test_values_extra.py",
+    "tests/contracts/test_public_api.py",
+    "tests/contracts/test_supported_node_policy.py",
+]
+
 REQUIRED_SDIST_PATHS = [
     "src/derivatrace/__init__.py",
     "src/derivatrace/_metadata.py",
     "src/derivatrace/py.typed",
+    *CONTRACTS_MODULES,
     "tests/test_package.py",
     "tests/test_documentation.py",
+    *CONTRACT_TESTS,
     "docs/index.md",
     "docs/vision.md",
     "docs/product-spec.md",
     "docs/architecture.md",
     "docs/contract-semantics.md",
+    "docs/contract-api.md",
     "docs/certificate-spec.md",
     "docs/threat-model.md",
     "docs/glossary.md",
@@ -37,6 +60,7 @@ REQUIRED_SDIST_PATHS = [
     "docs/adr/0003-evidence-carrying-results.md",
     "docs/adr/0004-exact-contract-terms-and-numerical-boundaries.md",
     "docs/adr/0005-no-hidden-model-selection.md",
+    "docs/adr/0006-stage-1-contract-algebra-and-runtime-type-system.md",
     "README.md",
     "LICENSE",
     "CHANGELOG.md",
@@ -101,6 +125,15 @@ def test_wheel_inventory(artifacts: Path) -> None:
     assert "derivatrace/py.typed" in names
     assert "derivatrace/__init__.py" in names
     assert "derivatrace/_metadata.py" in names
+    # The complete contracts package must ship in the wheel.
+    for module in CONTRACTS_MODULES:
+        assert f"derivatrace/{module.split('src/derivatrace/')[1]}" in names
+    # No tests, docs, caches or generated files belong in the wheel.
+    for name in names:
+        assert not name.startswith("tests/")
+        assert not name.startswith("docs/")
+        assert ".pyc" not in name
+        assert "__pycache__" not in name
 
 
 def test_sdist_inventory(artifacts: Path) -> None:

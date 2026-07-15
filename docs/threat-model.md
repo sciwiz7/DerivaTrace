@@ -1,7 +1,11 @@
 # Threat model
 
-This document analyzes the security threats relevant to DerivaTrace. It is part
-of the Stage 0 specification. All external inputs are treated as untrusted.
+This document analyzes the security threats relevant to DerivaTrace. All
+external inputs are treated as untrusted. Stage 1A introduces a concrete
+contract algebra (see [contract-api.md](./contract-api.md) and
+[ADR 0006](./adr/0006-stage-1-contract-algebra-and-runtime-type-system.md));
+the additional threats and mitigations for that runtime type system are
+documented below.
 
 ## Assets
 
@@ -72,6 +76,56 @@ of the Stage 0 specification. All external inputs are treated as untrusted.
 - **Dependency confusion** — an internal or expected package name is resolved
   from a public index that hosts a attacker-controlled same-named package,
   substituting a malicious dependency.
+
+## Contract-algebra (Stage 1A) runtime type-system threats
+
+Stage 1A ships a concrete contract algebra (`derivatrace.contracts`) with
+frozen, slotted value and node objects and a whole-graph `validate_contract`
+validator. The following threats are specific to that runtime type system.
+
+- **Forged immutable object** — an attacker subclasses a value or node type and
+  bypasses its frozen `__setattr__` (for example, using `object.__setattr__`)
+  to set an inconsistent field, such as a `Payment.amount` whose stored `unit`
+  disagrees with the amount's currency. Validation must re-derive dependent
+  fields (e.g. `Unit`) itself rather than trust the stored attribute.
+- **Unsupported subclass injection** — a crafted contract uses a third-party
+  subclass of the abstract `ScalarExpression`, `BooleanExpression`, or
+  `Contract` bases that is not one of the supported concrete node types, hoping
+  to bypass per-type validation. Validation must reject any node that is not an
+  exact supported type.
+- **Deep recursion / resource exhaustion** — an attacker submits a contract
+  whose AST depth or unique-node count exceeds configured limits, exhausting
+  stack or memory. Validation must bound depth and total node count and fail
+  fast.
+- **Cyclic graph** — a self-referential or circular contract graph (a node
+  referencing an ancestor) causes unbounded traversal. Validation must detect
+  cycles during the iterative walk and reject them before any unbounded
+  expansion.
+- **Shared-node DAG confusion** — a contract that shares a sub-expression across
+  branches must be traversed once per shared node without double-counting or
+  re-expansion. Validation must track explored nodes and best-known depth.
+- **Currency or unit mismatch** — an amount carries a currency that conflicts
+  with its declared `Unit`, or operands of arithmetic combine incompatible
+  units. Validation must enforce currency/unit consistency.
+- **Extreme or non-exact numeric value** — a `Decimal` amount exceeds the
+  allowed precision/exponent, or is constructed from a `float`/`bool`/`NaN`/
+  `Infinity`. `ExactNumber` and validation must reject all such inputs.
+- **Unicode identifier confusion** — an `ObservableId` uses look-alike
+  characters to impersonate a different observable. Identifiers must be
+  validated against an explicit allowed pattern and normalized form.
+- **Naive timestamp** — an observation or settlement time is supplied as a
+  naive `datetime` lacking an explicit UTC offset. Validation must reject naive
+  timestamps.
+- **Misleading structural-validation claim** — a contract is presented as
+  "fully validated" when only structural checks ran, or as canonical when it has
+  not been canonicalized (canonicalization is not part of Stage 1A). Such claims
+  must be avoided in API, docs, and tests.
+
+Mitigations for the above are enforced by the validator and by the frozen,
+slotted, `object.__setattr__`-guarded object design documented in
+[ADR 0006](./adr/0006-stage-1-contract-algebra-and-runtime-type-system.md) and
+exercised by `tests/contracts/test_supported_node_policy.py` and
+`tests/contracts/test_validation.py`.
 
 ## Supply-chain threats
 

@@ -1,8 +1,12 @@
 # Contract semantics
 
-This document specifies the **planned** contract representation for DerivaTrace.
-It is a specification for Stage 1 and later; no contract logic is implemented in
-Stage 0.
+This document specifies the contract representation for DerivaTrace. The minimal
+Stage 1A algebra — constants, observables, arithmetic, comparisons, `max`/`min`,
+payment obligations, currencies, dates, observation/settlement times, conditions,
+and contract composition — is now **implemented** as the typed, immutable
+`derivatrace.contracts` module. Canonicalization and compilation to a canonical
+payoff graph remain planned for Stage 1B. No pricing, valuation, or engine
+functionality is implemented in Stage 1A.
 
 ## Financial contract versus pricing model
 
@@ -11,7 +15,7 @@ A pricing model is a set of assumptions about stochastic behaviour. A numerical
 engine is a method for computing results. Confusing these leads to opaque,
 non-reproducible valuations. DerivaTrace keeps them separate: the contract is
 model-independent and is compiled into a canonical payoff representation that
-later models and engines can value.
+later models and engines value.
 
 ## Future AST responsibilities
 
@@ -143,13 +147,20 @@ If(
 These are illustrations only; the actual Stage 1 API will be defined by its own
 specification and ADR.
 
-## Proposed minimal Stage 1 contract algebra
+## Implemented Stage 1A contract algebra
 
-A minimal Stage 1 algebra is planned to include: constants, observables,
-arithmetic, comparisons, `max`/`min`, payment obligations, currencies, dates,
-observation/settlement times, conditions, and contract composition. Path
-observations, exercise rights, barriers, and schedules are planned for later
-stages (for example, Stage 10).
+The minimal algebra described above is implemented as `derivatrace.contracts`.
+It includes: exact numeric and boolean constants; market observables identified
+by `ObservableId`; arithmetic (`Add`, `Subtract`, `Multiply`, `Divide`,
+`Negate`); comparisons and boolean logic (`Equal`, `LessThan`, `GreaterThan`,
+`And`, `Or`, `Not`); `Max`/`Min`; `Payment`, `Both`, `Either`, `Cond`, and
+`Scale`; currencies/units via `Currency` and `Unit`; and observation/settlement
+times via `ObservationTime` and `SettlementTime`. Path observations, exercise
+rights, barriers, and schedules are planned for later stages.
+
+The concrete API, construction rules, and validation semantics are documented in
+[contract-api.md](./contract-api.md) and
+[ADR 0006](./adr/0006-stage-1-contract-algebra-and-runtime-type-system.md).
 
 See also [architecture.md](./architecture.md),
 [certificate-spec.md](./certificate-spec.md), and
