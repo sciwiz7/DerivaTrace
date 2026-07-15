@@ -18,15 +18,28 @@ from decimal import Decimal
 import pytest
 
 from derivatrace.contracts import (
+    Add,
+    AllOf,
+    BooleanConstant,
+    BooleanExpression,
+    Both,
+    Comparison,
+    ComparisonOperator,
+    ConditionalContract,
+    Contract,
     ContractInputError,
     ContractValidationError,
     Currency,
+    DerivaTraceError,
+    Divide,
     ExactNumber,
+    Multiply,
     Number,
     Observable,
     ObservableId,
     ObservationTime,
     Payment,
+    ScalarExpression,
     Scale,
     SettlementTime,
     Unit,
@@ -502,3 +515,182 @@ def test_validation_limits_subclass_rejected_by_exact_type_policy() -> None:
     bad = _BadValidationLimits()
     with pytest.raises(ContractValidationError):
         validate_contract(_payment(), limits=bad)
+
+
+# ---------------------------------------------------------------------------
+# Blocker 1 - validate children before parent invariants (post-order)
+# ---------------------------------------------------------------------------
+#
+# The traversal validates a node only after every descendant has passed
+# authoritative validation. A hostile/unsupported child subclass is therefore
+# rejected by the exact-type policy before any parent reads its (possibly
+# overridden) ``.unit``/``.value`` fields, so overridden behaviour can never be
+# executed.
+
+
+_hostile_accessed: list[str] = []
+
+
+class _HostileScalar(ScalarExpression):
+    @property
+    def unit(self) -> Unit:  # type: ignore[override]
+        _hostile_accessed.append("scalar")
+        raise RuntimeError("hostile scalar unit executed")
+
+
+class _HostileBoolean(BooleanExpression):
+    @property
+    def dummy(self) -> object:
+        _hostile_accessed.append("boolean")
+        raise RuntimeError("hostile boolean executed")
+
+
+class _HostileContract(Contract):
+    @property
+    def dummy(self) -> object:
+        _hostile_accessed.append("contract")
+        raise RuntimeError("hostile contract executed")
+
+
+def test_hostile_scalar_subclass_rejected_before_property() -> None:
+    _hostile_accessed.clear()
+    evil = _HostileScalar()
+    add = Add((_scalar("1"), _scalar("2")))
+    object.__setattr__(add, "operands", (add.operands[0], evil))
+    with pytest.raises(ContractValidationError):
+        validate_contract(Scale(add, _payment()))
+    assert _hostile_accessed == []
+
+
+def test_hostile_boolean_subclass_rejected_before_behaviour() -> None:
+    _hostile_accessed.clear()
+    evil = _HostileBoolean()
+    cond = AllOf((BooleanConstant(True), BooleanConstant(False)))
+    object.__setattr__(cond, "operands", (cond.operands[0], evil))
+    with pytest.raises(ContractValidationError):
+        validate_contract(ConditionalContract(cond, _payment(), _payment()))
+    assert _hostile_accessed == []
+
+
+def test_hostile_contract_subclass_rejected_before_behaviour() -> None:
+    _hostile_accessed.clear()
+    evil = _HostileContract()
+    both = Both((_payment(), _payment()))
+    object.__setattr__(both, "operands", (both.operands[0], evil))
+    with pytest.raises(ContractValidationError):
+        validate_contract(both)
+    assert _hostile_accessed == []
+
+
+@pytest.mark.parametrize(
+    "builder",
+    ["multiply", "divide", "add", "comparison", "scale", "payment"],
+)
+def test_forge_number_unit_non_unit_rejected(builder: str) -> None:
+    bad_unit = 12345  # not a Unit instance
+    num = _scalar("2")
+    if builder == "multiply":
+        contract: Contract = Scale(Multiply(_scalar("1"), num), _payment())
+    elif builder == "divide":
+        contract = Scale(Divide(_scalar("4"), num), _payment())
+    elif builder == "add":
+        contract = Scale(Add((_scalar("1"), num)), _payment())
+    elif builder == "comparison":
+        contract = ConditionalContract(
+            Comparison(num, _scalar("3"), ComparisonOperator.LESS_THAN),
+            _payment(),
+            _payment(),
+        )
+    elif builder == "scale":
+        contract = Scale(num, _payment())
+    else:  # payment
+        money_num = _money("2")
+        num = money_num
+        contract = Payment(money_num, _usd(), _settlement())
+    object.__setattr__(num, "unit", bad_unit)
+    # Must fail with a DerivaTrace contract error, never AttributeError or
+    # RuntimeError from the parent touching the forged ``.unit``.
+    with pytest.raises(DerivaTraceError):
+        validate_contract(contract)
+
+
+def test_forge_divide_denominator_value_non_exact_rejected() -> None:
+    denom = _scalar("2")
+    div = Divide(_scalar("4"), denom)
+    object.__setattr__(denom, "value", 12345)  # non-ExactNumber
+    with pytest.raises(DerivaTraceError):
+        validate_contract(Scale(div, _payment()))
+
+
+# ---------------------------------------------------------------------------
+# Blocker 2 - nested currency revalidation
+# ---------------------------------------------------------------------------
+
+
+def test_forge_nested_currency_in_comparison_rejected() -> None:
+    forged = Currency.from_code("USD")
+    object.__setattr__(forged, "_code", "usd")
+    money_expr = Number(ExactNumber.from_string("1"), Unit.money(forged))
+    cond = Comparison(money_expr, money_expr, ComparisonOperator.LESS_THAN)
+    eur = Currency.from_code("EUR")
+    gbp = Currency.from_code("GBP")
+    p1 = Payment(_money("100", eur), eur, _settlement())
+    p2 = Payment(_money("200", gbp), gbp, _settlement())
+    contract = ConditionalContract(cond, p1, p2)
+    with pytest.raises(ContractValidationError):
+        validate_contract(contract)
+
+
+# ---------------------------------------------------------------------------
+# Blocker 3 - stored UTC invariant
+# ---------------------------------------------------------------------------
+
+
+def test_forge_observation_time_non_utc_stored_rejected() -> None:
+    ot = ObservationTime(datetime(2030, 1, 1, tzinfo=UTC))
+    object.__setattr__(
+        ot, "_value", datetime(2030, 1, 1, 14, 0, tzinfo=timezone(timedelta(hours=2)))
+    )
+    obs = Observable(
+        ObservableId.from_parts("equity", "ACME", "spot"), ot, Unit.scalar()
+    )
+    with pytest.raises(ContractValidationError):
+        validate_contract(Scale(obs, _payment()))
+
+
+def test_forge_settlement_time_non_utc_stored_rejected() -> None:
+    st = _settlement()
+    object.__setattr__(
+        st, "_value", datetime(2030, 6, 1, 14, 0, tzinfo=timezone(timedelta(hours=2)))
+    )
+    with pytest.raises(ContractValidationError):
+        validate_contract(Payment(_money("1"), _usd(), st))
+
+
+# ---------------------------------------------------------------------------
+# Blocker 4 - canonical stored zero
+# ---------------------------------------------------------------------------
+
+
+def test_validate_accepts_canonical_zero() -> None:
+    p = Payment(
+        Number(ExactNumber.from_string("0"), Unit.money(_usd())),
+        _usd(),
+        _settlement(),
+    )
+    metrics = validate_contract(p)
+    assert metrics.node_count >= 2
+
+
+def test_forge_exact_number_neg_zero_rejected() -> None:
+    n = _money("1")
+    object.__setattr__(n.value, "_value", Decimal("-0"))
+    with pytest.raises(ContractValidationError):
+        validate_contract(Payment(n, _usd(), _settlement()))
+
+
+def test_forge_exact_number_noncanonical_zero_rejected() -> None:
+    n = _money("1")
+    object.__setattr__(n.value, "_value", Decimal("0.0"))
+    with pytest.raises(ContractValidationError):
+        validate_contract(Payment(n, _usd(), _settlement()))

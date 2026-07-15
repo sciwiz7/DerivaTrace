@@ -350,6 +350,24 @@ assert metrics.max_depth == 3
 `validate_contract` performs iterative, whole-graph structural validation and
 returns `ContractMetrics`.
 
+Validation is **post-order**: each node's own invariants are checked only after
+every descendant has been validated. This means an unsupported child subclass is
+rejected by the exact-type policy before any parent reads its fields, so a
+parent can never observe or execute forged/hostile child behaviour.
+
+The validator also re-checks the **stored internal state** of every value object
+recursively, including nested ones:
+
+- a `money` unit's `Currency` is revalidated from its stored `_code` even when
+  nested inside a `Number` inside a `Comparison` or `Payment`;
+- `ObservationTime`/`SettlementTime` must be stored in canonical UTC
+  (`tzinfo is UTC`), not merely timezone-aware;
+- an `ExactNumber` must store the canonical zero `Decimal("0")` — forged
+  `Decimal("-0")` or `Decimal("0.0")` forms are rejected.
+
+These stored-state invariants are enforced independently of the constructor, so
+objects mutated after construction (via `object.__setattr__`) are detected.
+
 ```python
 from derivatrace.contracts import validate_contract
 

@@ -198,6 +198,28 @@ its currency, an `ExactNumber._value` changed to `NaN`/`Infinity`/non-`Decimal`,
 or an `ObservationTime._value` changed to a naive `datetime`) are therefore
 detected and rejected during validation.
 
+Revalidation is applied **recursively to nested value objects** so that a forged
+inner value cannot slip through because it sits inside an otherwise-valid outer
+value object. In particular, a `money` unit's `Currency` is revalidated from its
+stored `_code` even when the unit is nested inside a `Number` that is itself
+nested inside a `Comparison` condition or a `Payment` amount: an unrelated,
+genuinely valid `Payment` currency elsewhere in the graph does not mask a forged
+inner currency.
+
+Two stored-state invariants are enforced explicitly rather than relying on
+constructor normalization:
+
+- **Stored UTC invariant.** `ObservationTime` and `SettlementTime` must be stored
+  in canonical UTC. Validation requires `tzinfo is UTC` (not merely
+  timezone-aware), so a stored value shifted to a non-UTC offset (for example
+  `+02:00`) is rejected even though it remains a valid aware `datetime`.
+- **Canonical zero invariant.** An `ExactNumber` must store the canonical zero
+  `Decimal("0")` (whose `as_tuple()` is `(0, (0,), 0)`). Forged zero forms such
+  as `Decimal("-0")` or `Decimal("0.0")` are rejected, because the stored
+  representation — not just the numeric value — must be canonical. Legitimate
+  zero inputs are normalized to this form by the constructor, so only post-build
+  forgeries trip this check.
+
 Deterministic value objects additionally require the **exact** approved type.
 A subclass of `Currency`, `Unit`, `ExactNumber`, `ObservableId`,
 `ObservationTime`, `SettlementTime`, or `ValidationLimits` could override
@@ -209,6 +231,14 @@ consistent with the closed, exact supported-node policy applied to AST nodes.
 
 Traversal is an explicit stack, not recursion, so it cannot be exhausted by deep
 structures. Depth and unique-node limits are enforced during traversal.
+
+Traversal is **post-order**: a node's own invariants are validated only after
+every descendant has been validated and marked explored. This guarantees that
+the exact-type policy rejects an unsupported child subclass (and therefore
+prevents any overridden field access or behaviour on that child) before a parent
+reads the child's fields. A parent node can therefore never observe or execute
+forged or hostile child behaviour, because the child is rejected at the start of
+its own traversal frame, ahead of the parent's leave-frame invariant checks.
 
 ## Concrete-node allow-list policy
 

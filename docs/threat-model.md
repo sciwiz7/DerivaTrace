@@ -97,12 +97,27 @@ validator. The following threats are specific to that runtime type system.
   forged-but-valid state). Deterministic value objects additionally require the
   exact approved type, so a subclass of `Currency`, `Unit`, `ExactNumber`,
   `ObservableId`, `ObservationTime`, `SettlementTime`, or `ValidationLimits` is
-  rejected by validation.
+  rejected by validation. The re-validation is applied **recursively to nested
+  value objects**, so a forged inner value cannot be masked by an otherwise-valid
+  outer container: a `money` unit's `Currency` is re-checked from its stored
+  `_code` even when nested inside a `Number` inside a `Comparison` or `Payment`,
+  and unrelated genuinely-valid currencies elsewhere in the graph do not suppress
+  it. Two stored-state invariants are enforced explicitly:
+  - **Stored UTC invariant** — `ObservationTime`/`SettlementTime` must be stored
+    in canonical UTC (`tzinfo is UTC`), so a stored value shifted to a non-UTC
+    offset (e.g. `+02:00`) is rejected even though it remains timezone-aware.
+  - **Canonical zero invariant** — an `ExactNumber` must store the canonical
+    zero `Decimal("0")`; forged `Decimal("-0")` or `Decimal("0.0")` forms are
+    rejected because the stored representation must itself be canonical, not
+    merely numerically zero.
 - **Unsupported subclass injection** — a crafted contract uses a third-party
   subclass of the abstract `ScalarExpression`, `BooleanExpression`, or
   `Contract` bases that is not one of the supported concrete node types, hoping
-  to bypass per-type validation. Validation must reject any node that is not an
-  exact supported type.
+  to bypass per-type validation. Validation runs an exact-type check at the
+  start of every traversal frame and traverses in **post-order**, so an
+  unsupported child subclass is rejected (and cannot execute overridden field
+  access) before any parent reads its fields. Validation must reject any node
+  that is not an exact supported type.
 - **Deep recursion / resource exhaustion** — an attacker submits a contract
   whose AST depth or unique-node count exceeds configured limits, exhausting
   stack or memory. Validation must bound depth and total node count and fail
@@ -135,8 +150,9 @@ validator. The following threats are specific to that runtime type system.
 Mitigations for the above are enforced by the validator and by the frozen,
 slotted, `object.__setattr__`-guarded object design documented in
 [ADR 0006](./adr/0006-stage-1-contract-algebra-and-runtime-type-system.md) and
-exercised by `tests/contracts/test_supported_node_policy.py` and
-`tests/contracts/test_validation.py`.
+exercised by `tests/contracts/test_supported_node_policy.py`,
+`tests/contracts/test_validation.py`, and
+`tests/contracts/test_value_object_invariants.py`.
 
 ## Supply-chain threats
 

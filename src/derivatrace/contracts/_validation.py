@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from ._contracts import (
@@ -200,6 +200,16 @@ def _validate_exact_number_invariants(
         raise ContractValidationError(
             "ExactNumber must be finite (NaN/Infinity rejected)", path=path
         )
+    if value == 0:
+        t = value.as_tuple()
+        if t.sign != 0 or t.digits != (0,) or t.exponent != 0:
+            # Construction normalizes every zero to Decimal(0); a stored zero
+            # with a non-zero sign or a non-zero exponent is forged state and
+            # must not be silently normalized back to canonical form.
+            raise ContractValidationError(
+                "ExactNumber zero must be stored in canonical Decimal(0) form",
+                path=path,
+            )
     digits = value.as_tuple().digits
     if len(digits) > MAX_SIGNIFICANT_DIGITS:
         raise ContractValidationError(
@@ -244,6 +254,9 @@ def _validate_unit_invariants(obj: Unit, path: tuple[str | int, ...]) -> None:
     # ``UnitKind`` is a closed enum, so any other member is ``MONEY``.
     if type(currency) is not Currency:
         raise ContractValidationError("money unit requires a Currency", path=path)
+    # Revalidate the nested currency's own stored invariants (for example a
+    # forged ``_code`` such as "usd") rather than only confirming its type.
+    _validate_currency_invariants(currency, path)
 
 
 def _validate_observable_id_invariants(
@@ -305,6 +318,13 @@ def _validate_aware_datetime_invariants(
     if offset is None:
         raise ContractValidationError(
             f"{name} requires a concrete UTC offset", path=path
+        )
+    if offset != timedelta(0):
+        # The constructor normalizes every stored value to UTC; a stored value
+        # with a non-zero offset is forged state and must not be silently
+        # re-normalized during validation.
+        raise ContractValidationError(
+            f"{name} must be stored in canonical UTC form", path=path
         )
 
 
@@ -597,11 +617,14 @@ def validate_contract(
     """Validate a complete contract graph and return deterministic metrics.
 
     The traversal is iterative (explicit stack), so it cannot be exhausted by
-    deep structures. It re-checks every node's critical invariants so that
-    objects forged or modified after construction (for example through
-    ``object.__setattr__``) cannot bypass validation. Reference cycles are
-    detected with a correct colouring algorithm, and safe DAG sharing is
-    permitted.
+    deep structures. Validation is **post-order**: a node's own invariants are
+    checked only after every one of its children has passed authoritative
+    validation (exact-type policy plus value-object invariants). This guarantees
+    that no parent ever reads a child's ``.unit``/``.value`` fields before that
+    child has been validated, so a hostile or unsupported child subclass cannot
+    execute overridden behaviour, and a forged value object is rejected before a
+    parent relies on it. Reference cycles are detected with a correct colouring
+    algorithm, and safe DAG sharing is permitted.
 
     Depth definition: the root contract counts as depth 1. Node-count
     definition: the number of unique object nodes (by identity); shared
@@ -639,6 +662,13 @@ def validate_contract(
         node_id = id(node)
 
         if leaving:
+            # Post-order validation: every child of this node has already passed
+            # authoritative validation (exact-type policy plus value-object
+            # invariants), so it is now safe to validate this node's own local
+            # and derived invariants, which read child fields such as ``.unit``
+            # and ``.value``. Only then is the node marked fully explored and
+            # cleared from the active ancestor set.
+            _validate_node_invariants(node, path)
             explored.add(node_id)
             ancestors.discard(node_id)
             continue
@@ -671,12 +701,16 @@ def validate_contract(
                 path=path,
             )
 
+        # Exact supported concrete-node policy: reject any node whose exact type
+        # is not one of the reviewed classes before trusting it or reading its
+        # children. This runs on entering so a hostile/unsupported child is
+        # rejected before its (possibly overridden) behaviour is ever accessed.
         _ensure_supported_node_type(node, path)
 
-        _validate_node_invariants(node, path)
-
-        # Re-push as a post-order marker that records completion and clears the
-        # node from the active ancestor set.
+        # Push the post-order marker first, then the children. Because the stack
+        # is LIFO, every child frame is fully validated (and this node's own
+        # invariants run) only after all descendants have passed authoritative
+        # validation.
         stack.append((node, depth, path, True))
         for child_segments, child in reversed(_iter_children(node)):
             child_path = path + child_segments
