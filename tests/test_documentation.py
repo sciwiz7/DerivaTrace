@@ -323,15 +323,105 @@ def _near(text: str, anchor_re: str, word: str, window: int = 200) -> bool:
     return False
 
 
+def _section(text: str, heading_re: str) -> str:
+    """Return the text of the first section whose heading matches ``heading_re``."""
+    heads = list(re.finditer(r"^\#{1,6}\s+.*$", text, re.IGNORECASE | re.MULTILINE))
+    for i, h in enumerate(heads):
+        if re.search(heading_re, h.group(0), re.IGNORECASE):
+            start = h.start()
+            end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
+            return text[start:end]
+    return ""
+
+
 def test_stage_status_claims() -> None:
     road = (REPO_ROOT / "ROADMAP.md").read_text(encoding="utf-8")
     assert _near(road, r"stage 0\b", "complete")
     assert _near(road, r"stage 1\b", "in progress")
-    assert _near(road, r"stage 1a\b", "implement")
-    assert _near(road, r"stage 1b\b", "planned")
+    assert _near(road, r"stage 1a\b", "implement") or _near(
+        road, r"stage 1a\b", "complete"
+    )
+    assert _near(road, r"stage 1b\b", "in progress")
     assert _near(road, r"stage 1c\b", "planned")
-    # Stage 1 as a whole must not be described as complete.
-    assert not _near(road, r"stage 1\b", "complete")
+    # Stage 1 *as a whole* must not be described as complete; individual
+    # sub-stages (e.g. Stage 1A) may be. Check the top-level Stage 1 status
+    # line only, not every "stage 1" substring (which would also catch the
+    # sub-stage headers and the whole-of-Stage-1 exclusions sentence).
+    stage1 = _section(road, r"^##\s+stage 1\b")
+    first_status = re.search(r"\*\*status:\*\*\s*([^\n]*)", stage1, re.IGNORECASE)
+    assert first_status is not None
+    assert "in progress" in first_status.group(1).lower()
+    assert "complete" not in first_status.group(1).lower()
+
+
+def test_stage_1b_baseline_new_files_exist() -> None:
+    required = [
+        DOCS_DIR / "canonicalization-spec.md",
+        DOCS_DIR / "payoff-graph-spec.md",
+        DOCS_DIR / "canonical-test-vectors.md",
+        DOCS_DIR / "adr" / "0007-canonical-contract-identity-and-payoff-graph.md",
+    ]
+    for path in required:
+        assert path.exists(), f"missing Stage 1B baseline file: {path}"
+
+
+def test_stage_1b_baseline_status() -> None:
+    road = (REPO_ROOT / "ROADMAP.md").read_text(encoding="utf-8").lower()
+    # Stage 1A is complete / implemented.
+    assert _near(road, r"stage 1a\b", "implement") or _near(
+        road, r"stage 1a\b", "complete"
+    )
+    # Stage 1B is in progress (architecture baseline).
+    assert _near(road, r"stage 1b\b", "in progress")
+    # Stage 1C remains planned.
+    assert _near(road, r"stage 1c\b", "planned")
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8").lower()
+    assert "stage 1b" in readme
+    assert "specification-only" in readme or "specification only" in readme
+
+
+def test_stage_1b_baseline_is_specification_only() -> None:
+    files = [
+        DOCS_DIR / "canonicalization-spec.md",
+        DOCS_DIR / "payoff-graph-spec.md",
+        DOCS_DIR / "canonical-test-vectors.md",
+        DOCS_DIR / "adr" / "0007-canonical-contract-identity-and-payoff-graph.md",
+    ]
+    for path in files:
+        text = path.read_text(encoding="utf-8").lower()
+        assert ("specification only" in text) or ("specification-only" in text), path
+        assert "not implemented" in text, path
+        # The conservative principle must be stated.
+        assert "conservative" in text, path
+
+
+def test_no_canonicalization_or_hashing_implementation_claimed() -> None:
+    # The Stage 1B baseline must not claim a runtime implementation exists.
+    impl_claims = [
+        "canonicalize(",
+        "def canonicalize",
+        "canonicalize_contract",
+        "sha256(",
+        "hash_canonical",
+        "serialize(",
+        "def serialize",
+        "compile_payoff",
+        "payoff_graph(",
+    ]
+    for markdown in markdown_files():
+        text = markdown.read_text(encoding="utf-8")
+        for claim in impl_claims:
+            assert claim not in text.lower(), (
+                f"{markdown}: implementation claim '{claim}'"
+            )
+
+
+def test_stage_1b_baseline_forbids_overclaiming_equivalence() -> None:
+    spec = (DOCS_DIR / "canonicalization-spec.md").read_text(encoding="utf-8").lower()
+    # Must explicitly deny claiming complete mathematical/economic equivalence.
+    assert "economic equivalence" in spec
+    assert "not" in spec
+    assert "complete mathematical" in spec or "mathematical or economic" in spec
 
 
 def test_package_remains_prealpha_unpublished() -> None:
@@ -405,3 +495,181 @@ def test_version_unchanged() -> None:
     with open(REPO_ROOT / "pyproject.toml", "rb") as handle:
         data = tomllib.load(handle)
     assert data["project"]["version"] == "0.1.0.dev0"
+
+
+# ---- Stage 1B canonicalization / payoff-graph conformance (Review 13) ----
+
+
+def _text(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def _norm(text: str) -> str:
+    # Drop markdown emphasis/code markers so phrase matching is robust.
+    return text.lower().replace("*", "").replace("`", "")
+
+
+def test_canonical_json_policy_is_byte_exact() -> None:
+    spec = _text(DOCS_DIR / "canonicalization-spec.md").lower()
+    # exact separators / no whitespace
+    assert 'separators=(",", ":")' in _text(DOCS_DIR / "canonicalization-spec.md")
+    for token in [
+        "no bom",
+        "no trailing newline",
+        "no spaces",
+        "ensure_ascii=true",
+        "sorted keys",
+        "no json floating-point",
+        "solidus",
+        "non-ascii",
+    ]:
+        assert token in spec, token
+
+
+def test_node_classification_distinguishes_three_classes() -> None:
+    spec = _norm(_text(DOCS_DIR / "canonicalization-spec.md"))
+    # The three node classes must all be named.
+    assert "commutative associative collection" in spec
+    assert "commutative binary" in spec
+    assert "author-order-preserving" in spec
+    # The collection class is n-ary and flattened; Multiply is binary, not.
+    assert "n-ary" in spec
+    assert "multiply" in spec
+    assert "multiply is binary" in spec
+    # Multiply must be explicitly excluded from associative flattening.
+    assert "nested multiply" in spec and "not" in spec
+    # The collection list enumerates exactly the five nodes, not Multiply.
+    assert "add" in spec and "maximum" in spec and "minimum" in spec
+    assert "allof" in spec and "anyof" in spec
+
+
+def test_no_contradictory_multiply_flatten_language() -> None:
+    spec = _text(DOCS_DIR / "canonicalization-spec.md")
+    adr = _text(
+        DOCS_DIR / "adr" / "0007-canonical-contract-identity-and-payoff-graph.md"
+    )
+    # "Multiply" must never be described as flattened/associative-collection
+    # without a negation.
+    for text in (spec, adr):
+        low = text.lower()
+        assert "multiply" in low
+        for m in re.finditer(r"multiply.{0,140}flatten", low):
+            assert "not" in m.group(0) or "no" in m.group(0), m.group(0)
+
+
+def test_divide_folding_removed_from_schema_1_0_0() -> None:
+    spec = _norm(_text(DOCS_DIR / "canonicalization-spec.md"))
+    # The policy line is contiguous; the follow-up sentence wraps across a line.
+    assert "divide-folding policy (schema 1.0.0): removed" in spec
+    assert "divide folding" in spec and "excluded" in spec
+    assert "1.0.0" in spec
+
+
+def test_payoff_divide_maps_directly_not_reciprocal() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    adr = _text(
+        DOCS_DIR / "adr" / "0007-canonical-contract-identity-and-payoff-graph.md"
+    )
+    assert "PGDivide" in pg
+    # No unresolved / implementation-finalized mapping language.
+    low = (pg + adr).lower()
+    assert "implementation-finalized" not in low
+    assert "implementation-finalised" not in low
+    # No reciprocal rewrite; Divide maps to PGDivide directly.
+    assert "pgdivide" in low
+    assert "no reciprocal" in low or ("never" in low and "reciprocal" not in low)
+
+
+def test_collision_handling_present() -> None:
+    spec = _norm(_text(DOCS_DIR / "canonicalization-spec.md"))
+    threat = _norm(_text(DOCS_DIR / "threat-model.md"))
+    adr = _norm(
+        _text(DOCS_DIR / "adr" / "0007-canonical-contract-identity-and-payoff-graph.md")
+    )
+    assert "canonicalization.collision" in spec
+    assert "canonicalization.collision" in threat
+    assert "canonicalization.collision" in adr
+    assert "if the same" in spec and "different" in spec
+
+
+def test_object_identity_not_part_of_identity() -> None:
+    spec = _norm(_text(DOCS_DIR / "canonicalization-spec.md"))
+    assert "python object identity is never part of canonical identity" in spec
+    assert "content-addressed" in spec
+    assert "shared subtree" in spec and "independently allocated" in spec
+
+
+def test_schema_version_participates_in_identity_framing() -> None:
+    spec = _norm(_text(DOCS_DIR / "canonicalization-spec.md"))
+    assert '"1.0.0"' in spec
+    assert "participates" in spec and "directly" in spec
+    # The preimage framing includes the version between NUL separators.
+    assert "0x00" in spec
+
+
+def test_stage_1a_status_field_is_complete() -> None:
+    road = _text(REPO_ROOT / "ROADMAP.md")
+    assert "- **Status:** Complete." in road
+    assert "- **Status:** In progress" in road
+    assert "- **Status:** Planned." in road
+
+
+def test_specification_denies_complete_equivalence_claims() -> None:
+    spec = _norm(_text(DOCS_DIR / "canonicalization-spec.md"))
+    for claim in [
+        "not complete mathematical equivalence",
+        "not economic equivalence",
+        "not pricing equivalence",
+        "not legal equivalence",
+        "no formal verification claim",
+        "assumed, not proven",
+    ]:
+        assert claim in spec, claim
+
+
+def test_no_placeholder_identities_in_normative_vectors() -> None:
+    text = _text(DOCS_DIR / "canonical-test-vectors.md")
+    # Find every contract/payoff-graph identity value and check it is literal 64-hex.
+    placeholder_words = ("placeholder", "tbd", "example", "<hex>")
+    count = 0
+    for m in re.finditer(r"(canonical|payoffgraph):sha256:([^\s`,]+)", text):
+        suffix = m.group(2)
+        if re.fullmatch(r"[0-9a-f]{64}", suffix):
+            count += 1
+            assert set(suffix) != {"0"}, f"all-zero identity: {m.group(0)}"
+            for w in placeholder_words:
+                assert w not in suffix, f"placeholder identity: {m.group(0)}"
+    # There must be real normative identities present.
+    assert count >= 10, f"too few identities found: {count}"
+
+
+def test_no_stage_1b_runtime_implementation_in_docs() -> None:
+    impl_claims = [
+        "canonicalize(",
+        "def canonicalize",
+        "canonicalize_contract",
+        "sha256(",
+        "hash_canonical",
+        "serialize(",
+        "def serialize",
+        "compile_payoff",
+        "payoff_graph(",
+    ]
+    for markdown in markdown_files():
+        text = markdown.read_text(encoding="utf-8")
+        for claim in impl_claims:
+            assert claim not in text.lower(), (
+                f"{markdown}: implementation claim '{claim}'"
+            )
+
+
+def test_payoff_graph_schema_and_identity_defined() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    assert "payoffgraph:sha256:" in pg
+    assert "derivatrace.payoffgraph.graph" in pg
+    assert "derivatrace.payoffgraph.node" in pg
+    assert "provenance" in pg.lower()
+    assert "identity-exempt" in pg.lower() or "excludes" in pg.lower()
+    # PG boolean condition nodes must be specified (no mapping left finalised).
+    for node in ("PGComparison", "PGAllOf", "PGAnyOf", "PGNot"):
+        assert node in pg, node

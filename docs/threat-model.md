@@ -154,6 +154,57 @@ exercised by `tests/contracts/test_supported_node_policy.py`,
 `tests/contracts/test_validation.py`, and
 `tests/contracts/test_value_object_invariants.py`.
 
+## Canonicalization and payoff-graph (Stage 1B baseline) threats
+
+Stage 1B introduces a canonical contract representation, a canonical identity,
+and a canonical payoff graph (specified, not yet implemented; see
+[canonicalization-spec.md](./canonicalization-spec.md),
+[payoff-graph-spec.md](./payoff-graph-spec.md), and
+[ADR 0007](./adr/0007-canonical-contract-identity-and-payoff-graph.md)). The
+following threats are specific to that design and are mitigated by the
+specification's rules.
+
+- **Canonicalization collision** — two distinct, non-equivalent contracts
+  serialize to identical canonical bytes, yielding the same identity and
+  defeating equality and integrity checks. The specification requires
+  canonicalization to be injective by construction, exercised by tests that
+  prove distinct inputs map to distinct identities.
+- **Hash confusion / domain confusion** — a node id, payoff-graph id, or
+  unrelated hash is mistaken for the contract identity, or a weak/preimage
+  collision is exploited. Mitigated by fixed, versioned SHA-256 domain-
+  separation tags whose preimage is
+  `DOMAIN + 0x00 + "1.0.0" + 0x00 + payload_bytes`
+  (`derivatrace.canonical.node`, `derivatrace.canonical.contract`,
+  `derivatrace.payoffgraph.node`, `derivatrace.payoffgraph.graph`). The schema
+  version participates directly in every identity, so a different version is a
+  different identity.
+- **Canonicalization collision** — two distinct canonical payloads hash to the
+  same id. SHA-256 collision resistance is *assumed, not proven*; the
+  specification does not rely on collisions being impossible. Canonicalization
+  orders commutative operands by canonical id (tie-broken by payload bytes) and
+  raises `canonicalization.collision` if the same id maps to different payload
+  bytes, so differing nodes are never silently merged. Identical payloads may be
+  shared; duplicate operands remain duplicate references.
+- **Forged / non-canonical input** — a decoded canonical form is not itself
+  canonical but is presented as an identity. Mitigated by rejecting any
+  canonical form that is not self-canonical, and by never trusting a claimed
+  identity.
+- **Over-claiming equivalence** — canonical identity is presented as proof of
+  economic equivalence. Mitigated explicitly: identity is structural under the
+  approved laws only; the conservative principle forbids claiming complete
+  mathematical or economic equivalence.
+- **Schema downgrade / confusion** — a canonical form claims an unknown or
+  older schema version. Mitigated by monotonic, explicit schema versions;
+  consumers must reject unknown versions; the schema version participates in
+  the identity.
+- **Cycle / resource exhaustion during canonicalization** — a malformed or
+  oversized graph exhausts resources. Mitigated by requiring `validate_contract`
+  to pass first (cycle detection, depth/node limits) and by reusing the same
+  `ValidationLimits` during canonicalization with iterative traversal.
+
+These are design-level mitigations recorded in the Stage 1B baseline; the
+runtime enforcement lands with the Stage 1B implementation and its tests.
+
 ## Supply-chain threats
 
 - Compromised or typosquatted dependencies.

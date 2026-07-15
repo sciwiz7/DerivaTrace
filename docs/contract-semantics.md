@@ -5,7 +5,11 @@ Stage 1A algebra — constants, observables, arithmetic, comparisons, `max`/`min
 payment obligations, currencies, dates, observation/settlement times, conditions,
 and contract composition — is now **implemented** as the typed, immutable
 `derivatrace.contracts` module. Canonicalization and compilation to a canonical
-payoff graph remain planned for Stage 1B. No pricing, valuation, or engine
+payoff graph are specified for Stage 1B as a **design baseline**
+(specification-only; no implementation). The approved normalization laws, value
+encoding, and canonical identity are defined in
+[canonicalization-spec.md](./canonicalization-spec.md) and
+[payoff-graph-spec.md](./payoff-graph-spec.md). No pricing, valuation, or engine
 functionality is implemented in Stage 1A.
 
 ## Financial contract versus pricing model
@@ -101,6 +105,14 @@ mistaken for equivalent.
 Normalization rewrites a contract into a canonical form using deterministic
 rules (for example, sorting commutative terms, folding constants, resolving
 trivial conditions). Normalization must preserve semantics exactly.
+
+> **Conservative scope (Stage 1B).** Per
+> [canonicalization-spec.md](./canonicalization-spec.md), normalization applies
+> **only** explicitly approved structural laws and does **not** claim complete
+> mathematical or economic equivalence. Which nodes are commutative, which are
+> flattened, how duplicates and literals are handled, and which transformations
+> are forbidden are enumerated there; the canonical identity is *structural*
+> under those laws, not a proof of economic parity.
 
 ## Canonical equivalence
 

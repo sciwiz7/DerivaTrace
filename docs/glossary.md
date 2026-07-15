@@ -27,7 +27,46 @@ definitions.
 - **Numerical engine** — a method that computes results from a model and inputs.
 - **Observation time** — when a market value is read.
 - **Payoff graph** — a canonical, model-independent representation of a
-  contract's payoffs.
+  contract's payoffs. Its Stage 1B taxonomy and compilation mapping are
+  specified in `payoff-graph-spec.md` (specification-only).
+- **Canonical contract identity** — a deterministic `SHA-256` fingerprint
+  (`canonical:sha256:<hex>`) over the canonical bytes of a validated contract,
+  under a fixed, versioned domain-separation tag. A structural identity under
+  the approved canonicalization laws, not a proof of economic equivalence.
+- **Canonical schema** — the named, versioned specification of the canonical
+  contract representation (`derivatrace.contract.canonical`, `1.0.0`). Its
+  version participates in the canonical identity.
+- **Commutative associative collection node** — a Stage 1A node whose
+  operand order is not load-bearing and which is n-ary and associative
+  (`Add`, `Maximum`, `Minimum`, `AllOf`, `AnyOf`); normalized by associative
+  flattening and sorting operands by canonical id (tie-broken by canonical
+  payload bytes) while preserving multiplicity.
+- **Commutative binary node** — a Stage 1A node with exactly two operands
+  whose order is not load-bearing but which is **not** flattened in schema 1.0.0
+  (`Multiply` only); the two operands are reordered deterministically by canonical
+  id (tie-broken by canonical payload bytes).
+- **Author-order-preserving node** — a Stage 1A node whose operand order is
+  preserved exactly by canonicalization (`Subtract`, `Divide`, `Comparison`,
+  `ConditionalValue`, `Scale`, `Payment`, `ConditionalContract`, `Both`, `Negate`,
+  `Not`, and all leaves).
+- **Literal-only simplification** — an approved exact rewrite that applies only
+  when every operand is a literal (`Number` / `BooleanConstant`); for example,
+  constant folding using integer-coefficient tuple arithmetic (never `Decimal`
+  under ambient context, never `float`, never rounding). `Divide` folding is
+  excluded from schema 1.0.0. No market data, model, or engine is involved.
+- **Canonical collision** — the event (assumed negligible) that two distinct
+  canonical payloads hash to the same id; canonicalization raises
+  `canonicalization.collision` rather than silently merging them.
+- **Payoff-graph node (PG node)** — a node in the canonical payoff graph
+  (`PGConstant`, `PGObservable`, `PGAdd`, `PGMultiply`, `PGNegate`,
+  `PGMaximum`, `PGMinimum`, `PGScale`, `PGConditionalValue`, `PGDivide`,
+  `PGCombine`, `PGPayment`, `PGConditionalContract`); a model-independent
+  compiled representation of a contract node. `Divide` compiles directly to
+  `PGDivide`, never to a reciprocal.
+- **Canonicalization (Stage 1B)** — the process of converting a validated
+  Stage 1A contract graph into a single, stable, deterministically serialized
+  form under explicitly approved structural laws. Specified in
+  `canonicalization-spec.md`; not implemented in the Stage 1B baseline.
 - **Reproducibility policy** — the declared conditions under which a result can
   be reproduced.
 - **Risk** — sensitivities (Greeks) and uncertainty associated with a valuation.

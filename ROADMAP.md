@@ -26,7 +26,8 @@ Stages are marked as:
 ## Stage 1 — Immutable contract algebra
 
 - **Status:** In progress.
-- **Sub-stages:** Stage 1A implemented; Stage 1B planned; Stage 1C planned.
+- **Sub-stages:** Stage 1A implemented; **Stage 1B architecture baseline
+  established (specification-only)**; Stage 1C planned.
 - **Objective:** Introduce an immutable, typed contract AST, a deterministic
   structural validator, and (later) a canonical payoff graph.
 - **Explicit exclusions for the whole of Stage 1:** Numerical valuation, market
@@ -34,7 +35,7 @@ Stages are marked as:
 
 ### Stage 1A — Contract algebra and runtime type system
 
-- **Status:** Implemented.
+- **Status:** Complete.
 - **Objective:** A strongly typed, immutable contract algebra with exact-domain
   value objects and whole-graph structural validation.
 - **Main deliverables:** `ExactNumber`; `Currency`; `Unit`/`UnitKind`;
@@ -53,14 +54,27 @@ Stages are marked as:
 
 ### Stage 1B — Canonical payoff graph and structural canonicalization
 
-- **Status:** Planned.
+- **Status:** In progress (architecture baseline; implementation follows separate
+  review).
 - **Objective:** Compile the validated contract graph into a canonical payoff
   graph and produce a structural canonical form with a deterministic identity.
-- **Main deliverables:** Payoff-graph compilation, canonicalization of contract
-  structure, canonical contract identity, equivalence checks.
+- **Baseline deliverables (this stage):** A rigorous design baseline specifying
+  canonical schema and versioning, canonical byte encoding (UTF-8 JSON, sorted
+  keys), exact `Decimal` / UTC / currency / unit / enum encoding, per-node
+  commutativity and associative-flattening decisions, duplicate-operand policy,
+  safe literal-only simplifications, forbidden transformations, DAG-sharing and
+  node-identity policy, cycle and complexity protections, deterministic
+  graph-node identifiers, SHA-256 domain separation, canonicalization error
+  taxonomy, version-migration policy, and test vectors — plus
+  [ADR 0007](docs/adr/0007-canonical-contract-identity-and-payoff-graph.md).
+- **Main deliverables (implementation, not yet built):** Payoff-graph
+  compilation, canonicalization of contract structure, canonical contract
+  identity, equivalence checks.
 - **Acceptance criteria:** Equivalent contracts produce identical canonical
-  forms and identities.
-- **Explicit exclusions:** Numerical valuation and market data.
+  forms and identities; non-equivalent contracts do not collapse through
+  undocumented transformations.
+- **Explicit exclusions:** Runtime canonicalization/hashing code in the baseline;
+  numerical valuation and market data.
 
 ### Stage 1C — Validation levels and equivalence reporting
 

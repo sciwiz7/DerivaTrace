@@ -31,6 +31,34 @@ adheres to semantic versioning once a stable release is published.
   payoff graph, models, numerical engines, market data, and evidence
   certificates remain outside Stage 1A.
 
+### Added (Stage 1B — Canonical architecture baseline, specification-only)
+
+- A rigorous Stage 1B design baseline specifying the canonical contract
+  representation and canonical payoff graph. No runtime canonicalization,
+  serialization, hashing, or payoff-graph code is introduced.
+- `docs/canonicalization-spec.md` — canonical schema (`derivatrace.contract
+  .canonical` `1.0.0`), canonical byte encoding (ASCII UTF-8 JSON, sorted keys),
+  exact `Decimal` / UTC / currency / unit / enum encoding, per-node commutativity
+  and associative-flattening decisions, duplicate-operand policy, safe
+  literal-only simplifications, forbidden transformations, DAG-sharing and
+  node-identity policy, cycle and complexity protections, deterministic
+  graph-node identifiers, SHA-256 domain separation, canonicalization error
+  taxonomy, and version-migration policy.
+- `docs/payoff-graph-spec.md` — model-independent payoff-graph node taxonomy and
+  compilation mapping (specification-only).
+- `docs/canonical-test-vectors.md` — test-vector format and illustrative vectors
+  pinning the Stage 1B decisions.
+- `docs/adr/0007-canonical-contract-identity-and-payoff-graph.md` — the
+  constitutional decision recording the conservative, enumerated-law approach.
+
+### Not implemented
+
+- Runtime canonicalization, serialization, hashing, canonical contract identity,
+  equivalence checks, and payoff-graph compilation remain unimplemented in the
+  Stage 1B baseline; they are deferred to the Stage 1B implementation phase.
+- Pricing, valuation, Greeks, models, numerical engines, market data, and
+  evidence certificates remain outside Stage 1B.
+
 ## [0.1.0.dev0] — Stage 0 (Unreleased)
 
 Stage 0 is the project foundation and system specification. It contains no

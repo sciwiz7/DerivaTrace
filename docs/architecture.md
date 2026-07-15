@@ -5,7 +5,12 @@ This document describes the architecture of DerivaTrace. Stage 1A implements the
 contract algebra (`derivatrace.contracts`); no pricing, valuation, model,
 engine, risk, or certificate functionality is implemented in Stage 1A. Stages
 1B (canonicalization and a canonical payoff graph) and 1C (serialization and
-evidence records) are planned.
+evidence records) are planned. The Stage 1B architecture baseline is now
+specified (specification-only; no implementation) in
+[canonicalization-spec.md](./canonicalization-spec.md),
+[payoff-graph-spec.md](./payoff-graph-spec.md),
+[canonical-test-vectors.md](./canonical-test-vectors.md), and
+[ADR 0007](./adr/0007-canonical-contract-identity-and-payoff-graph.md).
 
 ## Architectural principle
 
