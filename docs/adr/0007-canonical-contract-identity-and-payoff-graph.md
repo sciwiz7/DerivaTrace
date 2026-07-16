@@ -3,7 +3,8 @@
 - **Status:** Accepted (Stage 1B baseline)
 - **Stage:** 1B (architecture baseline Complete; **Stage 1B-R1 canonical runtime
   Implemented** in `derivatrace.canonical`; **Stage 1B-R2 payoff-graph runtime
-  Planned**)
+  Planned** — its specification closed by the `docs/stage-1b-r2-spec-closure`
+  pass, issue #1 / #3; runtime still not implemented)
 - **Date:** 2026-07-15
 - **Supersedes:** — (builds on ADR 0001–0006)
 - **Superseded by:** —
@@ -174,14 +175,26 @@ version) requires a version bump.
 - A separate, model-independent compiled DAG (see `payoff-graph-spec.md`) whose
   combination node `PGCombine` preserves author order, inheriting the `Both`
   policy. `Divide` compiles **directly** to `PGDivide` (numerator/denominator
-  references preserved; no reciprocal rewrite, no float). Compilation is
-  specification-only in this baseline.
+  references preserved; no reciprocal rewrite, no float). `Subtract` compiles
+  **directly** to a dedicated `PGSubtract` (`minuend`/`subtrahend`); it is **not**
+  lowered to `PGAdd` + `PGNegate`, and Stage 1B-R2 claims no algebraic or
+  economic equivalence between the two forms. `Payment` uses an `amount` field
+  (never `payoff_leaf`); settlement time is owned by `PGPayment` and observation
+  time by `PGObservable` — `PGConstant` carries neither. `BooleanConstant`
+  compiles to an explicit `PGBooleanConstant` node (never left implicit).
+  Compilation is specification-only in this baseline.
 
 ### Error taxonomy
 
 - `CanonicalizationError` base with codes `canonicalization.error`,
   `.input`, `.input.not_validated`, `.cycle`, `.complexity`, `.encoding`,
-  mirroring the Stage 1A taxonomy and carrying a structural `.path`.
+  `.collision`, mirroring the Stage 1A taxonomy and carrying a structural `.path`.
+- The payoff graph defines a **separate** taxonomy deriving from
+  `DerivaTraceError` with codes `payoff_graph.error`, `.input`, `.compilation`,
+  `.complexity`, `.encoding`, `.collision`. A payoff-node collision uses
+  `payoff_graph.collision` and does **not** reuse `canonicalization.collision`.
+  Canonicalization failures from R1 propagate to the caller without silent
+  reclassification unless explicitly wrapped with the original cause preserved.
 
 ### Migration and compatibility
 
@@ -237,6 +250,8 @@ version) requires a version bump.
 
 - Stage 1B-R1 canonical runtime (canonicalization, serialization, hashing,
   canonical contract identity) is implemented under this baseline.
-- Stage 1B-R2 payoff-graph compilation remains planned.
+- Stage 1B-R2 payoff-graph compilation: its **specification is closed** (this
+  decision plus `docs/payoff-graph-spec.md`), but the **runtime remains
+  planned** and is not yet implemented.
 - Stage 1C: graded validation levels, equivalence reporting, structural
   diffing.

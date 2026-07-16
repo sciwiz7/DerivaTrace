@@ -406,7 +406,10 @@ def test_stage_1b_status_distinctions() -> None:
 
 
 def test_no_canonicalization_or_hashing_implementation_claimed() -> None:
-    # The Stage 1B baseline must not claim a runtime implementation exists.
+    # The Stage 1B baseline / R2 spec must not claim a runtime implementation
+    # exists. The proposed (future) `compile_payoff_graph` signature is allowed
+    # to be documented as a specification, so it is deliberately not listed here;
+    # runtime presence is instead guarded by test_no_payoff_graph_runtime_module.
     impl_claims = [
         "canonicalize(",
         "def canonicalize",
@@ -415,8 +418,6 @@ def test_no_canonicalization_or_hashing_implementation_claimed() -> None:
         "hash_canonical",
         "serialize(",
         "def serialize",
-        "compile_payoff",
-        "payoff_graph(",
     ]
     for markdown in markdown_files():
         text = markdown.read_text(encoding="utf-8")
@@ -654,6 +655,9 @@ def test_no_placeholder_identities_in_normative_vectors() -> None:
 
 
 def test_no_stage_1b_runtime_implementation_in_docs() -> None:
+    # The proposed (future) payoff-graph API may be documented as a specification,
+    # so `compile_payoff_graph` / `payoff_graph(` are not flagged here; runtime
+    # presence is guarded by test_no_payoff_graph_runtime_module.
     impl_claims = [
         "canonicalize(",
         "def canonicalize",
@@ -662,8 +666,6 @@ def test_no_stage_1b_runtime_implementation_in_docs() -> None:
         "hash_canonical",
         "serialize(",
         "def serialize",
-        "compile_payoff",
-        "payoff_graph(",
     ]
     for markdown in markdown_files():
         text = markdown.read_text(encoding="utf-8")
@@ -683,3 +685,189 @@ def test_payoff_graph_schema_and_identity_defined() -> None:
     # PG boolean condition nodes must be specified (no mapping left finalised).
     for node in ("PGComparison", "PGAllOf", "PGAnyOf", "PGNot"):
         assert node in pg, node
+
+
+# ---- Stage 1B-R2 payoff-graph specification-closure guards (issues #1 / #3) ----
+
+
+SRC_ROOT = REPO_ROOT / "src" / "derivatrace"
+
+CANONICAL_NODES = [
+    "Number",
+    "Observable",
+    "Add",
+    "Subtract",
+    "Multiply",
+    "Divide",
+    "Negate",
+    "Maximum",
+    "Minimum",
+    "ConditionalValue",
+    "BooleanConstant",
+    "Comparison",
+    "AllOf",
+    "AnyOf",
+    "Not",
+    "Zero",
+    "Payment",
+    "Both",
+    "Scale",
+    "ConditionalContract",
+]
+
+
+def test_pg_payment_uses_amount_not_payoff_leaf() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    # The field is explicitly denied the obsolete name.
+    assert "never `payoff_leaf`" in pg
+    # PGPayment carries an `amount` field (with currency and settlement_time).
+    assert "| `PGPayment` | `amount`, `currency`, `settlement_time` |" in pg
+
+
+def test_pg_constant_and_observable_no_settlement_time() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    # The obsolete blanket "leaves carry settlement time" statement is gone.
+    assert "Leaves are the only nodes that carry" not in pg
+    assert "PGConstant" in pg and "does **not** contain `settlement_time`" in pg
+    assert "PGObservable" in pg and "does **not** contain `settlement_time`" in pg
+
+
+def test_pg_payment_contains_settlement_time() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    assert "is owned exclusively by `PGPayment`" in pg
+
+
+def test_pg_subtract_exists() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    assert "`PGSubtract`" in pg
+
+
+def test_subtract_does_not_lower_to_pgadd_pgnegate() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    assert "PGAdd`+`PGNegate`" in pg
+    assert "NOT lowered" in pg or "not lowered" in pg.lower()
+
+
+def test_pg_allof_anyof_flattened_sorted_commutative() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    assert "Commutative, associative, flattened, sorted" in pg
+
+
+def test_pg_comparison_preserves_order() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    assert "operator-sensitive, author-order preserved, not commutative" in pg
+
+
+def test_pg_multiply_binary_not_flattened() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md").lower()
+    assert "pgmultiply" in pg
+    assert "binary" in pg
+    assert "not flattened" in pg
+
+
+def test_provenance_excluded_from_identity() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    assert "changing provenance alone does **not** change payoff-graph identity" in pg
+    assert "provenance" in pg.lower()
+    assert "excluded" in pg.lower()
+
+
+def test_all_stage1a_r1_nodes_have_pg_mapping() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    for node in CANONICAL_NODES:
+        assert node in pg, f"canonical node {node} not mentioned in payoff spec"
+    # The complete matrix header must enumerate all twenty output mappings.
+    for pg_node in (
+        "PGConstant",
+        "PGObservable",
+        "PGAdd",
+        "PGSubtract",
+        "PGMultiply",
+        "PGDivide",
+        "PGNegate",
+        "PGMaximum",
+        "PGMinimum",
+        "PGConditionalValue",
+        "PGBooleanConstant",
+        "PGComparison",
+        "PGAllOf",
+        "PGAnyOf",
+        "PGNot",
+        "PGCombine",
+        "PGPayment",
+        "PGScale",
+        "PGConditionalContract",
+    ):
+        assert pg_node in pg, f"payoff node {pg_node} missing from mapping"
+
+
+def test_r1_complete_r2_planned_status() -> None:
+    road = _text(REPO_ROOT / "ROADMAP.md")
+    # Stage 1B baseline complete; R1 implemented; R2 planned.
+    assert _near(road, r"stage 1b\b", "in progress")
+    assert "complete" in road.lower()
+    # R2 explicitly not implemented.
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md").lower()
+    assert "not implemented" in pg
+    # R1 is implemented.
+    canon = _text(DOCS_DIR / "canonicalization-spec.md").lower()
+    assert "implemented" in canon
+    adr = _text(
+        DOCS_DIR / "adr" / "0007-canonical-contract-identity-and-payoff-graph.md"
+    ).lower()
+    assert "implemented" in adr
+    assert "planned" in adr
+
+
+def test_no_payoff_graph_runtime_module() -> None:
+    # No payoff-graph runtime package may exist yet.
+    assert not (SRC_ROOT / "payoffgraph").exists()
+    # No compile_payoff_graph function may be defined in src/.
+    hits: list[Path] = []
+    for path in SRC_ROOT.rglob("*.py"):
+        if "def compile_payoff_graph" in path.read_text(encoding="utf-8"):
+            hits.append(path)
+    assert not hits, f"payoff-graph runtime implementation present: {hits}"
+
+
+def test_payoff_graph_error_taxonomy_is_dedicated() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    assert "payoff_graph.collision" in pg
+    assert "payoff_graph.error" in pg
+    assert "payoff_graph.input" in pg
+    assert "payoff_graph.compilation" in pg
+    assert "payoff_graph.complexity" in pg
+    assert "payoff_graph.encoding" in pg
+    # Must not reuse the canonicalization collision code for payoff nodes.
+    assert "must **not** reuse `canonicalization.collision`" in pg
+
+
+def test_payoff_graph_limits_are_exact_positive_ints() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    for limit in (
+        "max_payoff_nodes",
+        "max_document_bytes",
+        "max_structural_bytes",
+    ):
+        assert limit in pg, limit
+    assert "exact positive `int`" in pg
+
+
+def test_reachable_only_policy_excludes_intermediates() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    assert "reachable" in pg.lower()
+    # Intermediates must never participate in identity / node_count.
+    assert "node_count" in pg
+    assert "structural_bytes" in pg
+    assert "document_bytes" in pg
+
+
+def test_zeros_compile_to_empty_pgcombine() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    assert "PGCombine` with an **empty** `operands` array" in pg
+
+
+def test_pg_boolean_constant_made_explicit() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    assert "PGBooleanConstant" in pg
+    assert "explicit" in pg.lower()

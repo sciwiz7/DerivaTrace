@@ -65,10 +65,41 @@ adheres to semantic versioning once a stable release is published.
 
 ### Not implemented
 
-- Stage 1B-R2 payoff-graph compilation remains unimplemented; it is specified in
-  `docs/payoff-graph-spec.md` and deferred to Stage 1B-R2.
+- Stage 1B-R2 payoff-graph compilation remains unimplemented; its specification
+  is now closed (`docs/payoff-graph-spec.md`, `docs/canonical-test-vectors.md`,
+  `docs/adr/0007-canonical-contract-identity-and-payoff-graph.md`) and deferred to
+  Stage 1B-R2. No `derivatrace.payoffgraph` runtime, modules, or `compile_payoff_graph`
+  entry point exist yet.
 - Pricing, valuation, Greeks, models, numerical engines, market data, and
   evidence certificates remain outside Stage 1B.
+
+### Changed (Stage 1B-R2 payoff-graph specification closure)
+
+- Closed the contradiction between the earlier Stage 1B baseline payoff-graph
+  draft and the binding architectural decisions: `PGPayment` now uses an
+  `amount` field (never `payoff_leaf`); `settlement_time` is owned only by
+  `PGPayment` and `observation_time` only by `PGObservable` (a `PGConstant`
+  carries neither), superseding the obsolete "leaves carry settlement time"
+  wording.
+- Added a dedicated binary `PGSubtract` node; `Subtract` compiles directly to
+  `PGSubtract` and is no longer lowered to `PGAdd` + `PGNegate`.
+- Documented the Boolean policy precisely: `PGComparison` preserves author order
+  and is operator-sensitive; `PGAllOf`/`PGAnyOf` are commutative, associative,
+  flattened, sorted, and retain duplicates; `PGNot` is unary and positional.
+- Added `PGBooleanConstant` so constant Boolean conditions are represented
+  explicitly.
+- Specified the public `compile_payoff_graph(contract, ...)` boundary, the
+  immutable `PayoffGraph` result (`schema_version`, `document_bytes`,
+  `structural_bytes`, `identity`, `root_node_id`, `node_count`,
+  `source_contract_identity`), deterministic provenance (excluded from identity),
+  schema/domain constants, `PayoffGraphLimits`, the `payoff_graph.*` error
+  taxonomy (with `payoff_graph.collision`, never reusing
+  `canonicalization.collision`), and the reachable-only graph policy.
+- Provided a complete 20-node mapping matrix covering every Stage 1A/R1 node.
+- Regenerated CV-011 under the corrected schema with exact, pre-computed
+  canonical payload bytes, node ids, structural bytes, document bytes, and graph
+  identity (computed by an isolated standard-library verification script, not
+  shipped), and added planned R2 normative vectors.
 
 ## [0.1.0.dev0] — Stage 0 (Unreleased)
 
