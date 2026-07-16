@@ -38,6 +38,39 @@ CONTRACT_TESTS = [
     "tests/contracts/test_supported_node_policy.py",
 ]
 
+# The complete Stage 1B-R1 canonical runtime package (every intended module).
+CANONICAL_MODULES = [
+    "src/derivatrace/canonical/__init__.py",
+    "src/derivatrace/canonical/_encoding.py",
+    "src/derivatrace/canonical/_equivalence.py",
+    "src/derivatrace/canonical/_errors.py",
+    "src/derivatrace/canonical/_identity.py",
+    "src/derivatrace/canonical/_nodes.py",
+    "src/derivatrace/canonical/_normalization.py",
+    "src/derivatrace/canonical/_schema.py",
+    "src/derivatrace/canonical/_serialization.py",
+    "src/derivatrace/canonical/py.typed",
+]
+
+# Every intended canonical test module (must ship in the sdist, never the wheel).
+CANONICAL_TESTS = [
+    "tests/canonical/test_api_surface.py",
+    "tests/canonical/test_coverage.py",
+    "tests/canonical/test_encoding.py",
+    "tests/canonical/test_equivalence.py",
+    "tests/canonical/test_errors.py",
+    "tests/canonical/test_folding.py",
+    "tests/canonical/test_vectors.py",
+]
+
+# Canonical documentation / specs that must remain in the sdist.
+CANONICAL_DOCS = [
+    "docs/canonicalization-spec.md",
+    "docs/payoff-graph-spec.md",
+    "docs/canonical-test-vectors.md",
+    "docs/adr/0007-canonical-contract-identity-and-payoff-graph.md",
+]
+
 REQUIRED_SDIST_PATHS = [
     "src/derivatrace/__init__.py",
     "src/derivatrace/_metadata.py",
@@ -118,6 +151,17 @@ def test_distribution_installed() -> None:
     assert installed == "0.1.0.dev0"
 
 
+def test_pytest_no_source_path_injection() -> None:
+    """Ensure pyproject.toml does not inject src/ via pytest pythonpath."""
+    pyproject = REPO_ROOT / "pyproject.toml"
+    text = pyproject.read_text(encoding="utf-8")
+    assert "pythonpath" not in text.lower(), (
+        "pyproject.toml must not contain a pythonpath setting; "
+        "the test suite must exercise an installed editable distribution, "
+        "not receive src/ through pytest path injection"
+    )
+
+
 def test_wheel_inventory(artifacts: Path) -> None:
     wheel = next(artifacts.glob("*.whl"))
     with zipfile.ZipFile(wheel) as zf:
@@ -131,6 +175,9 @@ def test_wheel_inventory(artifacts: Path) -> None:
     assert "derivatrace/_metadata.py" in names
     # The complete contracts package must ship in the wheel.
     for module in CONTRACTS_MODULES:
+        assert f"derivatrace/{module.split('src/derivatrace/')[1]}" in names
+    # The complete canonical runtime package must ship in the wheel.
+    for module in CANONICAL_MODULES:
         assert f"derivatrace/{module.split('src/derivatrace/')[1]}" in names
     # No tests, docs, caches or generated files belong in the wheel.
     for name in names:
@@ -147,7 +194,51 @@ def test_sdist_inventory(artifacts: Path) -> None:
     stripped = {n.split("/", 1)[1] if "/" in n else n for n in names}
     missing = [p for p in REQUIRED_SDIST_PATHS if p not in stripped]
     assert not missing, f"missing from sdist: {missing}"
+    # The canonical runtime modules and tests must ship in the sdist.
+    for module in (*CANONICAL_MODULES, *CANONICAL_TESTS, *CANONICAL_DOCS):
+        assert module in stripped, f"missing from sdist: {module}"
     bad = [
         n for n in names for forbidden in FORBIDDEN_SDIST_SUBSTRINGS if forbidden in n
     ]
     assert not bad, f"forbidden content in sdist: {bad}"
+
+
+def test_canonical_packaging_inventory(artifacts: Path) -> None:
+    import zipfile as _zipfile
+
+    wheel = next(artifacts.glob("*.whl"))
+    with _zipfile.ZipFile(wheel) as zf:
+        wheel_names = zf.namelist()
+
+    sdist = next(artifacts.glob("*.tar.gz"))
+    with tarfile.open(sdist) as tf:
+        sdist_names = tf.getnames()
+    sdist_stripped = {n.split("/", 1)[1] if "/" in n else n for n in sdist_names}
+
+    # Every canonical module appears in the wheel ...
+    for module in CANONICAL_MODULES:
+        assert f"derivatrace/{module.split('src/derivatrace/')[1]}" in wheel_names, (
+            f"canonical module missing from wheel: {module}"
+        )
+    # ... and in the sdist.
+    for module in CANONICAL_MODULES:
+        assert module in sdist_stripped, (
+            f"canonical module missing from sdist: {module}"
+        )
+
+    # Every canonical test appears in the sdist ...
+    for test in CANONICAL_TESTS:
+        assert test in sdist_stripped, f"canonical test missing from sdist: {test}"
+
+    # ... but canonical tests and docs do NOT appear in the wheel.
+    for test in CANONICAL_TESTS:
+        assert not any(
+            name == test or name.endswith("/" + test.split("/")[-1])
+            for name in wheel_names
+        ), f"canonical test leaked into wheel: {test}"
+    for name in wheel_names:
+        assert not name.startswith("docs/"), f"docs leaked into wheel: {name}"
+
+    # Canonical specs, normative vectors and ADR 0007 remain in the sdist.
+    for doc in CANONICAL_DOCS:
+        assert doc in sdist_stripped, f"canonical doc missing from sdist: {doc}"

@@ -10,12 +10,14 @@ evidence-carrying derivatives compiler and model-risk laboratory. DerivaTrace is
 - Stage 1A implements the **contract semantics** and **validation** bounded
   contexts as a concrete, typed, immutable contract algebra
   (`derivatrace.contracts`) with whole-graph validation.
-- **Stage 1B architecture baseline is established** (specification-only): the
-  canonical contract representation, canonical payoff graph, and canonical
-  identity are specified in `canonicalization-spec.md`, `payoff-graph-spec.md`,
-  `canonical-test-vectors.md`, and
-  [ADR 0007](./adr/0007-canonical-contract-identity-and-payoff-graph.md). No
-  runtime canonicalization, serialization, hashing, or payoff-graph code exists.
+- **Stage 1B architecture baseline is Complete.** The canonical contract
+  representation, canonical payoff graph, and canonical identity are specified in
+  `canonicalization-spec.md`, `payoff-graph-spec.md`, `canonical-test-vectors.md`,
+  and [ADR 0007](./adr/0007-canonical-contract-identity-and-payoff-graph.md).
+- **Stage 1B-R1 canonical runtime is Implemented:** `derivatrace.canonical`
+  canonicalizes a validated contract graph into byte-exact canonical JSON with a
+  deterministic canonical contract identity. The Stage 1B-R2 payoff-graph runtime
+  remains Planned (specified, not implemented).
 - Stage 1C (validation levels and equivalence reporting) is planned.
 - No pricing, valuation, Greeks, Monte Carlo, PDE, calibration, or hedging
   functionality exists yet.
@@ -40,12 +42,13 @@ evidence-carrying derivatives compiler and model-risk laboratory. DerivaTrace is
   construction rules, and validation semantics with runnable examples.
 - [Canonicalization specification (Stage 1B)](./canonicalization-spec.md) —
   canonical schema, byte encoding, value encoding, per-node laws, DAG policy,
-  hashing, and error taxonomy (specification-only).
+  hashing, and error taxonomy (Stage 1B architecture baseline, now implemented as
+  the Stage 1B-R1 canonical runtime).
 - [Payoff-graph specification (Stage 1B)](./payoff-graph-spec.md) — model-
-  independent payoff-graph node taxonomy and compilation mapping
-  (specification-only).
+  independent payoff-graph node taxonomy and compilation mapping (specified;
+  Stage 1B-R2 runtime planned).
 - [Canonical test vectors (Stage 1B)](./canonical-test-vectors.md) — test-vector
-  format and illustrative vectors (specification-only).
+  format and normative vectors produced and verified by the canonical runtime.
 - [Certificate specification](./certificate-spec.md) — versioned evidence
   envelope and hashing procedure.
 - [Threat model](./threat-model.md) — assets, actors, attack surfaces, and

@@ -157,12 +157,14 @@ exercised by `tests/contracts/test_supported_node_policy.py`,
 ## Canonicalization and payoff-graph (Stage 1B baseline) threats
 
 Stage 1B introduces a canonical contract representation, a canonical identity,
-and a canonical payoff graph (specified, not yet implemented; see
-[canonicalization-spec.md](./canonicalization-spec.md),
+and a canonical payoff graph. The canonical contract representation and identity
+are implemented in the Stage 1B-R1 canonical runtime (`derivatrace.canonical`);
+the payoff-graph compilation remains specified, not yet implemented (Stage 1B-R2;
+see [canonicalization-spec.md](./canonicalization-spec.md),
 [payoff-graph-spec.md](./payoff-graph-spec.md), and
 [ADR 0007](./adr/0007-canonical-contract-identity-and-payoff-graph.md)). The
 following threats are specific to that design and are mitigated by the
-specification's rules.
+specification's rules and the canonical runtime's tests.
 
 - **Canonicalization collision** — two distinct, non-equivalent contracts
   serialize to identical canonical bytes, yielding the same identity and
@@ -202,8 +204,9 @@ specification's rules.
   to pass first (cycle detection, depth/node limits) and by reusing the same
   `ValidationLimits` during canonicalization with iterative traversal.
 
-These are design-level mitigations recorded in the Stage 1B baseline; the
-runtime enforcement lands with the Stage 1B implementation and its tests.
+These mitigations are recorded in the Stage 1B specification and enforced by the
+Stage 1B-R1 canonical runtime and its tests; the payoff-graph runtime mitigations
+land with Stage 1B-R2.
 
 ## Supply-chain threats
 

@@ -28,7 +28,7 @@ definitions.
 - **Observation time** — when a market value is read.
 - **Payoff graph** — a canonical, model-independent representation of a
   contract's payoffs. Its Stage 1B taxonomy and compilation mapping are
-  specified in `payoff-graph-spec.md` (specification-only).
+  specified in `payoff-graph-spec.md` (Stage 1B-R2 runtime planned).
 - **Canonical contract identity** — a deterministic `SHA-256` fingerprint
   (`canonical:sha256:<hex>`) over the canonical bytes of a validated contract,
   under a fixed, versioned domain-separation tag. A structural identity under
@@ -63,10 +63,21 @@ definitions.
   `PGCombine`, `PGPayment`, `PGConditionalContract`); a model-independent
   compiled representation of a contract node. `Divide` compiles directly to
   `PGDivide`, never to a reciprocal.
+- **Reachability pruning (semantic closure)** — after canonicalization applies
+  all approved structural laws (flattening, literal folding, conditional branch
+  selection), a deterministic traversal from the final canonical root collects
+  only the nodes actually referenced by canonical payload fields. Nodes that
+  existed transiently during processing (flattened inner collections, folded-away
+  literals, discarded conditional branches) are excluded from the final canonical
+  node table, canonical bytes, and contract identity. The public
+  `CanonicalContract.node_count` equals the number of reachable nodes. Internal
+  processing history is never part of canonical identity.
 - **Canonicalization (Stage 1B)** — the process of converting a validated
   Stage 1A contract graph into a single, stable, deterministically serialized
   form under explicitly approved structural laws. Specified in
-  `canonicalization-spec.md`; not implemented in the Stage 1B baseline.
+  `canonicalization-spec.md` and implemented in the Stage 1B-R1 canonical
+  runtime (`derivatrace.canonical`); the payoff-graph compilation remains a
+  Stage 1B-R2 deliverable.
 - **Reproducibility policy** — the declared conditions under which a result can
   be reproduced.
 - **Risk** — sensitivities (Greeks) and uncertainty associated with a valuation.

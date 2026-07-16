@@ -1,7 +1,10 @@
-# Canonical test vectors (Stage 1B baseline)
+# Canonical test vectors (Stage 1B-R1)
 
-- **Status:** Specification only. **Not implemented** (no canonicalization code exists).
-- **Stage:** 1B (architecture baseline).
+- **Status:** Implemented. Values below are **regenerated from the byte-exact
+  Stage 1B-R1 canonical runtime** and are directly **constructible and valid
+  through the public Stage 1A API** (`validate_contract` succeeds on every
+  source contract).
+- **Stage:** 1B (R1 canonical runtime).
 - **Companion docs:** `canonicalization-spec.md`, `payoff-graph-spec.md`, `adr/0007-canonical-contract-identity-and-payoff-graph.md`.
 
 This document defines **normative** canonicalization and payoff-graph test
@@ -14,11 +17,14 @@ change, content-addressed sharing, timestamp precision, and a payoff-graph
 compilation). No vector contains a placeholder, `TBD`, `example-hash`, or
 all-zero identity.
 
-> These vectors are design commitments produced by a one-off reference
-> canonicalizer built only to pin the Stage 1B rules. They are not produced by
-> the (not-yet-built) runtime, but every hash here is reproducible from the
-> byte-exact rules in `canonicalization-spec.md` §3, §4.4, §8 and
-> `payoff-graph-spec.md` §4.
+> These vectors are **executed by the Stage 1B-R1 canonical runtime**. Every
+> source contract is constructed through the public Stage 1A API and
+> `validate_contract` succeeds; the canonical bytes, node identities, and
+> contract identities are produced by the runtime and reproduced byte-for-byte in
+> the accompanying test suite (`tests/canonical/test_vectors.py`). Payoff-graph
+> compilation (CV-011) remains deferred to Stage 1B-R2, but the CV-011 source
+> contract is constructed, validated, and canonicalized here, and its canonical
+> contract identity must agree with R1.
 
 ## 1. Conventions
 
@@ -37,35 +43,43 @@ all-zero identity.
   projection **excluding** `provenance`), shown as `payoffgraph:sha256:<hex>`.
 - All inputs use observables
   `ObservableId(field="close", identifier=AAA|BBB|XXX, namespace="equity")`
-  with   `ObservationTime = 2030-01-01T00:00:00.000000Z` and `Unit = money(USD)`, except where a
-  scalar `Number` is explicit. `Payment` settlement time is `2030-01-01T00:00:00.000000Z` unless stated.
+  with `ObservationTime = 2030-01-01T00:00:00.000000Z` and `Unit = money(USD)`.
+  Every `Payment` amount is a money-denominated `Number` (`Unit.money(Currency("USD"))`)
+  matching `Payment.currency`, as required by the public Stage 1A API
+  (`Payment` rejects a scalar-denominated amount). A **scalar** `Number`
+  (`Unit.scalar()`) appears only where it is structurally dimensionless: the
+  `Scale` factor and the `Multiply`/`Add`/`Subtract`/`Maximum`/`Minimum` operand
+  paired with a money observable (e.g. CV-005, CV-008). `Payment` settlement
+  time is `2030-01-01T00:00:00.000000Z` unless stated.
 
 ## 2. Normative vectors
 
 ### CV-001 — `Number` spelling equivalence (`1` ≡ `1.0` ≡ `1.00`)
 
-- **Input:** `Payment(amount=Number("1"), currency=USD, T0)`, `Payment(amount=Number("1.0"), …)`, `Payment(amount=Number("1.00"), …)`.
+- **Input:** `Payment(amount=Number("1", Unit.money(USD)), currency=USD, T0)`, `Payment(amount=Number("1.0", …), …)`, `Payment(amount=Number("1.00", …), …)`.
 - **Applied rules:** `decimal:normalize`, `value:coerce`.
 - **Forbidden rules:** `fold`, `dedup`.
 - **Normalized Number payload** (identical for all three):
-  `{"type":"Number","unit":{"kind":"scalar"},"value":{"digits":"1","exponent":0,"sign":0}}`
-- **Number node identity (bare 64-hex):** `a12c76c5254d0476bb2a3b37d2c12de9d4a5bb77d09920ee2c9078adbf96e058`
+  `{"type":"Number","unit":{"currency":"USD","kind":"money"},"value":{"digits":"1","exponent":0,"sign":0}}`
+- **Number node identity (bare 64-hex):** `b97b700909b7daae2acd283df96645f4be6b4765995801a23897749a20e69a67`
+- **Payment node identity (bare 64-hex):** `245f56804c0f4df293c96845228b11540e7f06a606c73188115c754b13e0aa5a`
 - **Complete canonical JSON bytes** (identical for all three):
-  `{"nodes":{"a12c76c5254d0476bb2a3b37d2c12de9d4a5bb77d09920ee2c9078adbf96e058":{"id":"a12c76c5254d0476bb2a3b37d2c12de9d4a5bb77d09920ee2c9078adbf96e058","payload":{"type":"Number","unit":{"kind":"scalar"},"value":{"digits":"1","exponent":0,"sign":0}}},"bb10da70f43394f419364aabc1c9f63f97cc6b328cec117c071bda23ba4a90dd":{"id":"bb10da70f43394f419364aabc1c9f63f97cc6b328cec117c071bda23ba4a90dd","payload":{"amount":"a12c76c5254d0476bb2a3b37d2c12de9d4a5bb77d09920ee2c9078adbf96e058","currency":"USD","settlement_time":"2030-01-01T00:00:00.000000Z","type":"Payment"}}},"root":"bb10da70f43394f419364aabc1c9f63f97cc6b328cec117c071bda23ba4a90dd","schema_name":"derivatrace.contract.canonical","schema_version":"1.0.0"}`
-- **UTF-8 byte length:** `707`
-- **Canonical contract identity (all three identical):** `canonical:sha256:e1c0f21ca3dc5a327789451e0614c1189619ee504df0d9b51c8c7bb16d2f5cfb`
+  `{"nodes":{"245f56804c0f4df293c96845228b11540e7f06a606c73188115c754b13e0aa5a":{"id":"245f56804c0f4df293c96845228b11540e7f06a606c73188115c754b13e0aa5a","payload":{"amount":"b97b700909b7daae2acd283df96645f4be6b4765995801a23897749a20e69a67","currency":"USD","settlement_time":"2030-01-01T00:00:00.000000Z","type":"Payment"}},"b97b700909b7daae2acd283df96645f4be6b4765995801a23897749a20e69a67":{"id":"b97b700909b7daae2acd283df96645f4be6b4765995801a23897749a20e69a67","payload":{"type":"Number","unit":{"currency":"USD","kind":"money"},"value":{"digits":"1","exponent":0,"sign":0}}}},"root":"245f56804c0f4df293c96845228b11540e7f06a606c73188115c754b13e0aa5a","schema_name":"derivatrace.contract.canonical","schema_version":"1.0.0"}`
+- **UTF-8 byte length:** `723`
+- **Canonical contract identity (all three identical):** `canonical:sha256:64a97aca38a8de396b059465d696ba6e8d84c8a6c7c5c2e7e687ab1b4724b4a5`
 - **Expected structural equivalence:** the three contracts are **canonically identical** (spelling-independent value normalization).
 
 ### CV-002 — Canonical zero
 
-- **Input:** `Payment(amount=Number("0"), currency=USD, T0)`.
+- **Input:** `Payment(amount=Number("0", Unit.money(USD)), currency=USD, T0)`.
 - **Applied rules:** `decimal:zero` (forced `{"digits":"0","exponent":0,"sign":0}`).
 - **Forbidden rules:** negative-zero passthrough.
-- **Normalized Number payload:** `{"type":"Number","unit":{"kind":"scalar"},"value":{"digits":"0","exponent":0,"sign":0}}`
-- **Zero Number node identity (bare 64-hex):** `efecedc66af7f243763772caaebba1a0baff4a930cdd10bdd08df22ae00b6ed3`
-- **Complete canonical JSON bytes:** `{"nodes":{"81d8122cddb882660bf005414f389e57048afd7a74f9d179117b0913a59fde97":{"id":"81d8122cddb882660bf005414f389e57048afd7a74f9d179117b0913a59fde97","payload":{"amount":"efecedc66af7f243763772caaebba1a0baff4a930cdd10bdd08df22ae00b6ed3","currency":"USD","settlement_time":"2030-01-01T00:00:00.000000Z","type":"Payment"}},"efecedc66af7f243763772caaebba1a0baff4a930cdd10bdd08df22ae00b6ed3":{"id":"efecedc66af7f243763772caaebba1a0baff4a930cdd10bdd08df22ae00b6ed3","payload":{"type":"Number","unit":{"kind":"scalar"},"value":{"digits":"0","exponent":0,"sign":0}}}},"root":"81d8122cddb882660bf005414f389e57048afd7a74f9d179117b0913a59fde97","schema_name":"derivatrace.contract.canonical","schema_version":"1.0.0"}`
-- **UTF-8 byte length:** `707`
-- **Canonical contract identity:** `canonical:sha256:8be766f8c4b8515e5788eca88a3af9a87a05edfe9b0323409bb2fe6ba7f78c2d`
+- **Normalized Number payload:** `{"type":"Number","unit":{"currency":"USD","kind":"money"},"value":{"digits":"0","exponent":0,"sign":0}}`
+- **Zero Number node identity (bare 64-hex):** `53c1bb4970008789392a86f3278eb9031e1c106dff5504c8b461211f6ea3c29e`
+- **Payment node identity (bare 64-hex):** `92e9d00e664604b0454cebd3d49ccff0c58f6f5f8d5bbf40c8a4523aea267350`
+- **Complete canonical JSON bytes:** `{"nodes":{"53c1bb4970008789392a86f3278eb9031e1c106dff5504c8b461211f6ea3c29e":{"id":"53c1bb4970008789392a86f3278eb9031e1c106dff5504c8b461211f6ea3c29e","payload":{"type":"Number","unit":{"currency":"USD","kind":"money"},"value":{"digits":"0","exponent":0,"sign":0}}},"92e9d00e664604b0454cebd3d49ccff0c58f6f5f8d5bbf40c8a4523aea267350":{"id":"92e9d00e664604b0454cebd3d49ccff0c58f6f5f8d5bbf40c8a4523aea267350","payload":{"amount":"53c1bb4970008789392a86f3278eb9031e1c106dff5504c8b461211f6ea3c29e","currency":"USD","settlement_time":"2030-01-01T00:00:00.000000Z","type":"Payment"}}},"root":"92e9d00e664604b0454cebd3d49ccff0c58f6f5f8d5bbf40c8a4523aea267350","schema_name":"derivatrace.contract.canonical","schema_version":"1.0.0"}`
+- **UTF-8 byte length:** `723`
+- **Canonical contract identity:** `canonical:sha256:7d028d937117e85e0b8e55e9cd9193fa72767182735fe61bab917e87ea737721`
 - **Expected structural equivalence:** distinct from every non-zero-amount contract.
 
 ### CV-003 — `Add` operand reordering is not identity-significant
@@ -85,12 +99,12 @@ all-zero identity.
 - **Input:** `Payment(amount=Add(obs_A, Add(obs_B, obs_X)), …)`.
 - **Applied rules:** `commute:Add`, `flatten:Add` (nested `Add` merged), `decimal:normalize`.
 - **Forbidden rules:** `dedup`, `reorder:Both`.
-- **Normalized (flattened) Add payload:** `{"operands":["2245a0746c4c11dfc358496557045f16eac26ba666247dd3cfd5b94099954f52","2983da37e2913b8f1a1fb097515abe28f131a67ac5269f94832de86f5c2235cb"],"type":"Add"}`
-- **Flattened Add node identity (bare 64-hex):** `f466316aeaa9f2eb6a1879554882ba0b7b7d139c8d4c556927160366b5920047`
-- **Complete canonical JSON bytes:** `{"nodes":{"2245a0746c4c11dfc358496557045f16eac26ba666247dd3cfd5b94099954f52":{"id":"2245a0746c4c11dfc358496557045f16eac26ba666247dd3cfd5b94099954f52","payload":{"observable_id":{"field":"close","identifier":"XXX","namespace":"equity"},"observation_time":"2030-01-01T00:00:00.000000Z","type":"Observable","unit":{"currency":"USD","kind":"money"}}},"2983da37e2913b8f1a1fb097515abe28f131a67ac5269f94832de86f5c2235cb":{"id":"2983da37e2913b8f1a1fb097515abe28f131a67ac5269f94832de86f5c2235cb","payload":{"observable_id":{"field":"close","identifier":"BBB","namespace":"equity"},"observation_time":"2030-01-01T00:00:00.000000Z","type":"Observable","unit":{"currency":"USD","kind":"money"}}},"4e79af6151636208232491451ec1c36b8243b06371998cbdbd14183ba964d002":{"id":"4e79af6151636208232491451ec1c36b8243b06371998cbdbd14183ba964d002","payload":{"amount":"92b23cdc56b0486005e5c3df9a2345a31dd10bc5a888a586af0ebbd3fd791a39","currency":"USD","settlement_time":"2030-01-01T00:00:00.000000Z","type":"Payment"}},"92b23cdc56b0486005e5c3df9a2345a31dd10bc5a888a586af0ebbd3fd791a39":{"id":"92b23cdc56b0486005e5c3df9a2345a31dd10bc5a888a586af0ebbd3fd791a39","payload":{"operands":["2245a0746c4c11dfc358496557045f16eac26ba666247dd3cfd5b94099954f52","2983da37e2913b8f1a1fb097515abe28f131a67ac5269f94832de86f5c2235cb","f0fa23010057002c04012039fbf91a42b241b9735abacbd80923be57fedc0bf9"],"type":"Add"}},"f0fa23010057002c04012039fbf91a42b241b9735abacbd80923be57fedc0bf9":{"id":"f0fa23010057002c04012039fbf91a42b241b9735abacbd80923be57fedc0bf9","payload":{"observable_id":{"field":"close","identifier":"AAA","namespace":"equity"},"observation_time":"2030-01-01T00:00:00.000000Z","type":"Observable","unit":{"currency":"USD","kind":"money"}}},"f466316aeaa9f2eb6a1879554882ba0b7b7d139c8d4c556927160366b5920047":{"id":"f466316aeaa9f2eb6a1879554882ba0b7b7d139c8d4c556927160366b5920047","payload":{"operands":["2245a0746c4c11dfc358496557045f16eac26ba666247dd3cfd5b94099954f52","2983da37e2913b8f1a1fb097515abe28f131a67ac5269f94832de86f5c2235cb"],"type":"Add"}}},"root":"4e79af6151636208232491451ec1c36b8243b06371998cbdbd14183ba964d002","schema_name":"derivatrace.contract.canonical","schema_version":"1.0.0"}`
-- **UTF-8 byte length:** `2172`
-- **Canonical contract identity:** `canonical:sha256:73d30d137694c2e866c90ffae6b4660cd53f8dfb3056d32c57d737d19cdfd351`
-- **Expected structural equivalence:** the nested `Add` is flattened into a single n-ary `Add`; distinct from the un-flattened author form.
+- **Normalized (flattened) Add payload:** `{"operands":["2245a0746c4c11dfc358496557045f16eac26ba666247dd3cfd5b94099954f52","2983da37e2913b8f1a1fb097515abe28f131a67ac5269f94832de86f5c2235cb","f0fa23010057002c04012039fbf91a42b241b9735abacbd80923be57fedc0bf9"],"type":"Add"}`
+- **Flattened Add node identity (bare 64-hex):** `92b23cdc56b0486005e5c3df9a2345a31dd10bc5a888a586af0ebbd3fd791a39`
+- **Complete canonical JSON bytes:** `{"nodes":{"2245a0746c4c11dfc358496557045f16eac26ba666247dd3cfd5b94099954f52":{"id":"2245a0746c4c11dfc358496557045f16eac26ba666247dd3cfd5b94099954f52","payload":{"observable_id":{"field":"close","identifier":"XXX","namespace":"equity"},"observation_time":"2030-01-01T00:00:00.000000Z","type":"Observable","unit":{"currency":"USD","kind":"money"}}},"2983da37e2913b8f1a1fb097515abe28f131a67ac5269f94832de86f5c2235cb":{"id":"2983da37e2913b8f1a1fb097515abe28f131a67ac5269f94832de86f5c2235cb","payload":{"observable_id":{"field":"close","identifier":"BBB","namespace":"equity"},"observation_time":"2030-01-01T00:00:00.000000Z","type":"Observable","unit":{"currency":"USD","kind":"money"}}},"4e79af6151636208232491451ec1c36b8243b06371998cbdbd14183ba964d002":{"id":"4e79af6151636208232491451ec1c36b8243b06371998cbdbd14183ba964d002","payload":{"amount":"92b23cdc56b0486005e5c3df9a2345a31dd10bc5a888a586af0ebbd3fd791a39","currency":"USD","settlement_time":"2030-01-01T00:00:00.000000Z","type":"Payment"}},"92b23cdc56b0486005e5c3df9a2345a31dd10bc5a888a586af0ebbd3fd791a39":{"id":"92b23cdc56b0486005e5c3df9a2345a31dd10bc5a888a586af0ebbd3fd791a39","payload":{"operands":["2245a0746c4c11dfc358496557045f16eac26ba666247dd3cfd5b94099954f52","2983da37e2913b8f1a1fb097515abe28f131a67ac5269f94832de86f5c2235cb","f0fa23010057002c04012039fbf91a42b241b9735abacbd80923be57fedc0bf9"],"type":"Add"}},"f0fa23010057002c04012039fbf91a42b241b9735abacbd80923be57fedc0bf9":{"id":"f0fa23010057002c04012039fbf91a42b241b9735abacbd80923be57fedc0bf9","payload":{"observable_id":{"field":"close","identifier":"AAA","namespace":"equity"},"observation_time":"2030-01-01T00:00:00.000000Z","type":"Observable","unit":{"currency":"USD","kind":"money"}}}},"root":"4e79af6151636208232491451ec1c36b8243b06371998cbdbd14183ba964d002","schema_name":"derivatrace.contract.canonical","schema_version":"1.0.0"}`
+- **UTF-8 byte length:** `1824`
+- **Canonical contract identity:** `canonical:sha256:69c59d89f9a932a8a4e3bdfe14f19c265bc9fe547aeb52e3a528252d6966b953`
+- **Expected structural equivalence:** the nested `Add` is flattened into a single n-ary `Add`; the inner `Add` node is not present in the canonical document; distinct from the un-flattened author form.
 
 ### CV-005 — Binary `Multiply` reorders but is NOT flattened
 
@@ -138,8 +152,8 @@ all-zero identity.
 - **Complete canonical JSON bytes (shared):** `{"nodes":{"0a9ceb076d2c84082d7ce42d44d651b582332a641b1de84804d6ab0effdb32d6":{"id":"0a9ceb076d2c84082d7ce42d44d651b582332a641b1de84804d6ab0effdb32d6","payload":{"amount":"ff90f90d58c9197c0f65f11af7938c0571e03d9716bbbd7f623483b7f2e4c6f1","currency":"USD","settlement_time":"2030-01-01T00:00:00.000000Z","type":"Payment"}},"1edd078414ef94965fc293a5ddf0bc8a23d03fb7d4386210a1ff432e82587175":{"id":"1edd078414ef94965fc293a5ddf0bc8a23d03fb7d4386210a1ff432e82587175","payload":{"type":"Number","unit":{"kind":"scalar"},"value":{"digits":"2","exponent":0,"sign":0}}},"2983da37e2913b8f1a1fb097515abe28f131a67ac5269f94832de86f5c2235cb":{"id":"2983da37e2913b8f1a1fb097515abe28f131a67ac5269f94832de86f5c2235cb","payload":{"observable_id":{"field":"close","identifier":"BBB","namespace":"equity"},"observation_time":"2030-01-01T00:00:00.000000Z","type":"Observable","unit":{"currency":"USD","kind":"money"}}},"990b861ef78c58d8bc50258184084d4cafd85e9504cbbfad1b448a1721149a46":{"id":"990b861ef78c58d8bc50258184084d4cafd85e9504cbbfad1b448a1721149a46","payload":{"operands":["ffcf7fc0e2b7acdca5cebd35fd90461501e12ed44748684da2bd2115a893ae65","0a9ceb076d2c84082d7ce42d44d651b582332a641b1de84804d6ab0effdb32d6"],"type":"Both"}},"f0fa23010057002c04012039fbf91a42b241b9735abacbd80923be57fedc0bf9":{"id":"f0fa23010057002c04012039fbf91a42b241b9735abacbd80923be57fedc0bf9","payload":{"observable_id":{"field":"close","identifier":"AAA","namespace":"equity"},"observation_time":"2030-01-01T00:00:00.000000Z","type":"Observable","unit":{"currency":"USD","kind":"money"}}},"ff90f90d58c9197c0f65f11af7938c0571e03d9716bbbd7f623483b7f2e4c6f1":{"id":"ff90f90d58c9197c0f65f11af7938c0571e03d9716bbbd7f623483b7f2e4c6f1","payload":{"operands":["2983da37e2913b8f1a1fb097515abe28f131a67ac5269f94832de86f5c2235cb","f0fa23010057002c04012039fbf91a42b241b9735abacbd80923be57fedc0bf9"],"type":"Add"}},"ffcf7fc0e2b7acdca5cebd35fd90461501e12ed44748684da2bd2115a893ae65":{"id":"ffcf7fc0e2b7acdca5cebd35fd90461501e12ed44748684da2bd2115a893ae65","payload":{"contract":"ff90f90d58c9197c0f65f11af7938c0571e03d9716bbbd7f623483b7f2e4c6f1","factor":"1edd078414ef94965fc293a5ddf0bc8a23d03fb7d4386210a1ff432e82587175","type":"Scale"}}},"root":"990b861ef78c58d8bc50258184084d4cafd85e9504cbbfad1b448a1721149a46","schema_name":"derivatrace.contract.canonical","schema_version":"1.0.0"}`
 - **Complete canonical JSON bytes (copy):** `{"nodes":{"0a9ceb076d2c84082d7ce42d44d651b582332a641b1de84804d6ab0effdb32d6":{"id":"0a9ceb076d2c84082d7ce42d44d651b582332a641b1de84804d6ab0effdb32d6","payload":{"amount":"ff90f90d58c9197c0f65f11af7938c0571e03d9716bbbd7f623483b7f2e4c6f1","currency":"USD","settlement_time":"2030-01-01T00:00:00.000000Z","type":"Payment"}},"1edd078414ef94965fc293a5ddf0bc8a23d03fb7d4386210a1ff432e82587175":{"id":"1edd078414ef94965fc293a5ddf0bc8a23d03fb7d4386210a1ff432e82587175","payload":{"type":"Number","unit":{"kind":"scalar"},"value":{"digits":"2","exponent":0,"sign":0}}},"2983da37e2913b8f1a1fb097515abe28f131a67ac5269f94832de86f5c2235cb":{"id":"2983da37e2913b8f1a1fb097515abe28f131a67ac5269f94832de86f5c2235cb","payload":{"observable_id":{"field":"close","identifier":"BBB","namespace":"equity"},"observation_time":"2030-01-01T00:00:00.000000Z","type":"Observable","unit":{"currency":"USD","kind":"money"}}},"990b861ef78c58d8bc50258184084d4cafd85e9504cbbfad1b448a1721149a46":{"id":"990b861ef78c58d8bc50258184084d4cafd85e9504cbbfad1b448a1721149a46","payload":{"operands":["ffcf7fc0e2b7acdca5cebd35fd90461501e12ed44748684da2bd2115a893ae65","0a9ceb076d2c84082d7ce42d44d651b582332a641b1de84804d6ab0effdb32d6"],"type":"Both"}},"f0fa23010057002c04012039fbf91a42b241b9735abacbd80923be57fedc0bf9":{"id":"f0fa23010057002c04012039fbf91a42b241b9735abacbd80923be57fedc0bf9","payload":{"observable_id":{"field":"close","identifier":"AAA","namespace":"equity"},"observation_time":"2030-01-01T00:00:00.000000Z","type":"Observable","unit":{"currency":"USD","kind":"money"}}},"ff90f90d58c9197c0f65f11af7938c0571e03d9716bbbd7f623483b7f2e4c6f1":{"id":"ff90f90d58c9197c0f65f11af7938c0571e03d9716bbbd7f623483b7f2e4c6f1","payload":{"operands":["2983da37e2913b8f1a1fb097515abe28f131a67ac5269f94832de86f5c2235cb","f0fa23010057002c04012039fbf91a42b241b9735abacbd80923be57fedc0bf9"],"type":"Add"}},"ffcf7fc0e2b7acdca5cebd35fd90461501e12ed44748684da2bd2115a893ae65":{"id":"ffcf7fc0e2b7acdca5cebd35fd90461501e12ed44748684da2bd2115a893ae65","payload":{"contract":"ff90f90d58c9197c0f65f11af7938c0571e03d9716bbbd7f623483b7f2e4c6f1","factor":"1edd078414ef94965fc293a5ddf0bc8a23d03fb7d4386210a1ff432e82587175","type":"Scale"}}},"root":"990b861ef78c58d8bc50258184084d4cafd85e9504cbbfad1b448a1721149a46","schema_name":"derivatrace.contract.canonical","schema_version":"1.0.0"}`
 - **UTF-8 byte length:** `2330` (both).
-- **Canonical contract identity (shared):** `canonical:sha256:33b10332f8ae3b223f50c37f676e503c639f0bf2e80774b4d5ae6245510e658c`
-- **Canonical contract identity (copy):** `canonical:sha256:33b10332f8ae3b223f50c37f676e503c639f0bf2e80774b4d5ae6245510e658c`
+- **Canonical contract identity (shared):** `canonical:sha256:e969a37667f2abb6a9aa81a6e00b0b167356a4ab139c570987af1e071440bfc1`
+- **Canonical contract identity (copy):** `canonical:sha256:e969a37667f2abb6a9aa81a6e00b0b167356a4ab139c570987af1e071440bfc1`
 - **Expected structural equivalence:** the two contracts are **canonically identical** — object identity is irrelevant.
 
 ### CV-009 — Non-commutative `Subtract` order
@@ -156,12 +170,14 @@ all-zero identity.
 
 ### CV-010 — Timestamp UTC microsecond encoding
 
-- **Input:** `Payment(amount=Number("1"), currency=USD, settlement_time="2030-01-01T00:00:00.500000Z")`.
+- **Input:** `Payment(amount=Number("1", Unit.money(USD)), currency=USD, settlement_time="2030-01-01T00:00:00.500000Z")`.
 - **Applied rules:** `encode:timestamp-utc` (full microsecond precision).
 - **Forbidden rules:** `truncate:timestamp`.
-- **Complete canonical JSON bytes:** `{"nodes":{"81fc53d3ae22fad98ab165d78e44cc5506965bf3aea4b38f199373d397a09e18":{"id":"81fc53d3ae22fad98ab165d78e44cc5506965bf3aea4b38f199373d397a09e18","payload":{"amount":"a12c76c5254d0476bb2a3b37d2c12de9d4a5bb77d09920ee2c9078adbf96e058","currency":"USD","settlement_time":"2030-01-01T00:00:00.500000Z","type":"Payment"}},"a12c76c5254d0476bb2a3b37d2c12de9d4a5bb77d09920ee2c9078adbf96e058":{"id":"a12c76c5254d0476bb2a3b37d2c12de9d4a5bb77d09920ee2c9078adbf96e058","payload":{"type":"Number","unit":{"kind":"scalar"},"value":{"digits":"1","exponent":0,"sign":0}}}},"root":"81fc53d3ae22fad98ab165d78e44cc5506965bf3aea4b38f199373d397a09e18","schema_name":"derivatrace.contract.canonical","schema_version":"1.0.0"}`
-- **UTF-8 byte length:** `707`
-- **Canonical contract identity:** `canonical:sha256:7cbc597140d73f774b63e3da70e1648c7d964a25b64557cc217bed13a384470b`
+- **Number node identity (bare 64-hex):** `b97b700909b7daae2acd283df96645f4be6b4765995801a23897749a20e69a67`
+- **Payment node identity (bare 64-hex):** `c336c691466be366a62cb3c257c243db741cff51647b745e86c206c3c2902777`
+- **Complete canonical JSON bytes:** `{"nodes":{"b97b700909b7daae2acd283df96645f4be6b4765995801a23897749a20e69a67":{"id":"b97b700909b7daae2acd283df96645f4be6b4765995801a23897749a20e69a67","payload":{"type":"Number","unit":{"currency":"USD","kind":"money"},"value":{"digits":"1","exponent":0,"sign":0}}},"c336c691466be366a62cb3c257c243db741cff51647b745e86c206c3c2902777":{"id":"c336c691466be366a62cb3c257c243db741cff51647b745e86c206c3c2902777","payload":{"amount":"b97b700909b7daae2acd283df96645f4be6b4765995801a23897749a20e69a67","currency":"USD","settlement_time":"2030-01-01T00:00:00.500000Z","type":"Payment"}}},"root":"c336c691466be366a62cb3c257c243db741cff51647b745e86c206c3c2902777","schema_name":"derivatrace.contract.canonical","schema_version":"1.0.0"}`
+- **UTF-8 byte length:** `723`
+- **Canonical contract identity:** `canonical:sha256:0271e7069e4b0ca82dcea2533c7737e15780b204762ddb7b1f90e99f0837d9b2`
 - **Expected structural equivalence:** distinct from CV-001 (which used `...000000Z`) — microsecond precision participates in identity.
 
 ### CV-011 — Payoff-graph compilation

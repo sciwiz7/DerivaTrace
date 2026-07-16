@@ -367,32 +367,42 @@ def test_stage_1b_baseline_new_files_exist() -> None:
 
 def test_stage_1b_baseline_status() -> None:
     road = (REPO_ROOT / "ROADMAP.md").read_text(encoding="utf-8").lower()
-    # Stage 1A is complete / implemented.
-    assert _near(road, r"stage 1a\b", "implement") or _near(
-        road, r"stage 1a\b", "complete"
-    )
-    # Stage 1B is in progress (architecture baseline).
+    # Stage 1A is complete.
+    assert _near(road, r"stage 1a\b", "complete")
+    # Stage 1B in progress: baseline complete; R1 implemented; R2 planned.
     assert _near(road, r"stage 1b\b", "in progress")
     # Stage 1C remains planned.
     assert _near(road, r"stage 1c\b", "planned")
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8").lower()
     assert "stage 1b" in readme
-    assert "specification-only" in readme or "specification only" in readme
+    # R1 canonical runtime implemented; R2 payoff-graph runtime planned.
+    assert "implemented" in readme
+    assert "payoff-graph runtime" in readme and "planned" in readme
 
 
-def test_stage_1b_baseline_is_specification_only() -> None:
-    files = [
-        DOCS_DIR / "canonicalization-spec.md",
-        DOCS_DIR / "payoff-graph-spec.md",
-        DOCS_DIR / "canonical-test-vectors.md",
-        DOCS_DIR / "adr" / "0007-canonical-contract-identity-and-payoff-graph.md",
-    ]
-    for path in files:
-        text = path.read_text(encoding="utf-8").lower()
-        assert ("specification only" in text) or ("specification-only" in text), path
-        assert "not implemented" in text, path
-        # The conservative principle must be stated.
-        assert "conservative" in text, path
+def test_stage_1b_status_distinctions() -> None:
+    # Stage 1B-R1 canonical runtime is implemented; the R2 payoff-graph runtime
+    # remains specified but not implemented.
+    canon = (DOCS_DIR / "canonicalization-spec.md").read_text(encoding="utf-8").lower()
+    assert "implemented" in canon
+    # The conservative principle must still be stated.
+    assert "conservative" in canon
+
+    pgspec = (DOCS_DIR / "payoff-graph-spec.md").read_text(encoding="utf-8").lower()
+    assert "not implemented" in pgspec
+
+    vectors = (
+        (DOCS_DIR / "canonical-test-vectors.md").read_text(encoding="utf-8").lower()
+    )
+    assert "implemented" in vectors
+
+    adr = (
+        (DOCS_DIR / "adr" / "0007-canonical-contract-identity-and-payoff-graph.md")
+        .read_text(encoding="utf-8")
+        .lower()
+    )
+    assert "implemented" in adr
+    assert "planned" in adr
 
 
 def test_no_canonicalization_or_hashing_implementation_claimed() -> None:
