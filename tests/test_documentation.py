@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib
 import re
 import tomllib
 from collections.abc import Callable
@@ -403,15 +402,15 @@ def test_stage_1b_baseline_status() -> None:
     road = (REPO_ROOT / "ROADMAP.md").read_text(encoding="utf-8").lower()
     # Stage 1A is complete.
     assert _near(road, r"stage 1a\b", "complete")
-    # Stage 1B in progress: baseline complete; R1 implemented; R2 planned.
+    # Stage 1B in progress: baseline complete; R1 implemented; R2 implemented.
     assert _near(road, r"stage 1b\b", "in progress")
     # Stage 1C remains planned.
     assert _near(road, r"stage 1c\b", "planned")
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8").lower()
     assert "stage 1b" in readme
-    # R1 canonical runtime implemented; R2 payoff-graph runtime planned.
+    # R1 canonical runtime implemented; R2 payoff-graph runtime implemented.
     assert "implemented" in readme
-    assert "payoff-graph runtime" in readme and "planned" in readme
+    assert "payoff-graph runtime" in readme
 
 
 def test_stage_1b_status_distinctions() -> None:
@@ -423,7 +422,7 @@ def test_stage_1b_status_distinctions() -> None:
     assert "conservative" in canon
 
     pgspec = (DOCS_DIR / "payoff-graph-spec.md").read_text(encoding="utf-8").lower()
-    assert "not implemented" in pgspec
+    assert "implemented" in pgspec
 
     vectors = (
         (DOCS_DIR / "canonical-test-vectors.md").read_text(encoding="utf-8").lower()
@@ -835,14 +834,14 @@ def test_all_stage1a_r1_nodes_have_pg_mapping() -> None:
         assert pg_node in pg, f"payoff node {pg_node} missing from mapping"
 
 
-def test_r1_complete_r2_planned_status() -> None:
+def test_r1_complete_r2_implemented_status() -> None:
     road = _text(REPO_ROOT / "ROADMAP.md")
-    # Stage 1B baseline complete; R1 implemented; R2 planned.
+    # Stage 1B baseline complete; R1 implemented; R2 implemented.
     assert _near(road, r"stage 1b\b", "in progress")
     assert "complete" in road.lower()
-    # R2 explicitly not implemented.
+    # R2 is implemented (CV-011).
     pg = _text(DOCS_DIR / "payoff-graph-spec.md").lower()
-    assert "not implemented" in pg
+    assert "implemented" in pg
     # R1 is implemented.
     canon = _text(DOCS_DIR / "canonicalization-spec.md").lower()
     assert "implemented" in canon
@@ -850,51 +849,81 @@ def test_r1_complete_r2_planned_status() -> None:
         DOCS_DIR / "adr" / "0007-canonical-contract-identity-and-payoff-graph.md"
     ).lower()
     assert "implemented" in adr
-    assert "planned" in adr
 
 
-def test_no_payoff_graph_runtime_module() -> None:
-    # No payoff-graph runtime package may exist yet (either spelling).
-    assert not (SRC_ROOT / "payoffgraph").exists()
+def test_payoff_graph_runtime_module_present() -> None:
+    # The payoff-graph runtime package exists now (CV-011).
+    assert (SRC_ROOT / "payoffgraph").is_dir()
     assert not (SRC_ROOT / "payoff_graph").exists()
 
-    # No importable derivatrace.payoffgraph / derivatrace.payoff_graph package.
-    for mod in ("derivatrace.payoffgraph", "derivatrace.payoff_graph"):
-        try:
-            importlib.import_module(mod)
-        except ImportError:
-            pass
-        else:
-            raise AssertionError(f"importable module present: {mod}")
+    import datetime
 
-    # No runtime implementation of the proposed R2 API in src/.
-    forbidden_defs = ("def compile_payoff_graph",)
-    forbidden_classes = (
-        "class PayoffGraph",
-        "class PayoffGraphLimits",
-        "class PayoffGraphSchemaVersion",
+    import derivatrace.payoffgraph as pgpkg
+    from derivatrace.canonical import canonicalize_contract
+    from derivatrace.contracts import (
+        Add,
+        Currency,
+        Observable,
+        ObservableId,
+        ObservationTime,
+        Payment,
+        SettlementTime,
+        Unit,
     )
-    hits: list[str] = []
-    for path in SRC_ROOT.rglob("*.py"):
-        text = path.read_text(encoding="utf-8")
-        if any(d in text for d in forbidden_defs):
-            hits.append(f"def:{path}")
-        if any(c in text for c in forbidden_classes):
-            hits.append(f"class:{path}")
-    assert not hits, f"payoff-graph runtime implementation present: {hits}"
+    from derivatrace.payoffgraph import (
+        PayoffGraph,
+        PayoffGraphLimits,
+        PayoffGraphSchemaVersion,
+        compile_payoff_graph,
+    )
 
-    # No package exports of the proposed R2 API.
-    pkg_text = (REPO_ROOT / "src" / "derivatrace" / "__init__.py").read_text(
-        encoding="utf-8"
+    assert pgpkg.compile_payoff_graph is compile_payoff_graph
+    assert pgpkg.PayoffGraph is PayoffGraph
+    assert pgpkg.PayoffGraphLimits is PayoffGraphLimits
+    assert pgpkg.PayoffGraphSchemaVersion is PayoffGraphSchemaVersion
+
+    UTC = datetime.UTC
+    USD = Currency.from_code("USD")
+    T0 = ObservationTime.from_datetime(datetime.datetime(2030, 1, 1, tzinfo=UTC))
+    T0ST = SettlementTime.from_datetime(datetime.datetime(2030, 1, 1, tzinfo=UTC))
+    obsA = Observable(
+        ObservableId.from_parts("equity", "AAA", "close"), T0, Unit.money(USD)
     )
-    for name in (
-        "PayoffGraph",
-        "PayoffGraphLimits",
-        "PayoffGraphSchemaVersion",
-        "compile_payoff_graph",
-        "payoffgraph",
-    ):
-        assert name not in pkg_text, f"package export present: {name}"
+    obsB = Observable(
+        ObservableId.from_parts("equity", "BBB", "close"), T0, Unit.money(USD)
+    )
+    contract = Payment(Add((obsA, obsB)), USD, T0ST)
+    pg = compile_payoff_graph(contract)
+
+    assert isinstance(pg, PayoffGraph)
+    assert pg.schema_version == "1.0.0"
+    assert pg.identity == (
+        "payoffgraph:sha256:"
+        "59fbb00dbb585755a799cd7e387e4ee51fd9b77ed3cc032758a825f2f8836e1a"
+    )
+    assert pg.root_node_id == (
+        "5ee2594b6c230a97e1b44115db479624a2de6780c192558a7c64b589f545c94c"
+    )
+    assert pg.node_count == 4
+    assert pg.source_contract_identity == canonicalize_contract(contract).identity
+    # document_bytes includes provenance and is distinct from structural_bytes.
+    assert pg.document_bytes != pg.structural_bytes
+    assert len(pg.document_bytes) > len(pg.structural_bytes)
+    # provenance is not a public attribute of PayoffGraph
+    assert not hasattr(pg, "provenance") or not isinstance(
+        getattr(type(pg), "provenance", None), property
+    )
+    # document_bytes contains provenance; structural_bytes does not.
+    import json
+
+    doc_parsed = json.loads(pg.document_bytes.decode())
+    struct_parsed = json.loads(pg.structural_bytes.decode())
+    assert "provenance" in doc_parsed
+    assert "provenance" not in struct_parsed
+    assert doc_parsed["provenance"] == {
+        "compiler": "derivatrace.payoffgraph.compiler/1.0.0",
+        "source_contract_identity": pg.source_contract_identity,
+    }
 
 
 def test_payoff_graph_error_taxonomy_is_dedicated() -> None:

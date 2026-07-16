@@ -17,7 +17,7 @@ evidence-carrying derivatives compiler and model-risk laboratory. DerivaTrace is
 - **Stage 1B-R1 canonical runtime is Implemented:** `derivatrace.canonical`
   canonicalizes a validated contract graph into byte-exact canonical JSON with a
   deterministic canonical contract identity. The Stage 1B-R2 payoff-graph
-  runtime remains Planned (its specification is now closed; not implemented).
+  runtime is Implemented (`derivatrace.payoffgraph`).
 - Stage 1C (validation levels and equivalence reporting) is planned.
 - No pricing, valuation, Greeks, Monte Carlo, PDE, calibration, or hedging
   functionality exists yet.

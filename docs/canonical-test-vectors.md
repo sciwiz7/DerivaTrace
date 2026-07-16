@@ -343,8 +343,7 @@ When the Stage 1B-R2 runtime is implemented, the suite must additionally guarant
 
 > The R1 canonical vectors (CV-001–CV-010) are executed by the Stage 1B-R1
 > canonical runtime (`derivatrace.canonical`) in `tests/canonical/test_vectors.py`.
-> CV-011 and the planned R2 vectors are design commitments for Stage 1B-R2;
-> CV-011 is fully pinned by the isolated verification script, and the remaining
-> planned vectors specify their source contracts and expected
-> equality/distinctness relationships. The R2 payoff-graph runtime is not yet
-> implemented.
+> CV-011 is a normative Stage 1B-R2 payoff-graph vector, executed by the
+> Stage 1B-R2 runtime (`derivatrace.payoffgraph`) in
+> `tests/payoffgraph/test_compiler.py`. The remaining planned R2 vectors specify
+> their source contracts and expected equality/distinctness relationships.

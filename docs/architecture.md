@@ -8,8 +8,9 @@ engine, risk, or certificate functionality is implemented in Stage 1A. Stages
 evidence records) are planned. The Stage 1B architecture baseline is now
 Complete; the **Stage 1B-R1 canonical runtime is Implemented** in
 `derivatrace.canonical` (byte-exact canonicalization and canonical contract
-identity), while the **Stage 1B-R2 payoff-graph runtime remains Planned** (its specification is
-now closed). The specification is in
+identity), while the **Stage 1B-R2 payoff-graph runtime is Implemented** in
+`derivatrace.payoffgraph` (byte-exact payoff-graph identity, deterministic node
+graph, and provenance). The specification is in
 [canonicalization-spec.md](./canonicalization-spec.md),
 [payoff-graph-spec.md](./payoff-graph-spec.md),
 [canonical-test-vectors.md](./canonical-test-vectors.md), and
