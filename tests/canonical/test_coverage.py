@@ -619,3 +619,184 @@ def test_canonicalize_validation_complexity_error() -> None:
         canonicalize_contract(
             _payment(), validation_limits=ValidationLimits(max_unique_nodes=1)
         )
+
+
+# ---------------------------------------------------------------------------
+# BLOCKER 1: Schema/Limits boundary validation tests
+# ---------------------------------------------------------------------------
+
+
+def test_schema_subclass_bypass_post_init() -> None:
+    # A subclass whose __post_init__ does nothing must still be rejected at
+    # the API boundary because type(schema) is not CanonicalSchemaVersion.
+    class BadSchema(CanonicalSchemaVersion):
+        def __post_init__(self) -> None:
+            pass  # intentionally skip validation
+
+    bad = BadSchema()
+    with pytest.raises(CanonicalizationInputError):
+        canonicalize_contract(_payment(), schema=bad)
+
+
+def test_schema_subclass_wrong_version() -> None:
+    # A subclass carrying version "2.0.0" is rejected at construction time
+    # because __post_init__ validates the version.
+    class BadSchema(CanonicalSchemaVersion):
+        version: str = "2.0.0"
+
+    with pytest.raises(CanonicalizationInputError):
+        BadSchema(name="derivatrace.contract.canonical", version="2.0.0")
+
+
+def test_schema_forged_via_setattr_version() -> None:
+    # A valid schema modified via object.__setattr__ to an unsupported version
+    # must be rejected at the API boundary.
+    good = CanonicalSchemaVersion.supported()
+    object.__setattr__(good, "version", "2.0.0")
+    with pytest.raises(CanonicalizationInputError):
+        canonicalize_contract(_payment(), schema=good)
+
+
+def test_schema_forged_via_setattr_name() -> None:
+    # A valid schema modified via object.__setattr__ to an unsupported name
+    # must be rejected at the API boundary.
+    good = CanonicalSchemaVersion.supported()
+    object.__setattr__(good, "name", "unsupported.name")
+    with pytest.raises(CanonicalizationInputError):
+        canonicalize_contract(_payment(), schema=good)
+
+
+def test_schema_forged_non_string_name() -> None:
+    # A schema with a non-string name field must be rejected.
+    bad = _raw(CanonicalSchemaVersion, name=123, version="1.0.0")
+    with pytest.raises(CanonicalizationInputError):
+        canonicalize_contract(_payment(), schema=bad)  # type: ignore[arg-type]
+
+
+def test_schema_forged_non_string_version() -> None:
+    # A schema with a non-string version field must be rejected.
+    bad = _raw(
+        CanonicalSchemaVersion, name="derivatrace.contract.canonical", version=123
+    )
+    with pytest.raises(CanonicalizationInputError):
+        canonicalize_contract(_payment(), schema=bad)  # type: ignore[arg-type]
+
+
+def test_limits_subclass_bypass_validation() -> None:
+    # A CanonicalizationLimits subclass bypassing __post_init__ validation must
+    # be rejected at the API boundary.
+    class BadLimits(CanonicalizationLimits):
+        def __post_init__(self) -> None:
+            pass  # intentionally skip validation
+
+    bad = BadLimits()
+    with pytest.raises(CanonicalizationInputError):
+        canonicalize_contract(_payment(), limits=bad)
+
+
+def test_limits_forged_bool_nodes() -> None:
+    # bool is a subclass of int but must be rejected (exact int required).
+    bad = _raw(
+        CanonicalizationLimits, max_canonical_nodes=True, max_canonical_bytes=100
+    )
+    with pytest.raises(CanonicalizationInputError):
+        canonicalize_contract(_payment(), limits=bad)  # type: ignore[arg-type]
+
+
+def test_limits_forged_bool_bytes() -> None:
+    bad = _raw(
+        CanonicalizationLimits, max_canonical_nodes=100, max_canonical_bytes=True
+    )
+    with pytest.raises(CanonicalizationInputError):
+        canonicalize_contract(_payment(), limits=bad)  # type: ignore[arg-type]
+
+
+def test_limits_forged_zero_nodes() -> None:
+    bad = _raw(CanonicalizationLimits, max_canonical_nodes=0, max_canonical_bytes=100)
+    with pytest.raises(CanonicalizationInputError):
+        canonicalize_contract(_payment(), limits=bad)  # type: ignore[arg-type]
+
+
+def test_limits_forged_zero_bytes() -> None:
+    bad = _raw(CanonicalizationLimits, max_canonical_nodes=100, max_canonical_bytes=0)
+    with pytest.raises(CanonicalizationInputError):
+        canonicalize_contract(_payment(), limits=bad)  # type: ignore[arg-type]
+
+
+def test_limits_forged_negative_nodes() -> None:
+    bad = _raw(CanonicalizationLimits, max_canonical_nodes=-1, max_canonical_bytes=100)
+    with pytest.raises(CanonicalizationInputError):
+        canonicalize_contract(_payment(), limits=bad)  # type: ignore[arg-type]
+
+
+def test_limits_forged_negative_bytes() -> None:
+    bad = _raw(CanonicalizationLimits, max_canonical_nodes=100, max_canonical_bytes=-1)
+    with pytest.raises(CanonicalizationInputError):
+        canonicalize_contract(_payment(), limits=bad)  # type: ignore[arg-type]
+
+
+def test_limits_forged_non_int_nodes() -> None:
+    bad = _raw(
+        CanonicalizationLimits, max_canonical_nodes="100", max_canonical_bytes=100
+    )
+    with pytest.raises(CanonicalizationInputError):
+        canonicalize_contract(_payment(), limits=bad)  # type: ignore[arg-type]
+
+
+def test_limits_forged_non_int_bytes() -> None:
+    bad = _raw(
+        CanonicalizationLimits, max_canonical_nodes=100, max_canonical_bytes="100"
+    )
+    with pytest.raises(CanonicalizationInputError):
+        canonicalize_contract(_payment(), limits=bad)  # type: ignore[arg-type]
+
+
+def test_valid_exact_schema_and_limits_still_work() -> None:
+    # Exact base-class instances produced by supported()/default() must still
+    # pass validation and produce canonical output.
+    schema = CanonicalSchemaVersion.supported()
+    limits = CanonicalizationLimits.default()
+    result = canonicalize_contract(_payment(), schema=schema, limits=limits)
+    assert result.schema_version.name == "derivatrace.contract.canonical"
+    assert result.schema_version.version == "1.0.0"
+    assert result.node_count >= 1
+
+
+def test_serialization_helpers_propagate_schema_error() -> None:
+    # canonical_contract_bytes and canonical_contract_identity must propagate
+    # CanonicalizationInputError from a forged schema.
+    bad = _raw(CanonicalSchemaVersion, name="bad", version="1.0.0")
+    with pytest.raises(CanonicalizationInputError):
+        canonical_contract_bytes(_payment(), schema=bad)  # type: ignore[arg-type]
+    with pytest.raises(CanonicalizationInputError):
+        canonical_contract_identity(_payment(), schema=bad)  # type: ignore[arg-type]
+
+
+def test_serialization_helpers_propagate_limits_error() -> None:
+    # canonical_contract_bytes and canonical_contract_identity must propagate
+    # CanonicalizationInputError from forged limits.
+    bad = _raw(
+        CanonicalizationLimits, max_canonical_nodes=True, max_canonical_bytes=100
+    )
+    with pytest.raises(CanonicalizationInputError):
+        canonical_contract_bytes(_payment(), limits=bad)  # type: ignore[arg-type]
+    with pytest.raises(CanonicalizationInputError):
+        canonical_contract_identity(_payment(), limits=bad)  # type: ignore[arg-type]
+
+
+def test_equivalence_propagates_schema_error() -> None:
+    # structurally_equivalent must propagate CanonicalizationInputError from a
+    # forged schema.
+    bad = _raw(CanonicalSchemaVersion, name="bad", version="1.0.0")
+    with pytest.raises(CanonicalizationInputError):
+        structurally_equivalent(_payment(), _payment(), schema=bad)  # type: ignore[arg-type]
+
+
+def test_equivalence_propagates_limits_error() -> None:
+    # structurally_equivalent must propagate CanonicalizationInputError from
+    # forged limits.
+    bad = _raw(
+        CanonicalizationLimits, max_canonical_nodes=True, max_canonical_bytes=100
+    )
+    with pytest.raises(CanonicalizationInputError):
+        structurally_equivalent(_payment(), _payment(), limits=bad)  # type: ignore[arg-type]

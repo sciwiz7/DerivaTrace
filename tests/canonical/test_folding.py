@@ -39,6 +39,12 @@ def _obs(namespace: str, identifier: str, field: str) -> Observable:
     )
 
 
+def _scalar_obs() -> Observable:
+    return Observable(
+        ObservableId.from_parts("scalar", "factor", "value"), OT0, Unit.scalar()
+    )
+
+
 obs_A = _obs("equity", "AAA", "close")
 obs_B = _obs("equity", "BBB", "close")
 shared = Payment(Add((obs_A, obs_B)), usd, T0)
@@ -54,8 +60,8 @@ def test_multiply_of_literals_folds_to_number_node() -> None:
     # The Multiply operator node is replaced by a literal Number("6") ...
     assert b"Multiply" not in result.canonical_bytes
     assert b'"digits":"6"' in result.canonical_bytes
-    # ... and commutation yields the identical canonical contract (orphan
-    # literal operands are retained deterministically).
+    # ... and commutation yields the identical canonical contract (folded
+    # literal operands are pruned by the reachable-only policy).
     commuted = Scale(Multiply(num("3"), num("2")), shared)
     assert canonicalize_contract(commuted) == result
 
@@ -249,3 +255,118 @@ def test_anyof_nested_vs_flat_identical() -> None:
     rf = canonicalize_contract(flat)
     assert rn == rf
     assert rn.node_count == rf.node_count
+
+
+# ---------------------------------------------------------------------------
+# BLOCKER 2: Nonliteral AllOf/AnyOf associative flattening tests
+# ---------------------------------------------------------------------------
+
+
+def _obs_cmp(lhs: Observable, rhs: Observable) -> Comparison:
+    """Create a non-constant Comparison between two observables."""
+    return Comparison(lhs, rhs, ComparisonOperator.LESS_THAN)
+
+
+def test_allof_nonliteral_nested_vs_flat_identical() -> None:
+    # Nested AllOf and flat AllOf with nonliteral (observable) Comparison
+    # operands canonicalize identically. The inner AllOf is pruned.
+    pa = Payment(obs_A, usd, T0)
+    pb = Payment(obs_B, usd, T0)
+    comp_a = _obs_cmp(obs_A, obs_B)
+    comp_b = _obs_cmp(obs_B, obs_A)
+
+    nested = ConditionalContract(AllOf((comp_a, AllOf((comp_b, comp_a)))), pa, pb)
+    flat = ConditionalContract(AllOf((comp_a, comp_b, comp_a)), pa, pb)
+    rn = canonicalize_contract(nested)
+    rf = canonicalize_contract(flat)
+    assert rn.canonical_bytes == rf.canonical_bytes
+    assert rn.identity == rf.identity
+    assert rn.root_node_id == rf.root_node_id
+    assert rn.node_count == rf.node_count
+    # Exactly one reachable AllOf node, inner collection absent.
+    doc = rn.canonical_bytes
+    assert doc.count(b'"type":"AllOf"') == 1
+    assert b"AllOf" not in rn.canonical_bytes.replace(b'"type":"AllOf"', b"", 1)
+    # The condition does not fold to BooleanConstant.
+    assert b'"type":"BooleanConstant"' not in rn.canonical_bytes
+
+
+def test_anyof_nonliteral_nested_vs_flat_identical() -> None:
+    # Nested AnyOf and flat AnyOf with nonliteral (observable) Comparison
+    # operands canonicalize identically. The inner AnyOf is pruned.
+    pa = Payment(obs_A, usd, T0)
+    pb = Payment(obs_B, usd, T0)
+    comp_a = _obs_cmp(obs_A, obs_B)
+    comp_b = _obs_cmp(obs_B, obs_A)
+
+    nested = ConditionalContract(AnyOf((comp_a, AnyOf((comp_b, comp_a)))), pa, pb)
+    flat = ConditionalContract(AnyOf((comp_a, comp_b, comp_a)), pa, pb)
+    rn = canonicalize_contract(nested)
+    rf = canonicalize_contract(flat)
+    assert rn.canonical_bytes == rf.canonical_bytes
+    assert rn.identity == rf.identity
+    assert rn.root_node_id == rf.root_node_id
+    assert rn.node_count == rf.node_count
+    # Exactly one reachable AnyOf node, inner collection absent.
+    doc = rn.canonical_bytes
+    assert doc.count(b'"type":"AnyOf"') == 1
+    assert b"AnyOf" not in rn.canonical_bytes.replace(b'"type":"AnyOf"', b"", 1)
+    # The condition does not fold to BooleanConstant.
+    assert b'"type":"BooleanConstant"' not in rn.canonical_bytes
+
+
+# ---------------------------------------------------------------------------
+# BLOCKER 3: Nested Multiply non-flattening test
+# ---------------------------------------------------------------------------
+
+
+def _scalar_num(s: str) -> Number:
+    return Number(ExactNumber.from_string(s), Unit.scalar())
+
+
+def _money_obs() -> Observable:
+    return Observable(
+        ObservableId.from_parts("equity", "AAA", "close"), OT0, Unit.money(usd)
+    )
+
+
+def test_multiply_nested_not_flattened() -> None:
+    # Multiply is binary and never flattened. Use nonliteral observables so
+    # literal folding cannot erase the operator.
+    money = _money_obs()
+    scalar_a = _scalar_obs()
+    scalar_b = _scalar_obs()
+
+    # money * (scalar_a * scalar_b)
+    inner_mul = Multiply(scalar_a, scalar_b)
+    grouping1 = Payment(Multiply(money, inner_mul), usd, T0)
+
+    # (money * scalar_a) * scalar_b
+    left_mul = Multiply(money, scalar_a)
+    grouping2 = Payment(Multiply(left_mul, scalar_b), usd, T0)
+
+    r1 = canonicalize_contract(grouping1)
+    r2 = canonicalize_contract(grouping2)
+
+    # Each canonical document contains two reachable Multiply nodes.
+    multiplies1 = r1.canonical_bytes.count(b'"type":"Multiply"')
+    multiplies2 = r2.canonical_bytes.count(b'"type":"Multiply"')
+    assert multiplies1 == 2
+    assert multiplies2 == 2
+    # Every Multiply payload has exactly left and right references (no operands array).
+    doc1 = r1.canonical_bytes
+    doc2 = r2.canonical_bytes
+    assert b'"left"' in doc1 and b'"right"' in doc1
+    assert b'"left"' in doc2 and b'"right"' in doc2
+    assert b'"operands"' not in doc1 and b'"operands"' not in doc2
+
+    # The two groupings have different canonical bytes and different identities.
+    assert r1.canonical_bytes != r2.canonical_bytes
+    assert r1.identity != r2.identity
+
+    # Swapping left/right within the same binary grouping remains canonically
+    # identical (commutativity without associativity).
+    grouping1_commuted = Payment(Multiply(inner_mul, money), usd, T0)
+    r1_commuted = canonicalize_contract(grouping1_commuted)
+    assert r1_commuted.canonical_bytes == r1.canonical_bytes
+    assert r1_commuted.identity == r1.identity

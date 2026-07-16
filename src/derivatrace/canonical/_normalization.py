@@ -62,7 +62,12 @@ from ._errors import (
 )
 from ._identity import contract_identity, node_identity
 from ._nodes import CanonicalContract, _CanonicalNode
-from ._schema import CanonicalizationLimits, CanonicalSchemaVersion
+from ._schema import (
+    CanonicalizationLimits,
+    CanonicalSchemaVersion,
+    _validate_canonical_schema_version,
+    _validate_canonicalization_limits,
+)
 
 _ChildLookup = Callable[[object], tuple[str, dict[str, Any]]]
 
@@ -502,12 +507,10 @@ def canonicalize_contract(
     """
     if schema is None:
         schema = CanonicalSchemaVersion()
-    if not isinstance(schema, CanonicalSchemaVersion):
-        raise CanonicalizationInputError("schema must be a CanonicalSchemaVersion")
+    _validate_canonical_schema_version(schema)
     if limits is None:
         limits = CanonicalizationLimits.default()
-    if not isinstance(limits, CanonicalizationLimits):
-        raise CanonicalizationInputError("limits must be a CanonicalizationLimits")
+    _validate_canonicalization_limits(limits)
     if not isinstance(contract, Contract):
         raise CanonicalizationInputError(
             "canonicalization requires an exact supported Contract root", path=()
