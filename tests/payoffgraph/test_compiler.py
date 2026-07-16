@@ -2868,6 +2868,133 @@ class TestCanonicalRecordValidation:
 
 
 # ---------------------------------------------------------------------------
+# Comparison operator validation regression (PR #7): exact-type enforcement
+# before membership against the trusted R1 operator set. Exercises the
+# patched canonicalize_contract seam so the values arrive as a genuine
+# internal document would.
+# ---------------------------------------------------------------------------
+
+_SUPPORTED_OPS_FOR_TEST = ("<", "<=", "==", "!=", ">=", ">")
+
+
+class TestComparisonOperatorValidation:
+    @staticmethod
+    def _comparison_nodes(operator: object) -> tuple[dict[str, Any], str]:
+        cid = "a" * 64
+        b = "b" * 64
+        return (
+            {
+                b: _node(
+                    b,
+                    {
+                        "type": "Number",
+                        "value": {"sign": 0, "digits": "1", "exponent": 0},
+                        "unit": {"kind": "money", "currency": "USD"},
+                    },
+                ),
+                cid: _node(
+                    cid,
+                    {
+                        "type": "Comparison",
+                        "left": b,
+                        "right": b,
+                        "operator": operator,
+                    },
+                ),
+            },
+            cid,
+        )
+
+    def _assert_malformed(self, operator: object) -> None:
+        nodes, cid = self._comparison_nodes(operator)
+        with pytest.raises(PayoffGraphCompilationError) as exc_info:
+            _compile_from_canonical(nodes, cid)
+        err = exc_info.value
+        assert err.code == "payoff_graph.compilation"
+        assert _SAFE_OP_MSG in str(err)
+
+    def test_missing_operator(self) -> None:
+        nodes, cid = self._comparison_nodes(_MISSING)
+        nodes[cid]["payload"].pop("operator", None)
+        with pytest.raises(PayoffGraphCompilationError) as exc_info:
+            _compile_from_canonical(nodes, cid)
+        err = exc_info.value
+        assert err.code == "payoff_graph.compilation"
+        assert _SAFE_OP_MSG in str(err)
+
+    def test_none_operator(self) -> None:
+        self._assert_malformed(None)
+
+    def test_int_operator(self) -> None:
+        self._assert_malformed(7)
+
+    def test_bool_operator(self) -> None:
+        self._assert_malformed(True)
+
+    def test_list_operator(self) -> None:
+        self._assert_malformed(["<"])
+
+    def test_dict_operator(self) -> None:
+        self._assert_malformed({"op": "<"})
+
+    def test_tuple_operator(self) -> None:
+        self._assert_malformed(("<", ">"))
+
+    def test_unsupported_string_operator(self) -> None:
+        self._assert_malformed("~")
+
+    @pytest.mark.parametrize("operator", _SUPPORTED_OPS_FOR_TEST)
+    def test_supported_operators_accepted(self, operator: str) -> None:
+        nodes, cid = self._comparison_nodes(operator)
+        pg = _compile_from_canonical(nodes, cid)
+        assert pg.identity.startswith("payoffgraph:sha256:")
+        struct = _struct(pg)
+        found = False
+        for node in struct["nodes"].values():
+            if node["payload"]["type"] == "PGComparison":
+                found = True
+                assert node["payload"]["operator"] == operator
+        assert found
+
+
+_MISSING = object()
+
+_SAFE_OP_MSG = "internal canonical comparison operator is malformed"
+
+
+class TestComparisonOperatorPrivateHelper:
+    """Exact-type enforcement at the private-helper boundary.
+
+    JSON decoding can only ever yield a built-in ``str`` for a string field,
+    so a ``str`` *subclass* can only be produced by tampering the in-memory
+    document; this test proves the helper rejects it rather than letting the
+    subclass pass the membership test.
+    """
+
+    def test_str_subclass_rejected(self) -> None:
+        from derivatrace.payoffgraph._compiler import _require_record_fields
+
+        class _Sub(str):
+            pass
+
+        with pytest.raises(PayoffGraphCompilationError) as exc_info:
+            _require_record_fields(
+                "Comparison", {"left": "x", "right": "y", "operator": _Sub(">")}
+            )
+        err = exc_info.value
+        assert err.code == "payoff_graph.compilation"
+        assert _SAFE_OP_MSG in str(err)
+
+    def test_builtin_str_accepted(self) -> None:
+        from derivatrace.payoffgraph._compiler import _require_record_fields
+
+        # A genuine built-in str must not raise.
+        _require_record_fields(
+            "Comparison", {"left": "x", "right": "y", "operator": ">"}
+        )
+
+
+# ---------------------------------------------------------------------------
 # Executable conformance registry (requirement 4)
 # ---------------------------------------------------------------------------
 

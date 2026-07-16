@@ -282,7 +282,8 @@ def _require_record_fields(ctype: str, payload: dict[str, Any]) -> None:
                 "internal canonical BooleanConstant value is malformed"
             )
     elif ctype == "Comparison":
-        if payload.get("operator") not in _SUPPORTED_OPERATORS:
+        operator = payload.get("operator")
+        if type(operator) is not str or operator not in _SUPPORTED_OPERATORS:
             raise PayoffGraphCompilationError(
                 "internal canonical comparison operator is malformed"
             )
