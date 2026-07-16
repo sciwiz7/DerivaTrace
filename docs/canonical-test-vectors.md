@@ -58,7 +58,13 @@ all-zero identity.
   (`Unit.scalar()`) appears only where it is structurally dimensionless: the
   `Scale` factor and the `Multiply`/`Add`/`Subtract`/`Maximum`/`Minimum` operand
   paired with a money observable (e.g. CV-005, CV-008). `Payment` settlement
-  time is `2030-01-01T00:00:00.000000Z` unless stated.
+  time is `2030-01-01T00:00:00.000000Z` unless stated. Let `T0` denote
+  `2030-01-01T00:00:00.000000Z`. Two **scalar** observables `scalar_A` and
+  `scalar_B` are defined as
+  `Observable(ObservableId(field="level", identifier="SCALARA"|"SCALARB",
+  namespace="macro"), ObservationTime=T0, Unit=scalar())` and are used wherever a
+  dimensionless observable is required (for example the `PGDivide` scalar-division
+  planned vector).
 
 ## 2. Normative vectors
 
@@ -215,39 +221,125 @@ avoid fake hashes, no `<hex>` placeholder is given here for the R2-only vectors;
 instead each entry specifies its **source contract** (constructible through the
 Stage 1A API and already canonicalizable by R1) and its **expected
 equality/distinctness relationships** under the closed mapping of
-`payoff-graph-spec.md`. CV-011 above already pins one fully-computed R2 vector.
+`payoff-graph-spec.md` (§3–§4). CV-011 above already pins one fully-computed R2
+vector. All sources below use `currency=USD`, `settlement_time=T0`, and the
+observables defined in §1.
 
-- **PGConstant under PGPayment** — `Payment(amount=Number("100", money(USD)), currency=USD, T0)`. Expect a `PGConstant` (no `settlement_time`) referenced by `PGPayment.amount`; graph distinct from any `PGObservable`-backed payment.
-- **PGAdd commutation** — `Payment(Add(obs_A, obs_B), …)` vs `Payment(Add(obs_B, obs_A), …)`. Expect identical `PGAdd` operands array and identical graph identity (commutative multiset).
-- **PGSubtract order sensitivity** — `Payment(Subtract(obs_A, obs_B), …)` vs `Payment(Subtract(obs_B, obs_A), …)`. Expect distinct `PGSubtract` (`minuend`/`subtrahend` swapped) and **distinct** graph identities; **not** lowered to `PGAdd`+`PGNegate`.
-- **Nested PGAdd flattening** — `Payment(Add(obs_A, Add(obs_B, obs_X)), …)`. Expect a single flattened `PGAdd` (inner `PGAdd` discarded); graph distinct from the un-flattened author form.
-- **Binary PGMultiply commutation without associativity** — `Payment(Multiply(obs_money, Number("2")), …)` vs `Payment(Multiply(Number("2"), obs_money), …)`. Expect identical binary `PGMultiply` (left/right reordered by id); graph identical. A `Multiply(Multiply(a,b),c)` must **not** flatten into a ternary node.
-- **PGDivide order sensitivity** — `Payment(Divide(obs_A, obs_B), …)` vs `Payment(Divide(obs_B, obs_A), …)`. Expect distinct `PGDivide` (`numerator`/`denominator` swapped) and distinct graph identities; **no** reciprocal rewrite.
-- **PGCombine author-order sensitivity** — `Both(Payment(obs_A), Payment(obs_B))` vs `Both(Payment(obs_B), Payment(obs_A))`. Expect distinct `PGCombine` operand order and distinct graph identities (author order preserved, not commutative).
-- **Duplicate operand preservation** — `Payment(Add(obs_A, obs_A), …)`. Expect `PGAdd.operands == [id_A, id_A]`; graph distinct from `Add(obs_A)` semantically but equal to the duplicated-input graph.
-- **Shared versus copied subgraphs** — `Both(Scale(Number("2"), shared), Payment(shared))` vs `Both(Scale(Number("2"), copy), Payment(copy))` with `shared == copy == Add(obs_A, obs_B)`. Expect identical graph identities (content-addressed sharing, independent of Python object identity).
-- **PGAllOf / PGAnyOf flattening** — `AllOf(cond_A, AllOf(cond_B, cond_C))` used as a `ConditionalValue` condition. Expect a single flattened `PGAllOf`/`PGAnyOf` (sorted, duplicates retained); inner collection discarded.
-- **PGConditionalValue** — `Payment(ConditionalValue(cond, obs_A, obs_B), …)`. Expect `PGConditionalValue` with `condition`/`true_payoff`/`false_payoff` author order preserved.
-- **PGConditionalContract** — `ConditionalContract(cond, Payment(obs_A), Payment(obs_B))`. Expect `PGConditionalContract` with author order preserved; graph distinct from swapped branches.
-- **Zero to empty PGCombine** — `Both(Zero(), Zero())` (or a `Zero` alone compiled to a payoff root). Expect each `Zero` to compile to a `PGCombine` with an empty `operands` array; node ids equal across distinct `Zero` sources (content-addressed).
-- **Provenance exclusion from identity** — any contract compiled twice with different `compiler`/`source` provenance tags must yield the **same** `payoffgraph:sha256:<hex>` (provenance excluded from the preimage), demonstrated explicitly by CV-011's two identity values above.
-- **Timestamp microsecond precision** — `Payment(Number("1", money(USD)), currency=USD, settlement_time="2030-01-01T00:00:00.500000Z")`. Expect `PGPayment.settlement_time` to carry full microsecond precision and participate in the graph identity; distinct from the `...000000Z` variant.
-- **Collision seam** — a constructed case where two distinct payoff payloads hash to the same payoff-node id must raise `payoff_graph.collision` (never silently merged); mirrors the R1 `canonicalization.collision` seam but uses the dedicated payoff-graph code.
+- **PGConstant under PGPayment** — source
+  `Payment(Number(ExactNumber("100"), Unit.money(USD)), USD, T0)`. Expect a
+  `PGConstant` (no `settlement_time`) referenced by `PGPayment.amount`; graph
+  distinct from any `PGObservable`-backed payment.
+- **PGAdd commutation** — sources
+  `Payment(Add((obs_A, obs_B)), USD, T0)` versus
+  `Payment(Add((obs_B, obs_A)), USD, T0)`. Expect identical `PGAdd` operand array
+  (sorted by id) and identical graph identity (commutative multiset).
+- **PGSubtract order sensitivity** — sources
+  `Payment(Subtract(obs_A, obs_B), USD, T0)` versus
+  `Payment(Subtract(obs_B, obs_A), USD, T0)`. Expect distinct `PGSubtract`
+  (`minuend`/`subtrahend` swapped) and **distinct** graph identities; **not**
+  lowered to `PGAdd`+`PGNegate`.
+- **Nested PGAdd flattening** — compare
+  `Payment(Add((obs_A, Add((obs_B, obs_X)))), USD, T0)` against
+  `Payment(Add((obs_A, obs_B, obs_X)), USD, T0)`. Both sources canonicalize to the
+  **identical** R1 canonical contract (associative flattening), so they compile to
+  the **identical** payoff graph with exactly one reachable `PGAdd` and no inner
+  `PGAdd`. Do not treat the nested-author form as a distinct graph.
+- **Binary PGMultiply commutation without associativity** — use a dimensionless
+  factor `Number(ExactNumber("2"), Unit.scalar())`. Within one grouping compare
+  `Payment(Multiply(obs_A, Number(ExactNumber("2"), Unit.scalar())), USD, T0)`
+  versus `Payment(Multiply(Number(ExactNumber("2"), Unit.scalar()), obs_A), USD,
+  T0)`: expect identical binary `PGMultiply` (left/right reordered by id) and
+  identical graph identity. Separately compare that grouping against a different
+  valid binary grouping
+  `Payment(Multiply(obs_A, Multiply(Number(ExactNumber("2"), Unit.scalar()),
+  Number(ExactNumber("3"), Unit.scalar()))), USD, T0)`: the two distinct groupings
+  remain **distinct** graph identities; `Multiply(Multiply(a,b),c)` must **not**
+  flatten into a ternary node.
+- **PGDivide order sensitivity** — use two distinct scalar observables
+  `scalar_A` and `scalar_B`. Compare
+  `Scale(Divide(scalar_A, scalar_B), Payment(obs_A, USD, T0))` versus
+  `Scale(Divide(scalar_B, scalar_A), Payment(obs_A, USD, T0))`. Both sources
+  validate (scalar ÷ scalar is dimensionless; the factor drives `Scale`). Expect
+  distinct `PGDivide` (`numerator`/`denominator` swapped) and distinct graph
+  identities; **no** reciprocal rewrite. (A money observable must **not** divide a
+  money observable.)
+- **PGCombine author-order sensitivity** — sources
+  `Both((Payment(obs_A, USD, T0), Payment(obs_B, USD, T0)))` versus
+  `Both((Payment(obs_B, USD, T0), Payment(obs_A, USD, T0)))`. Expect distinct
+  `PGCombine` operand order and distinct graph identities (author order
+  preserved, not commutative).
+- **Duplicate operand preservation** — compare
+  `Payment(Add((obs_A, obs_A)), USD, T0)` against `Payment(obs_A, USD, T0)`. Expect
+  `PGAdd.operands == [id_A, id_A]`; the duplicated graph is **distinct** from the
+  single-observable payment (which has no `Add` wrapper). Do not refer to an
+  invalid `Add(obs_A)` single-operand form.
+- **Shared versus copied subgraphs** — use a **Contract** subtree (not an `Add`
+  expression) as `Scale.contract`. Shared version: construct one
+  `shared = Payment(Add((obs_A, obs_B)), USD, T0)` and reference that same object
+  directly and inside `Scale`:
+  `Both((shared, Scale(Number(ExactNumber("2"), Unit.scalar()), shared)))`. Copied
+  version: construct two independently allocated but structurally identical
+  subtrees `pay1 = Payment(Add((obs_A, obs_B)), USD, T0)` and
+  `pay2 = Payment(Add((obs_A, obs_B)), USD, T0)`, then
+  `Both((pay1, Scale(Number(ExactNumber("2"), Unit.scalar()), pay2)))`. Both
+  complete contracts validate and produce identical canonical/payoff identities
+  (content-addressed sharing, independent of Python object identity).
+- **PGAllOf / PGAnyOf flattening** — provide separate nested-versus-flat pairs
+  using non-literal `Comparison` conditions. For `AllOf` compare
+  `Payment(ConditionalValue(AllOf((Comparison(obs_A, obs_B, GREATER_THAN),
+  AllOf((Comparison(obs_B, obs_X, GREATER_THAN), Comparison(obs_A, obs_X,
+  GREATER_THAN)))), obs_A, obs_B), USD, T0)` against
+  `Payment(ConditionalValue(AllOf((Comparison(obs_A, obs_B, GREATER_THAN),
+  Comparison(obs_B, obs_X, GREATER_THAN), Comparison(obs_A, obs_X,
+  GREATER_THAN))), obs_A, obs_B), USD, T0)`. Both canonicalize to the identical R1
+  contract (nested `AllOf` flattened) and compile to the identical payoff graph
+  with a single `PGAllOf` and no inner `PGAllOf`. The `AnyOf` pair uses the same
+  structure with `AnyOf` and expects the same identical-graph relationship.
+- **PGConditionalValue** — source
+  `Payment(ConditionalValue(Comparison(obs_A, obs_B, GREATER_THAN), obs_A,
+  obs_B), USD, T0)`. Expect `PGConditionalValue` with `condition` (a `PGComparison`)
+  /`true_payoff`/`false_payoff` author order preserved.
+- **PGConditionalContract** — source
+  `ConditionalContract(Comparison(obs_A, obs_B, GREATER_THAN),
+  Payment(obs_A, USD, T0), Payment(obs_B, USD, T0))`. Expect
+  `PGConditionalContract` with author order preserved; graph distinct from the
+  swapped-branch contract.
+- **Zero to empty PGCombine** — `Both((Zero(), Zero()))` (or a `Zero()` alone
+  compiled to a payoff root). Expect each `Zero` to compile to a `PGCombine` with
+  an empty `operands` array; node ids equal across distinct `Zero` sources
+  (content-addressed).
+- **Provenance exclusion from identity** — this is an **internal serialization /
+  identity test seam**, not a public API feature. The public `compile_payoff_graph`
+  does **not** accept caller-supplied `compiler` or `source` provenance overrides.
+  The test holds `structural_bytes` fixed, varies `provenance` only while
+  constructing the full document, observes that `document_bytes` changes, and
+  confirms the graph identity (which hashes `structural_bytes` only) remains
+  unchanged. CV-011 demonstrates this explicitly via its two identity values
+  above.
+- **Timestamp microsecond precision** — source
+  `Payment(Number(ExactNumber("1"), Unit.money(USD)), USD,
+  SettlementTime=2030-01-01T00:00:00.500000Z)`. Expect `PGPayment.settlement_time`
+  to carry full microsecond precision and participate in the graph identity;
+  distinct from the `...000000Z` variant.
+- **Collision seam** — a constructed case where two distinct payoff payloads hash
+  to the same payoff-node id must raise `payoff_graph.collision` (never silently
+  merged); mirrors the R1 collision seam but uses the dedicated payoff-graph
+  code.
 
 When the R2 runtime lands, each entry above is promoted to a normative vector
 with concrete hashes, and the suite must additionally guarantee the coverage
 obligations below.
 
-## 3. Coverage obligations (at implementation time)
+## 3. Coverage obligations (when the Stage 1B-R2 runtime is implemented)
 
-When Stage 1B is implemented, the suite must additionally guarantee:
+When the Stage 1B-R2 runtime is implemented, the suite must additionally guarantee:
 
-- **Injectivity:** every pair of vectors with distinct `expected structural equivalence` yields distinct identities (no canonicalization collision).
-- **Stability:** re-running canonicalization on the same input yields identical bytes and identity.
+- **Injectivity:** every pair of vectors with distinct `expected structural equivalence` yields distinct identities (no canonicalization or payoff-graph collision).
+- **Stability:** re-running compilation on the same input yields identical bytes and identity.
 - **Forbidden-rule enforcement:** none of the `forbidden_rules` ever occurs.
-- **Validation gate:** unvalidated / cyclic / oversized graphs are rejected before canonicalization.
-- **Schema participation:** changing `schema_version` changes the identity.
-- **Collision rule:** if the same id maps to different payload bytes, `canonicalization.collision` is raised.
+- **Validation gate:** invalid / cyclic / oversized inputs are rejected before payoff output.
+- **Schema participation:** changing the `payoff_graph` `schema_version` changes the identity.
+- **Collision rule:** if the same payoff-node id maps to different payload bytes, `payoff_graph.collision` is raised. R1 canonicalization failures propagate to the caller according to the payoff-graph specification (§11) without silent reclassification, and are never remapped onto `payoff_graph.collision`.
 
 > The R1 canonical vectors (CV-001–CV-010) are executed by the Stage 1B-R1
 > canonical runtime (`derivatrace.canonical`) in `tests/canonical/test_vectors.py`.

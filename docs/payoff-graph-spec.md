@@ -64,9 +64,28 @@ use-time validation equivalent to the hardened R1 boundary
 
 ## 3. Payoff-graph node taxonomy
 
-The graph is a DAG. Nodes fall into four categories: **leaves**, **operations**,
-**boolean**, and **combinations**. Each node carries an explicit `Unit` (and,
-where relevant, a `Currency`), but **only the nodes that own a time carry it**:
+The graph is a DAG. Nodes fall into four categories: **value**, **operations**,
+**boolean**, and **contract combinations**. The explicit **unit policy**
+(schema 1.0.0) is deliberate and does **not** require every node to serialize a
+`unit` field:
+
+- **`PGConstant`** serializes an explicit `unit` alongside `amount`.
+- **`PGObservable`** serializes an explicit `unit` alongside `observable_id`
+  and `observation_time`.
+- **Value/operation nodes** (`PGAdd`, `PGSubtract`, `PGMultiply`, `PGDivide`,
+  `PGNegate`, `PGMaximum`, `PGMinimum`, `PGConditionalValue`) do **not** serialize
+  a separate `unit` field. Their unit is guaranteed by the validated Stage 1A/R1
+  source node and is derivable from their referenced operands (the same policy as
+  the R1 canonical graph); the compiler performs **no** new unit inference or
+  validation beyond consuming the trusted R1 result.
+- **`PGPayment`** serializes `currency` and `settlement_time`; it does **not**
+  carry a `unit` field (the currency is carried directly).
+- **Boolean nodes** (`PGBooleanConstant`, `PGComparison`, `PGAllOf`, `PGAnyOf`,
+  `PGNot`) and **contract-combination nodes** (`PGCombine`, `PGScale`,
+  `PGConditionalContract`) carry no `unit` field; their unit semantics are fixed
+  by the R1 source.
+
+Time ownership (unchanged from the binding decision):
 
 - **Observation time** is owned exclusively by `PGObservable`.
 - **Settlement time** is owned exclusively by `PGPayment`.
@@ -147,6 +166,123 @@ any valid compiled value expression (a `PGConstant`, `PGObservable`, `PGAdd`,
 `PGConditionalValue`); the field is named **`amount`**, never `payoff_leaf`.
 Settlement time is owned by `PGPayment`.
 
+### 3.5 Payoff node categories and reference-target restrictions
+
+The payoff nodes divide into three reference categories. Target restrictions are
+normative: the compiler must reject any reference that violates them (raising
+`payoff_graph.input`).
+
+**VALUE PAYOFF NODES** (carry or derive a `unit`; referenced where a value/payoff
+amount is required):
+
+- `PGConstant`
+- `PGObservable`
+- `PGAdd`
+- `PGSubtract`
+- `PGMultiply`
+- `PGDivide`
+- `PGNegate`
+- `PGMaximum`
+- `PGMinimum`
+- `PGConditionalValue`
+
+**BOOLEAN PAYOFF NODES** (condition operands):
+
+- `PGBooleanConstant`
+- `PGComparison`
+- `PGAllOf`
+- `PGAnyOf`
+- `PGNot`
+
+**CONTRACT PAYOFF NODES** (combine or wrap contracts):
+
+- `PGPayment`
+- `PGCombine`
+- `PGScale`
+- `PGConditionalContract`
+
+Exact reference-target restrictions:
+
+- `PGPayment.amount` -> a **money-denominated value payoff node**.
+- `PGScale.factor` -> a **dimensionless value payoff node**.
+- `PGScale.payoff` -> a **contract payoff node**.
+- `PGConditionalValue.condition` -> a **Boolean payoff node**.
+- `PGConditionalValue.true_payoff` / `false_payoff` -> **value payoff nodes of
+  the same unit**.
+- `PGConditionalContract.condition` -> a **Boolean payoff node**.
+- `PGConditionalContract.true_payoff` / `false_payoff` -> **contract payoff
+  nodes**.
+- `PGCombine.operands` -> **contract payoff nodes**.
+- `PGComparison.left` / `right` -> **value payoff nodes**.
+- `PGAllOf` / `PGAnyOf` `operands` -> **Boolean payoff nodes**.
+- `PGNot.operand` -> a **Boolean payoff node**.
+
+### 3.6 Exact payoff payload schema (schema 1.0.0)
+
+Every payoff node payload is a JSON object whose `type` field names the node and
+whose remaining fields are exactly those below. Canonical JSON follows the R1
+byte rules (`canonicalization-spec.md` §3): `ensure_ascii=True`, `sort_keys=True`,
+`separators=(",", ":")`, UTF-8, no BOM, no trailing newline. All references are
+bare lowercase 64-hex payoff-node ids. **No additional fields are permitted in
+schema 1.0.0.**
+
+| Node | Payload template |
+|------|------------------|
+| `PGConstant` | `{"type":"PGConstant","amount":<dec>,"unit":<unit>}` |
+| `PGObservable` | `{"type":"PGObservable","observable_id":<oid>,"observation_time":<time>,"unit":<unit>}` |
+| `PGAdd` | `{"type":"PGAdd","operands":[<id>,...]}` |
+| `PGSubtract` | `{"type":"PGSubtract","minuend":<id>,"subtrahend":<id>}` |
+| `PGMultiply` | `{"type":"PGMultiply","left":<id>,"right":<id>}` |
+| `PGDivide` | `{"type":"PGDivide","numerator":<id>,"denominator":<id>}` |
+| `PGNegate` | `{"type":"PGNegate","operand":<id>}` |
+| `PGMaximum` | `{"type":"PGMaximum","operands":[<id>,...]}` |
+| `PGMinimum` | `{"type":"PGMinimum","operands":[<id>,...]}` |
+| `PGConditionalValue` | `{"type":"PGConditionalValue","condition":<id>,"true_payoff":<id>,"false_payoff":<id>}` |
+| `PGBooleanConstant` | `{"type":"PGBooleanConstant","value":true|false}` |
+| `PGComparison` | `{"type":"PGComparison","left":<id>,"right":<id>,"operator":<operator>}` |
+| `PGAllOf` | `{"type":"PGAllOf","operands":[<id>,...]}` |
+| `PGAnyOf` | `{"type":"PGAnyOf","operands":[<id>,...]}` |
+| `PGNot` | `{"type":"PGNot","operand":<id>}` |
+| `PGCombine` | `{"type":"PGCombine","operands":[<id>,...]}` |
+| `PGPayment` | `{"type":"PGPayment","amount":<id>,"currency":<currency>,"settlement_time":<time>}` |
+| `PGScale` | `{"type":"PGScale","factor":<id>,"payoff":<id>}` |
+| `PGConditionalContract` | `{"type":"PGConditionalContract","condition":<id>,"true_payoff":<id>,"false_payoff":<id>}` |
+
+Placeholder legend: `<dec>` = exact `Decimal` tuple object, `<unit>` = `{kind}` or
+`{kind,currency}`, `<oid>` = `{field,identifier,namespace}`, `<time>` = RFC 3339
+UTC microsecond string, `<currency>` = ISO-4217 code, `<operator>` =
+`ComparisonOperator` string, `<id>` = bare lowercase 64-hex payoff-node id.
+
+**Structural document shape** (identity preimage, excludes `provenance`):
+
+```text
+{
+  "nodes": {<node-id>: <node-record>, ...},
+  "root": <node-id>,
+  "schema_name": "derivatrace.payoffgraph",
+  "schema_version": "1.0.0"
+}
+```
+
+**Full document shape** = the structural document plus exactly one additional
+top-level field `provenance`.
+
+**Node-record shape:**
+
+```text
+{"id":<node-id>,"payload":<payoff-payload>}
+```
+
+Invariants:
+
+- no additional fields are permitted in schema 1.0.0;
+- every node-table key equals the record `id`;
+- all references are bare lowercase 64-hex payoff-node ids;
+- canonical JSON follows the R1 byte rules;
+- records are represented by a JSON object keyed by node id;
+- JSON key sorting determines serialized record order (so the document bytes are
+  deterministic).
+
 ## 4. Complete node mapping (normative matrix)
 
 Every canonical R1 node maps to exactly one payoff node. There is no unmapped
@@ -158,14 +294,14 @@ duplicate policy, permitted folding, and time/unit ownership.
 |----------------|-------------|--------------|-----------------|----------|---------|-----|-----------|----------------------|
 | `Number` | `PGConstant` | `amount`, `unit` | — | n/a (leaf) | n/a | n/a | none | no time; carries `unit` |
 | `Observable` | `PGObservable` | `observable_id`, `observation_time`, `unit` | — | n/a (leaf) | n/a | n/a | none | **observation_time** owned here; carries `unit` |
-| `Add` | `PGAdd` | `operands` | `operands` | sorted by id (tie payload) | yes | retained | none (reuse R1 result) | carries operand units |
-| `Subtract` | `PGSubtract` | `minuend`, `subtrahend` | `minuend`, `subtrahend` | **author order** | none | n/a | none | carries operand units |
-| `Multiply` | `PGMultiply` | `left`, `right` | `left`, `right` | sorted by id (binary) | none | retained | none | carries operand units |
-| `Divide` | `PGDivide` | `numerator`, `denominator` | `numerator`, `denominator` | **author order** | none | n/a | none (no reciprocal) | carries operand units |
-| `Negate` | `PGNegate` | `operand` | `operand` | unary positional | none | n/a | none | carries operand unit |
-| `Maximum` | `PGMaximum` | `operands` | `operands` | sorted by id (tie payload) | yes | retained | none | carries operand units |
-| `Minimum` | `PGMinimum` | `operands` | `operands` | sorted by id (tie payload) | yes | retained | none | carries operand units |
-| `ConditionalValue` | `PGConditionalValue` | `condition`, `true_payoff`, `false_payoff` | all three | **author order** | none | n/a | none | unit of selected branch |
+| `Add` | `PGAdd` | `operands` | `operands` | sorted by id (tie payload) | yes | retained | none (reuse R1 result) | derives unit from operands (no serialized `unit`) |
+| `Subtract` | `PGSubtract` | `minuend`, `subtrahend` | `minuend`, `subtrahend` | **author order** | none | n/a | none | derives unit from operands (no serialized `unit`) |
+| `Multiply` | `PGMultiply` | `left`, `right` | `left`, `right` | sorted by id (binary) | none | retained | none | derives unit from operands (no serialized `unit`) |
+| `Divide` | `PGDivide` | `numerator`, `denominator` | `numerator`, `denominator` | **author order** | none | n/a | none (no reciprocal) | derives unit from operands (no serialized `unit`) |
+| `Negate` | `PGNegate` | `operand` | `operand` | unary positional | none | n/a | none | derives unit from operand (no serialized `unit`) |
+| `Maximum` | `PGMaximum` | `operands` | `operands` | sorted by id (tie payload) | yes | retained | none | derives unit from operands (no serialized `unit`) |
+| `Minimum` | `PGMinimum` | `operands` | `operands` | sorted by id (tie payload) | yes | retained | none | derives unit from operands (no serialized `unit`) |
+| `ConditionalValue` | `PGConditionalValue` | `condition`, `true_payoff`, `false_payoff` | all three | **author order** | none | n/a | none | derives unit from selected branch (no serialized `unit`) |
 | `BooleanConstant` | `PGBooleanConstant` | `value` | — | leaf | n/a | n/a | none | none |
 | `Comparison` | `PGComparison` | `left`, `right`, `operator` | `left`, `right` | **author order**, operator-sensitive | none | n/a | none | none |
 | `AllOf` | `PGAllOf` | `operands` | `operands` | sorted by id (tie payload) | yes | retained | none | none |
@@ -174,12 +310,14 @@ duplicate policy, permitted folding, and time/unit ownership.
 | `Zero` | `PGCombine` | `operands` (empty array) | — | n/a | n/a | n/a | none | distinguished zero |
 | `Payment` | `PGPayment` | `amount`, `currency`, `settlement_time` | `amount` | positional | none | n/a | none | **settlement_time** owned here; `currency` carried here |
 | `Both` | `PGCombine` | `operands` | `operands` | **author order** | none | retained | none | carries contract operands |
-| `Scale` | `PGScale` | `factor`, `payoff` | `factor`, `payoff` | **author order** | none | n/a | none | unit of `payoff` |
-| `ConditionalContract` | `PGConditionalContract` | `condition`, `true_payoff`, `false_payoff` | all three | **author order** | none | n/a | none | unit of selected branch |
+| `Scale` | `PGScale` | `factor`, `payoff` | `factor`, `payoff` | **author order** | none | n/a | none | derives unit from `payoff` (no serialized `unit`) |
+| `ConditionalContract` | `PGConditionalContract` | `condition`, `true_payoff`, `false_payoff` | all three | **author order** | none | n/a | none | derives unit from selected branch (no serialized `unit`) |
 
-The `amount` reference of `PGPayment` and the `factor`/`payoff` references of
-`PGScale` may point to any value-expression node above; the graph remains a DAG
-because references only point to already-compiled upstream nodes.
+The `amount` reference of `PGPayment` must target a **money-denominated value
+payoff node** (§3.5). `PGScale.factor` must target a **dimensionless value payoff
+node** and `PGScale.payoff` must target a **contract payoff node** (§3.5). The
+graph remains a DAG because references only point to already-compiled upstream
+nodes.
 
 ## 5. Compilation mapping (specification)
 
