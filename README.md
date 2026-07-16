@@ -106,15 +106,26 @@ top of the Stage 0 foundation. You can:
 
 ## What exists today (Stage 1B-R2)
 
+> **Documentation guard:** The Stage 1B-R2 section must not contain the phrases
+> "pretty-printed" or "content-equal \`document_bytes\`". The `structural_bytes`
+> is compact canonical JSON containing only the structural projection;
+> `document_bytes` is compact canonical JSON containing the same structural
+> fields plus deterministic provenance; `document_bytes` is therefore distinct
+> from `structural_bytes`; neither representation is pretty-printed; graph
+> identity hashes `structural_bytes` only.
+
 Stage 1B-R2 delivers the canonical payoff-graph runtime on top of the Stage 1B-R1
 canonical contract identity. You can:
 
 - Compile an immutable contract into a deterministic payoff graph with
   `compile_payoff_graph`, yielding a byte-exact `payoffgraph:sha256:` identity
   derived from a canonical structural document (the `structural_bytes`).
-- Inspect the pretty-printed, content-equal `document_bytes`, the `root_node_id`,
-  the `node_count`, and the `source_contract_identity` (the canonical contract
-  identity of the compiled contract).
+- Inspect the compact canonical `structural_bytes` (the structural projection
+  only), the `document_bytes` (same structural fields plus deterministic
+  provenance), the `root_node_id`, the `node_count`, and the
+  `source_contract_identity` (the canonical contract identity of the compiled
+  contract). Neither representation is pretty-printed; the graph identity hashes
+  `structural_bytes` only.
 - Rely on provenance: the `PayoffGraph` records the compiler tag and source
   contract identity; changing provenance alone never changes the payoff-graph
   identity.

@@ -985,12 +985,59 @@ class TestStructuralVectors:
         assert pg1.identity != pg2.identity
 
     def test_duplicate_multiply_references(self) -> None:
-        pg = compile_payoff_graph(_pay(Multiply(_obs("AAA"), _num("2", scalar=True))))
+        # Genuine duplicate reference: both Multiply operands point at the SAME
+        # scalar node. Multiply rejects money x money in Stage 1A, so the shared
+        # operand is a scalar observable and the product drives a Scale factor;
+        # the point of this test is the duplicate reference, not the arithmetic.
+        shared = _scobs("SCALARA")
+        contract = Scale(Multiply(shared, shared), _pay(_obs("AAA")))
+        pg = compile_payoff_graph(contract)
         struct = _struct(pg)
-        root = struct["nodes"][pg.root_node_id]
-        amt = struct["nodes"][root["payload"]["amount"]]
-        assert amt["payload"]["type"] == "PGMultiply"
-        assert amt["payload"]["left"] != amt["payload"]["right"]
+        assert len(struct["nodes"]) == pg.node_count
+
+        mul_ids = [
+            nid
+            for nid, node in struct["nodes"].items()
+            if node["payload"].get("type") == "PGMultiply"
+        ]
+        assert len(mul_ids) == 1
+        mul = struct["nodes"][mul_ids[0]]
+        left = mul["payload"]["left"]
+        right = mul["payload"]["right"]
+        # The duplicate reference: both operand slots name the same node id.
+        assert left == right
+        # The shared child node exists exactly once in the node table.
+        assert left in struct["nodes"]
+        assert sum(1 for node in struct["nodes"].values() if node["id"] == left) == 1
+        # The duplicate reference is present in exactly both operand slots.
+        assert [left, right].count(left) == 2
+        # Reachability closure covers exactly the node table (no orphans/missing).
+        reachable: set[str] = set()
+        stack = [pg.root_node_id]
+        while stack:
+            nid = stack.pop()
+            if nid in reachable:
+                continue
+            reachable.add(nid)
+            payload = struct["nodes"][nid]["payload"]
+            for ref_field in (
+                "amount",
+                "left",
+                "right",
+                "factor",
+                "payoff",
+                "operand",
+            ):
+                if isinstance(payload.get(ref_field), str):
+                    stack.append(payload[ref_field])
+            for ref in payload.get("operands", []):
+                if isinstance(ref, str):
+                    stack.append(ref)
+        assert reachable == set(struct["nodes"])
+        # Recompilation is deterministic.
+        pg2 = compile_payoff_graph(contract)
+        assert pg2.identity == pg.identity
+        assert pg2.structural_bytes == pg.structural_bytes
 
     def test_duplicate_pg_combine_references(self) -> None:
         shared = _pay(_obs("AAA"))
@@ -1657,6 +1704,34 @@ class TestPayoffGraphConstructorGuards:
     def test_source_contract_identity_not_str(self) -> None:
         with pytest.raises(PayoffGraphInputError):
             self._make_pg(source_contract_identity=123)
+
+    def test_source_contract_identity_valid(self) -> None:
+        pg = self._make_pg(source_contract_identity="canonical:sha256:" + "c" * 64)
+        assert pg.source_contract_identity == "canonical:sha256:" + "c" * 64
+
+    def test_source_contract_identity_wrong_prefix(self) -> None:
+        with pytest.raises(PayoffGraphInputError):
+            self._make_pg(source_contract_identity="foo:sha256:" + "c" * 64)
+
+    def test_source_contract_identity_empty_digest(self) -> None:
+        with pytest.raises(PayoffGraphInputError):
+            self._make_pg(source_contract_identity="canonical:sha256:")
+
+    def test_source_contract_identity_63_char(self) -> None:
+        with pytest.raises(PayoffGraphInputError):
+            self._make_pg(source_contract_identity="canonical:sha256:" + "c" * 63)
+
+    def test_source_contract_identity_65_char(self) -> None:
+        with pytest.raises(PayoffGraphInputError):
+            self._make_pg(source_contract_identity="canonical:sha256:" + "c" * 65)
+
+    def test_source_contract_identity_uppercase(self) -> None:
+        with pytest.raises(PayoffGraphInputError):
+            self._make_pg(source_contract_identity="canonical:sha256:" + "C" * 64)
+
+    def test_source_contract_identity_non_hex(self) -> None:
+        with pytest.raises(PayoffGraphInputError):
+            self._make_pg(source_contract_identity="canonical:sha256:" + "g" * 64)
 
     def test_identity_non_hex(self) -> None:
         with pytest.raises(PayoffGraphInputError):

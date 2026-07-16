@@ -6,6 +6,7 @@ from ._errors import PayoffGraphInputError
 from ._schema import SUPPORTED_SCHEMA_VERSION
 
 _ID_PREFIX: str = "payoffgraph:sha256:"
+_SOURCE_PREFIX: str = "canonical:sha256:"
 _HEX_DIGITS: frozenset[str] = frozenset("0123456789abcdef")
 
 
@@ -19,6 +20,19 @@ def _check_hex64(value: str, label: str) -> None:
             raise PayoffGraphInputError(
                 f"{label} must be a 64-character lowercase hex id"
             )
+
+
+def _check_source_identity(value: str) -> None:
+    # source_contract_identity is exactly `canonical:sha256:<64-lowercase-hex>`,
+    # mirroring the canonical contract identity produced by derivatrace.canonical.
+    # The malformed value is never interpolated into the raised message.
+    if type(value) is not str:
+        raise PayoffGraphInputError("source_contract_identity must be an exact str")
+    if not value.startswith(_SOURCE_PREFIX):
+        raise PayoffGraphInputError(
+            "source_contract_identity must be a canonical:sha256 id"
+        )
+    _check_hex64(value[len(_SOURCE_PREFIX) :], "source_contract_identity")
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,8 +74,7 @@ class PayoffGraph:
         _check_hex64(self.root_node_id, "root_node_id")
         if type(self.node_count) is not int or self.node_count < 1:
             raise PayoffGraphInputError("node_count must be a positive int")
-        if type(self.source_contract_identity) is not str:
-            raise PayoffGraphInputError("source_contract_identity must be an exact str")
+        _check_source_identity(self.source_contract_identity)
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, PayoffGraph):

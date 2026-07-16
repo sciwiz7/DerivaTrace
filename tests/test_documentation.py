@@ -199,6 +199,42 @@ def test_readme_does_not_claim_pricing_exists() -> None:
     assert not offending, f"Pricing claims in README: {offending}"
 
 
+def test_readme_stage_1b_r2_byte_semantics_accurate() -> None:
+    # Finding 1: the Stage 1B-R2 section must not describe document_bytes as
+    # "pretty-printed" (as a positive claim) or as "content-equal" to
+    # structural_bytes. Both are compact canonical JSON; document_bytes
+    # additionally carries provenance and is therefore distinct from
+    # structural_bytes. The documentation-guard blockquote intentionally quotes
+    # the forbidden phrasing, so it is stripped before the negative checks.
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    sections = _sections(readme)
+    r2_body = "\n".join(v for k, v in sections.items() if "Stage 1B-R2" in k)
+    assert r2_body, "README has no Stage 1B-R2 section"
+    prose = "\n".join(
+        line for line in r2_body.splitlines() if not line.lstrip().startswith(">")
+    )
+    # The false positive claim "content-equal `document_bytes`" must not appear
+    # anywhere in the section prose.
+    assert "content-equal" not in prose, (
+        "Stage 1B-R2 section must not claim document_bytes is 'content-equal' "
+        "to structural_bytes"
+    )
+    # "pretty-printed" may only appear as an explicit negation (e.g. "Neither
+    # representation is pretty-printed"); a positive assertion of it is forbidden.
+    for line in prose.splitlines():
+        lowered = line.lower()
+        idx = lowered.find("pretty-printed")
+        while idx != -1:
+            before = lowered[:idx]
+            assert ("neither representation" in before) or ("not " in before), (
+                f"Stage 1B-R2 section positively asserts 'pretty-printed': {line!r}"
+            )
+            idx = lowered.find("pretty-printed", idx + 1)
+    # Positive guard: the corrected wording must be present.
+    assert "structural_bytes" in r2_body
+    assert "document_bytes" in r2_body
+
+
 def test_docs_do_not_claim_pypi_availability() -> None:
     for markdown in markdown_files():
         text = markdown.read_text(encoding="utf-8")
@@ -1379,13 +1415,30 @@ def test_r2_coverage_section_no_stale_rules() -> None:
     r2_parts = "\n".join(
         v
         for k, v in sections.items()
-        if ("Planned R2 vectors" in k) or ("Coverage obligations" in k)
+        if ("Stage 1B-R2 runtime conformance vectors" in k)
+        or ("Coverage obligations" in k)
     )
+    # The obsolete "Planned R2 vectors" section must no longer exist.
+    assert not any("Planned R2 vectors" in k for k in sections), (
+        "obsolete 'Planned R2 vectors' section still present"
+    )
+    # Obsolete future-tense phrases from the pre-runtime draft must be gone
+    # everywhere in the document.
+    stale_phrases = [
+        "runtime-generated hashes deferred",
+        "will be finalized when compile_payoff_graph is implemented",
+        "When the R2 runtime lands",
+        "when the Stage 1B-R2 runtime is implemented",
+        "remaining planned R2 vectors",
+    ]
+    for phrase in stale_phrases:
+        assert phrase not in vec, f"stale R2 phrase still present: {phrase!r}"
     # payoff collisions must not map onto canonicalization.collision
     assert "canonicalization.collision" not in r2_parts, "stale payoff collision rule"
     # R2 coverage must not say "When Stage 1B is implemented"
     assert "When Stage 1B is implemented" not in r2_parts
     # R2 stability must not be "re-running canonicalization"
     assert "re-running canonicalization" not in r2_parts
-    # no `<hex>` placeholder identity values
+    # no `<hex>` placeholder identity values in the R2 vectors / coverage section
+    # (the Conventions section legitimately uses `<hex>` to describe the format)
     assert ":sha256:<hex>" not in r2_parts

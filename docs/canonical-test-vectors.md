@@ -1,10 +1,10 @@
-# Canonical test vectors (Stage 1B-R1)
+# Canonical test vectors (Stage 1B-R1 + Stage 1B-R2)
 
 - **Status:** Implemented. Values below are **regenerated from the byte-exact
-  Stage 1B-R1 canonical runtime** and are directly **constructible and valid
-  through the public Stage 1A API** (`validate_contract` succeeds on every
-  source contract).
-- **Stage:** 1B (R1 canonical runtime).
+  Stage 1B-R1 canonical runtime** and the **Stage 1B-R2 payoff-graph runtime**,
+  and are directly **constructible and valid through the public Stage 1A API**
+  (`validate_contract` succeeds on every source contract).
+- **Stage:** 1B (R1 canonical runtime + R2 payoff-graph runtime).
 - **Companion docs:** `canonicalization-spec.md`, `payoff-graph-spec.md`, `adr/0007-canonical-contract-identity-and-payoff-graph.md`.
 
 This document defines **normative** canonicalization and payoff-graph test
@@ -31,8 +31,9 @@ all-zero identity.
 > `payoff-graph-spec.md` §9. The script cross-checks every hash preimage
 > independently; no placeholder or deferred hash is used. The CV-011 source
 > contract is the same canonical contract already verified by R1 (its canonical
-> contract identity must agree with R1), so the vector is fully pinned even though
-> the R2 runtime does not yet exist.
+> contract identity must agree with R1), and its payoff-graph identity is
+> reproduced byte-for-byte by the Stage 1B-R2 runtime in
+> `tests/payoffgraph/test_compiler.py`.
 
 ## 1. Conventions
 
@@ -64,7 +65,7 @@ all-zero identity.
   `Observable(ObservableId(field="level", identifier="SCALARA"|"SCALARB",
   namespace="macro"), ObservationTime=T0, Unit=scalar())` and are used wherever a
   dimensionless observable is required (for example the `PGDivide` scalar-division
-  planned vector).
+  vector).
 
 ## 2. Normative vectors
 
@@ -212,49 +213,58 @@ all-zero identity.
 - **Payoff-graph identity if provenance were included (must differ, cross-check):** `payoffgraph:sha256:e256cbbf291ba3135213c2eea700b46e0658ddcff853f187cd654cbeb474e5b0`
 - **Expected structural equivalence:** the compiled graph is deterministic and model-independent; recompiling the same contract yields the same graph identity. Provenance is excluded from the identity preimage, so changing the `compiler` tag or `source_contract_identity` would not change the graph identity (it only changes `document_bytes`).
 
-### Planned R2 vectors (source contracts and expected relationships specified; runtime-generated hashes deferred)
+### Stage 1B-R2 runtime conformance vectors
 
-These vectors are **planned** for the Stage 1B-R2 runtime. Their exact
-runtime-generated node ids, structural bytes, document bytes, and graph
-identities will be finalized when `compile_payoff_graph` is implemented. To
-avoid fake hashes, no `<hex>` placeholder is given here for the R2-only vectors;
-instead each entry specifies its **source contract** (constructible through the
-Stage 1A API and already canonicalizable by R1) and its **expected
-equality/distinctness relationships** under the closed mapping of
-`payoff-graph-spec.md` (§3–§4). CV-011 above already pins one fully-computed R2
-vector. All sources below use `currency=USD`, `settlement_time=T0`, and the
-observables defined in §1.
+These vectors are **executed by the Stage 1B-R2 payoff-graph runtime**
+(`derivatrace.payoffgraph.compile_payoff_graph`) and are directly **constructible
+and valid through the public Stage 1A API** (`validate_contract` succeeds on every
+source contract). Every `expected_payoff_graph_identity` below is a **real,
+computed** SHA-256 value, cross-checked for the properties the spec requires
+(reorder invariance, flattening, duplicate preservation, distinctness under
+author-order change, content-addressed sharing, timestamp precision, and a
+deterministic compilation). No vector contains a placeholder, `TBD`,
+`example-hash`, or all-zero identity. All sources below use `currency=USD`,
+`settlement_time=T0`, and the observables defined in §1.
 
 - **PGConstant under PGPayment** — source
   `Payment(Number(ExactNumber("100"), Unit.money(USD)), USD, T0)`. Expect a
   `PGConstant` (no `settlement_time`) referenced by `PGPayment.amount`; graph
   distinct from any `PGObservable`-backed payment.
+  **Payoff-graph identity:** `payoffgraph:sha256:858624784eed60272f1c73fb5b52d2547eec326dc2bd2862a3db3a42ecc07922`.
 - **PGAdd commutation** — sources
   `Payment(Add((obs_A, obs_B)), USD, T0)` versus
   `Payment(Add((obs_B, obs_A)), USD, T0)`. Expect identical `PGAdd` operand array
-  (sorted by id) and identical graph identity (commutative multiset).
+  (sorted by id) and identical graph identity (commutative multiset). The identity
+  equals CV-011.
+  **Payoff-graph identity (both):** `payoffgraph:sha256:59fbb00dbb585755a799cd7e387e4ee51fd9b77ed3cc032758a825f2f8836e1a`.
 - **PGSubtract order sensitivity** — sources
   `Payment(Subtract(obs_A, obs_B), USD, T0)` versus
   `Payment(Subtract(obs_B, obs_A), USD, T0)`. Expect distinct `PGSubtract`
   (`minuend`/`subtrahend` swapped) and **distinct** graph identities; **not**
   lowered to `PGAdd`+`PGNegate`.
+  **Payoff-graph identities:** `payoffgraph:sha256:55ada2494e58231140c15e261b80ff294db26f88bb97e454576db82fe6d8c10a` (A−B) vs `payoffgraph:sha256:e0c7bba00c37d8305ee99a0ef0c5fa041ff3ab2164298a0e8584bcfbec1713f5` (B−A).
 - **Nested PGAdd flattening** — compare
   `Payment(Add((obs_A, Add((obs_B, obs_X)))), USD, T0)` against
   `Payment(Add((obs_A, obs_B, obs_X)), USD, T0)`. Both sources canonicalize to the
   **identical** R1 canonical contract (associative flattening), so they compile to
   the **identical** payoff graph with exactly one reachable `PGAdd` and no inner
   `PGAdd`. Do not treat the nested-author form as a distinct graph.
+  **Payoff-graph identity (both):** `payoffgraph:sha256:7e7690a487af6a85d03f0ffe3a310fb0747936f5b0ae4e6e61bd5b5443eafa69`.
 - **Binary PGMultiply commutation without associativity** — use a dimensionless
   factor `Number(ExactNumber("2"), Unit.scalar())`. Within one grouping compare
   `Payment(Multiply(obs_A, Number(ExactNumber("2"), Unit.scalar())), USD, T0)`
   versus `Payment(Multiply(Number(ExactNumber("2"), Unit.scalar()), obs_A), USD,
   T0)`: expect identical binary `PGMultiply` (left/right reordered by id) and
-  identical graph identity. Separately compare that grouping against a different
-  valid binary grouping
+  identical graph identity.
+  **Payoff-graph identity (commuted pair):** `payoffgraph:sha256:189ad22220104a4f8f80f0e57d791365222dd435f395232857d2d09db605dae5`.
+  Separately compare that grouping against a different valid binary grouping
   `Payment(Multiply(obs_A, Multiply(Number(ExactNumber("2"), Unit.scalar()),
-  Number(ExactNumber("3"), Unit.scalar()))), USD, T0)`: the two distinct groupings
+  Number(ExactNumber("3"), Unit.scalar()))), USD, T0)` and its left-associated form
+  `Payment(Multiply(Multiply(obs_A, Number(ExactNumber("2"), Unit.scalar())),
+  Number(ExactNumber("3"), Unit.scalar())), USD, T0)`: the two distinct groupings
   remain **distinct** graph identities; `Multiply(Multiply(a,b),c)` must **not**
   flatten into a ternary node.
+  **Payoff-graph identities:** `payoffgraph:sha256:7f2f3af0b53308827d1429f650c7997c043e39d3558f81005b5a71525bb71657` (right-associated) vs `payoffgraph:sha256:73c5bf6236ebf88f9cce9318d9f1624cb18beb9f72e2e90e53fe9fe1f4bb7563` (left-associated).
 - **PGDivide order sensitivity** — use two distinct scalar observables
   `scalar_A` and `scalar_B`. Compare
   `Scale(Divide(scalar_A, scalar_B), Payment(obs_A, USD, T0))` versus
@@ -263,16 +273,31 @@ observables defined in §1.
   distinct `PGDivide` (`numerator`/`denominator` swapped) and distinct graph
   identities; **no** reciprocal rewrite. (A money observable must **not** divide a
   money observable.)
+  **Payoff-graph identities:** `payoffgraph:sha256:3859b48afb878ec09a881b8de7c13b19dcdfcb320ad39a2707119566038defac` (A÷B) vs `payoffgraph:sha256:b603b81912c92224c22fb66a9a101bdc9aeedce4370f9cb395d21f0ef011242a` (B÷A).
 - **PGCombine author-order sensitivity** — sources
   `Both((Payment(obs_A, USD, T0), Payment(obs_B, USD, T0)))` versus
   `Both((Payment(obs_B, USD, T0), Payment(obs_A, USD, T0)))`. Expect distinct
   `PGCombine` operand order and distinct graph identities (author order
   preserved, not commutative).
-- **Duplicate operand preservation** — compare
+  **Payoff-graph identities:** `payoffgraph:sha256:ea878884b83fea0dafbd1703e863cf356d59eaeaff410d50836a2d69d4535314` (A,B) vs `payoffgraph:sha256:ee2dfa4a1b99cc3f11be777668c120b593ec2464247e0320e7934270276fea05` (B,A).
+- **Duplicate operand preservation (Add)** — compare
   `Payment(Add((obs_A, obs_A)), USD, T0)` against `Payment(obs_A, USD, T0)`. Expect
   `PGAdd.operands == [id_A, id_A]`; the duplicated graph is **distinct** from the
-  single-observable payment (which has no `Add` wrapper). Do not refer to an
-  invalid `Add(obs_A)` single-operand form.
+  single-observable payment (which has no `Add` wrapper).
+  **Payoff-graph identities:** `payoffgraph:sha256:ac7653325470e272d3c32d96c027e3d4e93840f529b8be7e73b9376738b48742` (duplicate Add) vs `payoffgraph:sha256:07a5cf79d4942881810c8fce6158c27a623b1cf420819b7d1215f7c47c5cbaa2` (single observable).
+- **Duplicate Multiply operand (shared scalar factor)** — source
+  `Scale(Multiply(shared, shared), Payment(obs_A, USD, T0))` where
+  `shared = Observable(ObservableId(field="level", identifier="SCALARA",
+  namespace="macro"), ObservationTime=T0, Unit=scalar())`. Both `Multiply` operands
+  reference the **same** scalar node, so `PGMultiply.left == PGMultiply.right` and
+  the duplicate reference appears twice in the operand graph; the compiled graph is
+  **distinct** from any non-duplicated Multiply grouping above.
+  **Payoff-graph identity:** `payoffgraph:sha256:0025c2a2ed75cf9a442298ae2e78bfd6df0c8b5e19aacc47a53b2ee268c877db`.
+- **Duplicate operand preservation (PGCombine)** — source
+  `Both((shared, shared))` where `shared = Payment(obs_A, USD, T0)`. Expect
+  `PGCombine.operands == [id_A, id_A]`; the duplicated graph is **distinct** from the
+  single-observable payment.
+  **Payoff-graph identity:** `payoffgraph:sha256:48ad96391a4202b61b5bf13a16e1cf2690266b0ee9566f655505fe241297df3d`.
 - **Shared versus copied subgraphs** — use a **Contract** subtree (not an `Add`
   expression) as `Scale.contract`. Shared version: construct one
   `shared = Payment(Add((obs_A, obs_B)), USD, T0)` and reference that same object
@@ -283,7 +308,9 @@ observables defined in §1.
   `pay2 = Payment(Add((obs_A, obs_B)), USD, T0)`, then
   `Both((pay1, Scale(Number(ExactNumber("2"), Unit.scalar()), pay2)))`. Both
   complete contracts validate and produce identical canonical/payoff identities
-  (content-addressed sharing, independent of Python object identity).
+  (content-addressed sharing, independent of Python object identity). The resulting
+  graph is byte-identical to the duplicate `PGCombine` vector above.
+  **Payoff-graph identity (both):** `payoffgraph:sha256:48ad96391a4202b61b5bf13a16e1cf2690266b0ee9566f655505fe241297df3d`.
 - **PGAllOf / PGAnyOf flattening** — provide separate nested-versus-flat pairs
   using non-literal `Comparison` conditions. For `AllOf` compare
   `Payment(ConditionalValue(AllOf((Comparison(obs_A, obs_B, GREATER_THAN),
@@ -293,21 +320,30 @@ observables defined in §1.
   Comparison(obs_B, obs_X, GREATER_THAN), Comparison(obs_A, obs_X,
   GREATER_THAN))), obs_A, obs_B), USD, T0)`. Both canonicalize to the identical R1
   contract (nested `AllOf` flattened) and compile to the identical payoff graph
-  with a single `PGAllOf` and no inner `PGAllOf`. The `AnyOf` pair uses the same
-  structure with `AnyOf` and expects the same identical-graph relationship.
+  with a single `PGAllOf` and no inner `PGAllOf`.
+  **Payoff-graph identity (AllOf both):** `payoffgraph:sha256:d2ecc0ce66d3bf79f741e4e5fd1593f3049ed75fa8eb5ea4ed444ce1c80c8e26`.
+  The `AnyOf` pair uses the same structure with `AnyOf` and expects the same
+  identical-graph relationship.
+  **Payoff-graph identity (AnyOf both):** `payoffgraph:sha256:bfb09528718bbf825d4f34229d1591875e6d2ba3e17ddb7d7abba0916eeb6aba`.
 - **PGConditionalValue** — source
   `Payment(ConditionalValue(Comparison(obs_A, obs_B, GREATER_THAN), obs_A,
   obs_B), USD, T0)`. Expect `PGConditionalValue` with `condition` (a `PGComparison`)
   /`true_payoff`/`false_payoff` author order preserved.
+  **Payoff-graph identity:** `payoffgraph:sha256:719e567c5b7023469b5035156d1af63c0f8c70b6e4e911dc9849df01af786666`.
 - **PGConditionalContract** — source
   `ConditionalContract(Comparison(obs_A, obs_B, GREATER_THAN),
   Payment(obs_A, USD, T0), Payment(obs_B, USD, T0))`. Expect
   `PGConditionalContract` with author order preserved; graph distinct from the
   swapped-branch contract.
+  **Payoff-graph identity:** `payoffgraph:sha256:155177c729b3dd1673fc34d1521985bf187b2395b2300eab7cbd96c63075fa4d`.
 - **Zero to empty PGCombine** — `Both((Zero(), Zero()))` (or a `Zero()` alone
-  compiled to a payoff root). Expect each `Zero` to compile to a `PGCombine` with
-  an empty `operands` array; node ids equal across distinct `Zero` sources
+  compiled to a payoff root). Each `Zero` compiles to a `PGCombine` with an empty
+  `operands` array; node ids equal across distinct `Zero` sources
   (content-addressed).
+  **Payoff-graph identity:** `payoffgraph:sha256:6cf223e52d6f1f016dd920568e48dcf9fd3576d374b1a073f46b768f6cdc9f67`.
+- **Deterministic recompilation** — compiling the same source contract (e.g. CV-011)
+  twice yields byte-identical `structural_bytes` and the same graph identity
+  (`payoffgraph:sha256:59fbb00dbb585755a799cd7e387e4ee51fd9b77ed3cc032758a825f2f8836e1a`). Confirmed by `tests/payoffgraph/test_compiler.py`.
 - **Provenance exclusion from identity** — this is an **internal serialization /
   identity test seam**, not a public API feature. The public `compile_payoff_graph`
   does **not** accept caller-supplied `compiler` or `source` provenance overrides.
@@ -315,24 +351,26 @@ observables defined in §1.
   constructing the full document, observes that `document_bytes` changes, and
   confirms the graph identity (which hashes `structural_bytes` only) remains
   unchanged. CV-011 demonstrates this explicitly via its two identity values
-  above.
-- **Timestamp microsecond precision** — source
+  above. Confirmed by `tests/payoffgraph/test_compiler.py`.
+- **Timestamp microsecond precision** — sources
+  `Payment(Number(ExactNumber("1"), Unit.money(USD)), USD,
+  SettlementTime=2030-01-01T00:00:00.000000Z)` versus
   `Payment(Number(ExactNumber("1"), Unit.money(USD)), USD,
   SettlementTime=2030-01-01T00:00:00.500000Z)`. Expect `PGPayment.settlement_time`
   to carry full microsecond precision and participate in the graph identity;
   distinct from the `...000000Z` variant.
+  **Payoff-graph identities:** `payoffgraph:sha256:d4e7c6f6d6e90b87c13155a71c54be3c872c04165eac9a7732fb345954e88719` (…000000Z) vs `payoffgraph:sha256:698aa543f12b6ce911885c73f5cef35a1723d3be492d8b00c86a6d1865209e30` (…500000Z).
 - **Collision seam** — a constructed case where two distinct payoff payloads hash
   to the same payoff-node id must raise `payoff_graph.collision` (never silently
   merged); mirrors the R1 collision seam but uses the dedicated payoff-graph
-  code.
+  code. Exercised by `tests/payoffgraph/test_compiler.py`.
 
-When the R2 runtime lands, each entry above is promoted to a normative vector
-with concrete hashes, and the suite must additionally guarantee the coverage
-obligations below.
+These vectors are promoted to normative status: the suite records the concrete
+graph identities above and guarantees the coverage obligations below.
 
-## 3. Coverage obligations (when the Stage 1B-R2 runtime is implemented)
+## 3. Coverage obligations
 
-When the Stage 1B-R2 runtime is implemented, the suite must additionally guarantee:
+The suite must guarantee:
 
 - **Injectivity:** every pair of vectors with distinct `expected structural equivalence` yields distinct identities (no canonicalization or payoff-graph collision).
 - **Stability:** re-running compilation on the same input yields identical bytes and identity.
@@ -345,5 +383,5 @@ When the Stage 1B-R2 runtime is implemented, the suite must additionally guarant
 > canonical runtime (`derivatrace.canonical`) in `tests/canonical/test_vectors.py`.
 > CV-011 is a normative Stage 1B-R2 payoff-graph vector, executed by the
 > Stage 1B-R2 runtime (`derivatrace.payoffgraph`) in
-> `tests/payoffgraph/test_compiler.py`. The remaining planned R2 vectors specify
-> their source contracts and expected equality/distinctness relationships.
+> `tests/payoffgraph/test_compiler.py`. The Stage 1B-R2 runtime vectors (§2) are
+> executed by `derivatrace.payoffgraph` in `tests/payoffgraph/test_compiler.py`.
