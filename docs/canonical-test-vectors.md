@@ -309,8 +309,10 @@ deterministic compilation). No vector contains a placeholder, `TBD`,
   `Both((pay1, Scale(Number(ExactNumber("2"), Unit.scalar()), pay2)))`. Both
   complete contracts validate and produce identical canonical/payoff identities
   (content-addressed sharing, independent of Python object identity). The resulting
-  graph is byte-identical to the duplicate `PGCombine` vector above.
-  **Payoff-graph identity (both):** `payoffgraph:sha256:48ad96391a4202b61b5bf13a16e1cf2690266b0ee9566f655505fe241297df3d`.
+  graph is distinct from the duplicate PGCombine vector
+  (`48ad96391a4202b61b5bf13a16e1cf2690266b0ee9566f655505fe241297df3d`) because it
+  carries a `Scale` over the shared payment in addition to the shared payment itself.
+  **Payoff-graph identity (both):** `payoffgraph:sha256:b5c987269d9b16f5605c4d49621aef2d93e4a65c0b083718e5e3d27e027cb04c`.
 - **PGAllOf / PGAnyOf flattening** — provide separate nested-versus-flat pairs
   using non-literal `Comparison` conditions. For `AllOf` compare
   `Payment(ConditionalValue(AllOf((Comparison(obs_A, obs_B, GREATER_THAN),

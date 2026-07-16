@@ -476,9 +476,10 @@ def test_stage_1b_status_distinctions() -> None:
 
 def test_no_canonicalization_or_hashing_implementation_claimed() -> None:
     # The Stage 1B baseline / R2 spec must not claim a runtime implementation
-    # exists. The proposed (future) `compile_payoff_graph` signature is allowed
-    # to be documented as a specification, so it is deliberately not listed here;
-    # runtime presence is instead guarded by test_no_payoff_graph_runtime_module.
+    # exists for the canonical contract identity (R1). The payoff-graph runtime
+    # (R2) is implemented and exercised by test_payoff_graph_runtime_module_present;
+    # its specification may document `compile_payoff_graph` without an
+    # implementation claim for the R1 canonicalization internals.
     impl_claims = [
         "canonicalize(",
         "def canonicalize",
@@ -724,9 +725,9 @@ def test_no_placeholder_identities_in_normative_vectors() -> None:
 
 
 def test_no_stage_1b_runtime_implementation_in_docs() -> None:
-    # The proposed (future) payoff-graph API may be documented as a specification,
-    # so `compile_payoff_graph` / `payoff_graph(` are not flagged here; runtime
-    # presence is guarded by test_no_payoff_graph_runtime_module.
+    # The R1 canonicalization internals (canonicalize / sha256 / serialize) must
+    # not be claimed as implemented in documentation prose; the implemented
+    # payoff-graph runtime is guarded by test_payoff_graph_runtime_module_present.
     impl_claims = [
         "canonicalize(",
         "def canonicalize",
@@ -1252,7 +1253,7 @@ def _shared() -> Both:
     return Both((shared, Scale(_num("2", scalar=True), shared)))
 
 
-def test_planned_vector_sources_construct_and_validate() -> None:
+def test_r2_vector_sources_construct_and_validate() -> None:
     sources: list[Callable[[], Contract]] = [
         lambda: _pay(_num("100")),
         lambda: _pay(Add((_obs("AAA"), _obs("BBB")))),
@@ -1394,7 +1395,7 @@ def test_planned_vector_sources_construct_and_validate() -> None:
         assert metrics.node_count > 0
 
 
-def test_planned_vector_invalid_sources_rejected() -> None:
+def test_r2_vector_invalid_sources_rejected() -> None:
     # money-denominated Divide denominator must be rejected
     with pytest.raises(ContractError):
         validate_contract(Divide(_obs("AAA"), _obs("BBB")))  # type: ignore[arg-type]
@@ -1442,3 +1443,40 @@ def test_r2_coverage_section_no_stale_rules() -> None:
     # no `<hex>` placeholder identity values in the R2 vectors / coverage section
     # (the Conventions section legitimately uses `<hex>` to describe the format)
     assert ":sha256:<hex>" not in r2_parts
+
+
+def test_r2_conformance_identities_match_executable_registry() -> None:
+    # The normative R2 conformance section must document exactly the identities
+    # recorded in the executable conformance registry: no documented identity is
+    # unused, and no runtime conformance vector is undocumented.
+    from conformance_registry import CONFORMANCE_VECTORS
+
+    vec = _VEC.read_text(encoding="utf-8")
+    sections = _sections(vec)
+    section_name = "Stage 1B-R2 runtime conformance vectors"
+    assert section_name in sections, "missing R2 conformance section"
+    body = sections[section_name]
+
+    documented: set[str] = set()
+    for m in re.finditer(r"payoffgraph:sha256:([0-9a-f]{64})", body):
+        documented.add("payoffgraph:sha256:" + m.group(1))
+    assert documented, "no conformance identities found in the R2 section"
+
+    registry: set[str] = {expected for expected, _ in CONFORMANCE_VECTORS.values()}
+    assert documented == registry, (
+        "R2 documented identities diverge from the executable registry: "
+        f"documented-only={documented - registry!r}, "
+        f"registry-only={registry - documented!r}"
+    )
+
+
+def test_r2_conformance_registry_executes() -> None:
+    # Every registry entry must compile through the public Stage 1A API to the
+    # exact documented identity (reorder / flatten / copy invariance included).
+    from conformance_registry import CONFORMANCE_VECTORS
+
+    from derivatrace.payoffgraph import compile_payoff_graph
+
+    for name, (expected, builders) in CONFORMANCE_VECTORS.items():
+        identities = {compile_payoff_graph(builder()).identity for builder in builders}
+        assert identities == {expected}, name

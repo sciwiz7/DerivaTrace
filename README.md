@@ -106,14 +106,6 @@ top of the Stage 0 foundation. You can:
 
 ## What exists today (Stage 1B-R2)
 
-> **Documentation guard:** The Stage 1B-R2 section must not contain the phrases
-> "pretty-printed" or "content-equal \`document_bytes\`". The `structural_bytes`
-> is compact canonical JSON containing only the structural projection;
-> `document_bytes` is compact canonical JSON containing the same structural
-> fields plus deterministic provenance; `document_bytes` is therefore distinct
-> from `structural_bytes`; neither representation is pretty-printed; graph
-> identity hashes `structural_bytes` only.
-
 Stage 1B-R2 delivers the canonical payoff-graph runtime on top of the Stage 1B-R1
 canonical contract identity. You can:
 

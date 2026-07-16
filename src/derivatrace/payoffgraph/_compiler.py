@@ -115,6 +115,69 @@ CONTRACT_CATEGORY: frozenset[str] = frozenset(
 )
 
 
+def _parse_payoff_unit(unit: object) -> tuple[str, ...]:
+    """Internal value-unit descriptor.
+
+    Returns ``("scalar",)`` for a dimensionless value or ``("money", currency)``
+    for a denominated value. This descriptor is used only for unit-consistency
+    checks during compilation; it is never serialized into the graph.
+    """
+    if not isinstance(unit, dict):
+        raise PayoffGraphCompilationError("internal canonical unit is malformed")
+    kind = unit.get("kind")
+    if kind == "scalar":
+        return ("scalar",)
+    if kind == "money":
+        currency = unit.get("currency")
+        if not isinstance(currency, str):
+            raise PayoffGraphCompilationError("internal canonical unit is malformed")
+        return ("money", currency)
+    raise PayoffGraphCompilationError("internal canonical unit is malformed")
+
+
+def _assert_same_payoff_units(units: list[tuple[str, ...]], ctx: str) -> None:
+    ref = units[0]
+    for other in units[1:]:
+        if other != ref:
+            raise PayoffGraphInputError(
+                "a payoff node produces a unit-inconsistent graph"
+            )
+
+
+def _multiply_payoff_units(
+    left: tuple[str, ...], right: tuple[str, ...]
+) -> tuple[str, ...]:
+    lk, rk = left[0], right[0]
+    if lk == "scalar" and rk == "scalar":
+        return ("scalar",)
+    if lk == "scalar":
+        return right
+    if rk == "scalar":
+        return left
+    raise PayoffGraphInputError("money cannot be multiplied by money")
+
+
+def _divide_payoff_units(num: tuple[str, ...], den: tuple[str, ...]) -> tuple[str, ...]:
+    if den[0] != "scalar":
+        raise PayoffGraphInputError("a payoff divisor must be a scalar")
+    return num
+
+
+def _require_canonical_payload(
+    nodes: dict[str, Any], cid: str
+) -> tuple[str, dict[str, Any]]:
+    node = nodes.get(cid)
+    if not isinstance(node, dict):
+        raise PayoffGraphCompilationError("internal canonical node record is malformed")
+    payload = node.get("payload")
+    if not isinstance(payload, dict):
+        raise PayoffGraphCompilationError("internal canonical node payload is missing")
+    ctype = payload.get("type")
+    if not isinstance(ctype, str):
+        raise PayoffGraphCompilationError("internal canonical node type is missing")
+    return ctype, payload
+
+
 def _traverse_payoff_graph(
     root_pg_id: str,
     pg_type_by_pgid: dict[str, str],
@@ -246,6 +309,7 @@ def compile_payoff_graph(
     pg_bytes_by_canon: dict[str, bytes] = {}
     pg_payload_by_pgid: dict[str, dict[str, Any]] = {}
     pg_type_by_pgid: dict[str, str] = {}
+    pg_unit_by_canon: dict[str, tuple[str, ...]] = {}
     pg_id_seen: dict[str, bytes] = {}
 
     def require_category(pgid: str, category: frozenset[str], ctx: str) -> None:
@@ -257,7 +321,7 @@ def compile_payoff_graph(
 
     def map_collection(
         pg_type: str, canon_operands: list[str], category: frozenset[str]
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], Any]:
         items: list[tuple[str, bytes]] = []
         for child in canon_operands:
             pid = pg_id_by_canon[child]
@@ -266,29 +330,41 @@ def compile_payoff_graph(
         ids = [pair[0] for pair in items]
         for pid in ids:
             require_category(pid, category, pg_type)
-        return {"type": pg_type, "operands": ids}
+        if category is VALUE_CATEGORY:
+            units = [pg_unit_by_canon[child] for child in canon_operands]
+            _assert_same_payoff_units(units, pg_type)
+            unit: Any = units[0]
+        else:
+            unit = None
+        return {"type": pg_type, "operands": ids}, unit
 
-    def map_node(ctype: str, cpayload: dict[str, Any]) -> dict[str, Any]:
+    def map_node(ctype: str, cpayload: dict[str, Any]) -> tuple[dict[str, Any], Any]:
         if ctype == "Number":
-            return {
-                "type": "PGConstant",
-                "amount": cpayload["value"],
-                "unit": cpayload["unit"],
-            }
+            return (
+                {
+                    "type": "PGConstant",
+                    "amount": cpayload["value"],
+                    "unit": cpayload["unit"],
+                },
+                _parse_payoff_unit(cpayload["unit"]),
+            )
         if ctype == "Observable":
-            return {
-                "type": "PGObservable",
-                "observable_id": cpayload["observable_id"],
-                "observation_time": cpayload["observation_time"],
-                "unit": cpayload["unit"],
-            }
+            return (
+                {
+                    "type": "PGObservable",
+                    "observable_id": cpayload["observable_id"],
+                    "observation_time": cpayload["observation_time"],
+                    "unit": cpayload["unit"],
+                },
+                _parse_payoff_unit(cpayload["unit"]),
+            )
         if ctype == "BooleanConstant":
-            return {
-                "type": "PGBooleanConstant",
-                "value": bool(cpayload["value"]),
-            }
+            return (
+                {"type": "PGBooleanConstant", "value": bool(cpayload["value"])},
+                None,
+            )
         if ctype == "Zero":
-            return {"type": "PGCombine", "operands": []}
+            return ({"type": "PGCombine", "operands": []}, None)
         if ctype == "Add":
             return map_collection("PGAdd", cpayload["operands"], VALUE_CATEGORY)
         if ctype == "Maximum":
@@ -303,58 +379,108 @@ def compile_payoff_graph(
             ids = [pg_id_by_canon[child] for child in cpayload["operands"]]
             for pid in ids:
                 require_category(pid, CONTRACT_CATEGORY, "PGCombine")
-            return {"type": "PGCombine", "operands": ids}
+            return ({"type": "PGCombine", "operands": ids}, None)
         if ctype == "Subtract":
-            return {
-                "type": "PGSubtract",
-                "minuend": pg_id_by_canon[cpayload["minuend"]],
-                "subtrahend": pg_id_by_canon[cpayload["subtrahend"]],
-            }
+            minu = pg_id_by_canon[cpayload["minuend"]]
+            sub = pg_id_by_canon[cpayload["subtrahend"]]
+            require_category(minu, VALUE_CATEGORY, "PGSubtract.minuend")
+            require_category(sub, VALUE_CATEGORY, "PGSubtract.subtrahend")
+            minu_unit = pg_unit_by_canon[cpayload["minuend"]]
+            sub_unit = pg_unit_by_canon[cpayload["subtrahend"]]
+            if minu_unit != sub_unit:
+                raise PayoffGraphInputError(
+                    "a payoff subtraction requires matching units"
+                )
+            return (
+                {"type": "PGSubtract", "minuend": minu, "subtrahend": sub},
+                minu_unit,
+            )
         if ctype == "Multiply":
             left = pg_id_by_canon[cpayload["left"]]
             right = pg_id_by_canon[cpayload["right"]]
+            require_category(left, VALUE_CATEGORY, "PGMultiply.left")
+            require_category(right, VALUE_CATEGORY, "PGMultiply.right")
             left_bytes = pg_bytes_by_canon[cpayload["left"]]
             right_bytes = pg_bytes_by_canon[cpayload["right"]]
             lid, rid = _canonical_multiply_order(left, left_bytes, right, right_bytes)
-            return {"type": "PGMultiply", "left": lid, "right": rid}
+            unit = _multiply_payoff_units(
+                pg_unit_by_canon[cpayload["left"]],
+                pg_unit_by_canon[cpayload["right"]],
+            )
+            return ({"type": "PGMultiply", "left": lid, "right": rid}, unit)
         if ctype == "Divide":
-            return {
-                "type": "PGDivide",
-                "numerator": pg_id_by_canon[cpayload["numerator"]],
-                "denominator": pg_id_by_canon[cpayload["denominator"]],
-            }
+            num = pg_id_by_canon[cpayload["numerator"]]
+            den = pg_id_by_canon[cpayload["denominator"]]
+            require_category(num, VALUE_CATEGORY, "PGDivide.numerator")
+            require_category(den, VALUE_CATEGORY, "PGDivide.denominator")
+            unit = _divide_payoff_units(
+                pg_unit_by_canon[cpayload["numerator"]],
+                pg_unit_by_canon[cpayload["denominator"]],
+            )
+            return (
+                {
+                    "type": "PGDivide",
+                    "numerator": num,
+                    "denominator": den,
+                },
+                unit,
+            )
         if ctype == "Negate":
-            return {
-                "type": "PGNegate",
-                "operand": pg_id_by_canon[cpayload["operand"]],
-            }
+            operand = pg_id_by_canon[cpayload["operand"]]
+            require_category(operand, VALUE_CATEGORY, "PGNegate.operand")
+            return (
+                {"type": "PGNegate", "operand": operand},
+                pg_unit_by_canon[cpayload["operand"]],
+            )
         if ctype == "Comparison":
-            return {
-                "type": "PGComparison",
-                "left": pg_id_by_canon[cpayload["left"]],
-                "right": pg_id_by_canon[cpayload["right"]],
-                "operator": cpayload["operator"],
-            }
+            left = pg_id_by_canon[cpayload["left"]]
+            right = pg_id_by_canon[cpayload["right"]]
+            require_category(left, VALUE_CATEGORY, "PGComparison.left")
+            require_category(right, VALUE_CATEGORY, "PGComparison.right")
+            return (
+                {
+                    "type": "PGComparison",
+                    "left": left,
+                    "right": right,
+                    "operator": cpayload["operator"],
+                },
+                None,
+            )
         if ctype == "Not":
-            return {
-                "type": "PGNot",
-                "operand": pg_id_by_canon[cpayload["operand"]],
-            }
+            operand = pg_id_by_canon[cpayload["operand"]]
+            require_category(operand, BOOLEAN_CATEGORY, "PGNot.operand")
+            return ({"type": "PGNot", "operand": operand}, None)
         if ctype == "Payment":
             amount = pg_id_by_canon[cpayload["amount"]]
             require_category(amount, VALUE_CATEGORY, "PGPayment.amount")
-            return {
-                "type": "PGPayment",
-                "amount": amount,
-                "currency": cpayload["currency"],
-                "settlement_time": cpayload["settlement_time"],
-            }
+            amount_unit = pg_unit_by_canon[cpayload["amount"]]
+            if amount_unit[0] != "money":
+                raise PayoffGraphInputError(
+                    "a payoff payment amount must be a money value"
+                )
+            currency = cpayload["currency"]
+            if not isinstance(currency, str) or amount_unit[1] != currency:
+                raise PayoffGraphInputError(
+                    "a payoff payment currency must match its amount"
+                )
+            return (
+                {
+                    "type": "PGPayment",
+                    "amount": amount,
+                    "currency": currency,
+                    "settlement_time": cpayload["settlement_time"],
+                },
+                None,
+            )
         if ctype == "Scale":
             factor = pg_id_by_canon[cpayload["factor"]]
             require_category(factor, VALUE_CATEGORY, "PGScale.factor")
+            factor_unit = pg_unit_by_canon[cpayload["factor"]]
+            if factor_unit[0] != "scalar":
+                raise PayoffGraphInputError("a payoff scale factor must be a scalar")
             payoff = pg_id_by_canon[cpayload["contract"]]
             require_category(payoff, CONTRACT_CATEGORY, "PGScale.payoff")
-            return {"type": "PGScale", "factor": factor, "payoff": payoff}
+            return ({"type": "PGScale", "factor": factor, "payoff": payoff}, None)
         if ctype == "ConditionalValue":
             condition = pg_id_by_canon[cpayload["condition"]]
             require_category(
@@ -368,12 +494,21 @@ def compile_payoff_graph(
             require_category(
                 false_payoff, VALUE_CATEGORY, "PGConditionalValue.false_payoff"
             )
-            return {
-                "type": "PGConditionalValue",
-                "condition": condition,
-                "true_payoff": true_payoff,
-                "false_payoff": false_payoff,
-            }
+            true_unit = pg_unit_by_canon[cpayload["true_value"]]
+            false_unit = pg_unit_by_canon[cpayload["false_value"]]
+            if true_unit != false_unit:
+                raise PayoffGraphInputError(
+                    "a payoff conditional value branches must share a unit"
+                )
+            return (
+                {
+                    "type": "PGConditionalValue",
+                    "condition": condition,
+                    "true_payoff": true_payoff,
+                    "false_payoff": false_payoff,
+                },
+                true_unit,
+            )
         if ctype == "ConditionalContract":
             condition = pg_id_by_canon[cpayload["condition"]]
             require_category(
@@ -387,12 +522,15 @@ def compile_payoff_graph(
             require_category(
                 false_payoff, CONTRACT_CATEGORY, "PGConditionalContract.false_payoff"
             )
-            return {
-                "type": "PGConditionalContract",
-                "condition": condition,
-                "true_payoff": true_payoff,
-                "false_payoff": false_payoff,
-            }
+            return (
+                {
+                    "type": "PGConditionalContract",
+                    "condition": condition,
+                    "true_payoff": true_payoff,
+                    "false_payoff": false_payoff,
+                },
+                None,
+            )
         raise PayoffGraphCompilationError("unknown canonical node type encountered")
 
     # Iterative, recursion-free post-order compilation from the canonical root.
@@ -402,9 +540,8 @@ def compile_payoff_graph(
         if cid in pg_id_by_canon:
             continue
         if leaving:
-            cpayload = nodes[cid]["payload"]
-            ctype = cpayload["type"]
-            payload = map_node(ctype, cpayload)
+            ctype, cpayload = _require_canonical_payload(nodes, cid)
+            payload, unit = map_node(ctype, cpayload)
             payload_bytes = canonical_json(payload)
             nid = payoff_node_identity(payload_bytes, version)
             seen = pg_id_seen.get(nid)
@@ -417,13 +554,13 @@ def compile_payoff_graph(
             pg_bytes_by_canon[cid] = payload_bytes
             pg_payload_by_pgid[nid] = payload
             pg_type_by_pgid[nid] = payload["type"]
+            pg_unit_by_canon[cid] = unit
             continue
         stack.append((cid, True))
-        cpayload = nodes[cid]["payload"]
-        ctype = cpayload["type"]
+        ctype, cpayload = _require_canonical_payload(nodes, cid)
         if ctype in _CANON_SINGLE_REF:
             for field in _CANON_SINGLE_REF[ctype]:
-                child = cpayload[field]
+                child = cpayload.get(field)
                 if not isinstance(child, str):
                     raise PayoffGraphCompilationError(
                         "internal canonical reference is malformed"
@@ -431,7 +568,7 @@ def compile_payoff_graph(
                 stack.append((child, False))
         elif ctype in _CANON_LIST_REF:
             for field in _CANON_LIST_REF[ctype]:
-                refs = cpayload[field]
+                refs = cpayload.get(field)
                 if not isinstance(refs, list):
                     raise PayoffGraphCompilationError(
                         "internal canonical reference is malformed"

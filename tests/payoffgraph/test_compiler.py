@@ -1996,6 +1996,443 @@ class TestCompilerInternalPaths:
             compile_payoff_graph(_cv011_contract())
 
 
+# ---------------------------------------------------------------------------
+# Value-unit derivation (requirement 2)
+# ---------------------------------------------------------------------------
+
+
+def _compile_from_canonical(nodes: dict[str, Any], root: str) -> PayoffGraph:
+    from derivatrace.canonical._encoding import canonical_json
+
+    bad = SimpleNamespace(
+        canonical_bytes=canonical_json({"nodes": nodes, "root": root}),
+        identity="canonical:sha256:" + "a" * 64,
+    )
+    with patch(
+        "derivatrace.payoffgraph._compiler.canonicalize_contract",
+        return_value=bad,
+    ):
+        return compile_payoff_graph(_cv011_contract())
+
+
+def _canon_number(scalar: bool = False, currency: str = "USD") -> dict[str, Any]:
+    return {
+        "id": "n" * 64,
+        "payload": {
+            "type": "Number",
+            "value": "1",
+            "unit": (
+                {"kind": "scalar"}
+                if scalar
+                else {"kind": "money", "currency": currency}
+            ),
+        },
+    }
+
+
+def _canon_obs(currency: str = "USD", tag: str = "o") -> dict[str, Any]:
+    return {
+        "id": tag * 64,
+        "payload": {
+            "type": "Observable",
+            "observable_id": {
+                "field": "close",
+                "identifier": "AAA",
+                "namespace": "equity",
+            },
+            "observation_time": "2030-01-01T00:00:00.000000Z",
+            "unit": {"kind": "money", "currency": currency},
+        },
+    }
+
+
+def _canon_obs_scalar(tag: str = "a") -> dict[str, Any]:
+    return {
+        "id": tag * 64,
+        "payload": {
+            "type": "Observable",
+            "observable_id": {
+                "field": "level",
+                "identifier": "SCALARA",
+                "namespace": "macro",
+            },
+            "observation_time": "2030-01-01T00:00:00.000000Z",
+            "unit": {"kind": "scalar"},
+        },
+    }
+
+
+def _canon_payment(
+    amount: str, currency: str = "USD", tag: str = "p"
+) -> dict[str, Any]:
+    return {
+        "id": tag * 64,
+        "payload": {
+            "type": "Payment",
+            "amount": amount,
+            "currency": currency,
+            "settlement_time": "2030-01-01T00:00:00.000000Z",
+        },
+    }
+
+
+class TestValueUnitDerivationMalformed:
+    def test_scalar_payment_amount_rejected(self) -> None:
+        nodes = {
+            "n" * 64: _canon_number(scalar=True),
+            "p" * 64: _canon_payment("n" * 64),
+        }
+        with pytest.raises(PayoffGraphInputError):
+            _compile_from_canonical(nodes, "p" * 64)
+
+    def test_money_scale_factor_rejected(self) -> None:
+        nodes = {
+            "f" * 64: _canon_number(scalar=False),
+            "o" * 64: _canon_obs(),
+            "q" * 64: _canon_payment("o" * 64, tag="q"),
+            "r" * 64: {
+                "id": "r" * 64,
+                "payload": {"type": "Scale", "factor": "f" * 64, "contract": "q" * 64},
+            },
+        }
+        with pytest.raises(PayoffGraphInputError):
+            _compile_from_canonical(nodes, "r" * 64)
+
+    def test_mismatched_currency_payment_rejected(self) -> None:
+        nodes = {
+            "n" * 64: _canon_number(scalar=False, currency="EUR"),
+            "p" * 64: _canon_payment("n" * 64),
+        }
+        with pytest.raises(PayoffGraphInputError):
+            _compile_from_canonical(nodes, "p" * 64)
+
+    def test_mismatched_currency_conditional_rejected(self) -> None:
+        nodes = {
+            "c" * 64: {
+                "id": "c" * 64,
+                "payload": {
+                    "type": "Comparison",
+                    "left": "o" * 64,
+                    "right": "b" * 64,
+                    "operator": ">",
+                },
+            },
+            "o" * 64: _canon_obs("USD", "o"),
+            "b" * 64: _canon_obs("USD", "b"),
+            "x" * 64: _canon_obs("EUR", "x"),
+            "p" * 64: {
+                "id": "p" * 64,
+                "payload": {
+                    "type": "ConditionalValue",
+                    "condition": "c" * 64,
+                    "true_value": "o" * 64,
+                    "false_value": "x" * 64,
+                },
+            },
+        }
+        with pytest.raises(PayoffGraphInputError):
+            _compile_from_canonical(nodes, "p" * 64)
+
+    def test_money_times_money_rejected(self) -> None:
+        nodes = {
+            "o" * 64: _canon_obs("USD", "o"),
+            "b" * 64: _canon_obs("USD", "b"),
+            "m" * 64: {
+                "id": "m" * 64,
+                "payload": {"type": "Multiply", "left": "o" * 64, "right": "b" * 64},
+            },
+            "p" * 64: _canon_payment("m" * 64),
+        }
+        with pytest.raises(PayoffGraphInputError):
+            _compile_from_canonical(nodes, "p" * 64)
+
+    def test_money_divisor_rejected(self) -> None:
+        nodes = {
+            "o" * 64: _canon_obs("USD", "o"),
+            "b" * 64: _canon_obs("USD", "b"),
+            "d" * 64: {
+                "id": "d" * 64,
+                "payload": {
+                    "type": "Divide",
+                    "numerator": "o" * 64,
+                    "denominator": "b" * 64,
+                },
+            },
+            "s" * 64: {
+                "id": "s" * 64,
+                "payload": {"type": "Scale", "factor": "d" * 64, "contract": "p" * 64},
+            },
+            "p" * 64: _canon_payment("o" * 64),
+        }
+        with pytest.raises(PayoffGraphInputError):
+            _compile_from_canonical(nodes, "s" * 64)
+
+    def test_money_plus_scalar_add_rejected(self) -> None:
+        nodes = {
+            "o" * 64: _canon_obs("USD", "o"),
+            "a" * 64: _canon_obs_scalar("a"),
+            "m" * 64: {
+                "id": "m" * 64,
+                "payload": {"type": "Add", "operands": ["o" * 64, "a" * 64]},
+            },
+            "p" * 64: _canon_payment("m" * 64),
+        }
+        with pytest.raises(PayoffGraphInputError):
+            _compile_from_canonical(nodes, "p" * 64)
+
+    def test_money_minus_scalar_subtract_rejected(self) -> None:
+        nodes = {
+            "o" * 64: _canon_obs("USD", "o"),
+            "a" * 64: _canon_obs_scalar("a"),
+            "m" * 64: {
+                "id": "m" * 64,
+                "payload": {
+                    "type": "Subtract",
+                    "minuend": "o" * 64,
+                    "subtrahend": "a" * 64,
+                },
+            },
+            "p" * 64: _canon_payment("m" * 64),
+        }
+        with pytest.raises(PayoffGraphInputError):
+            _compile_from_canonical(nodes, "p" * 64)
+
+    def test_mismatched_currency_subtract_rejected(self) -> None:
+        nodes = {
+            "o" * 64: _canon_obs("USD", "o"),
+            "b" * 64: _canon_obs("EUR", "b"),
+            "m" * 64: {
+                "id": "m" * 64,
+                "payload": {
+                    "type": "Subtract",
+                    "minuend": "o" * 64,
+                    "subtrahend": "b" * 64,
+                },
+            },
+            "p" * 64: _canon_payment("m" * 64),
+        }
+        with pytest.raises(PayoffGraphInputError):
+            _compile_from_canonical(nodes, "p" * 64)
+
+
+class TestValueUnitDerivationPositive:
+    def test_scalar_times_scalar(self) -> None:
+        nodes = {
+            "a" * 64: _canon_obs_scalar("a"),
+            "c" * 64: _canon_obs_scalar("c"),
+            "o" * 64: _canon_obs(),
+            "m" * 64: {
+                "id": "m" * 64,
+                "payload": {"type": "Multiply", "left": "a" * 64, "right": "c" * 64},
+            },
+            "s" * 64: {
+                "id": "s" * 64,
+                "payload": {"type": "Scale", "factor": "m" * 64, "contract": "p" * 64},
+            },
+            "p" * 64: _canon_payment("o" * 64),
+        }
+        pg = _compile_from_canonical(nodes, "s" * 64)
+        assert pg.identity.startswith("payoffgraph:sha256:")
+
+    def test_money_times_scalar(self) -> None:
+        nodes = {
+            "o" * 64: _canon_obs("USD", "o"),
+            "a" * 64: _canon_obs_scalar("a"),
+            "m" * 64: {
+                "id": "m" * 64,
+                "payload": {"type": "Multiply", "left": "o" * 64, "right": "a" * 64},
+            },
+            "p" * 64: _canon_payment("m" * 64),
+        }
+        pg = _compile_from_canonical(nodes, "p" * 64)
+        assert pg.identity.startswith("payoffgraph:sha256:")
+
+    def test_scalar_times_money(self) -> None:
+        nodes = {
+            "a" * 64: _canon_obs_scalar("a"),
+            "o" * 64: _canon_obs("USD", "o"),
+            "m" * 64: {
+                "id": "m" * 64,
+                "payload": {"type": "Multiply", "left": "a" * 64, "right": "o" * 64},
+            },
+            "p" * 64: _canon_payment("m" * 64),
+        }
+        pg = _compile_from_canonical(nodes, "p" * 64)
+        assert pg.identity.startswith("payoffgraph:sha256:")
+
+    def test_money_divided_by_scalar(self) -> None:
+        nodes = {
+            "o" * 64: _canon_obs("USD", "o"),
+            "a" * 64: _canon_obs_scalar("a"),
+            "d" * 64: {
+                "id": "d" * 64,
+                "payload": {
+                    "type": "Divide",
+                    "numerator": "o" * 64,
+                    "denominator": "a" * 64,
+                },
+            },
+            "p" * 64: _canon_payment("d" * 64),
+        }
+        pg = _compile_from_canonical(nodes, "p" * 64)
+        assert pg.identity.startswith("payoffgraph:sha256:")
+
+    def test_scalar_divided_by_scalar(self) -> None:
+        nodes = {
+            "a" * 64: _canon_obs_scalar("a"),
+            "c" * 64: _canon_obs_scalar("c"),
+            "o" * 64: _canon_obs(),
+            "d" * 64: {
+                "id": "d" * 64,
+                "payload": {
+                    "type": "Divide",
+                    "numerator": "a" * 64,
+                    "denominator": "c" * 64,
+                },
+            },
+            "s" * 64: {
+                "id": "s" * 64,
+                "payload": {"type": "Scale", "factor": "d" * 64, "contract": "p" * 64},
+            },
+            "p" * 64: _canon_payment("o" * 64),
+        }
+        pg = _compile_from_canonical(nodes, "s" * 64)
+        assert pg.identity.startswith("payoffgraph:sha256:")
+
+    def test_same_currency_conditional_value(self) -> None:
+        nodes = {
+            "c" * 64: {
+                "id": "c" * 64,
+                "payload": {
+                    "type": "Comparison",
+                    "left": "o" * 64,
+                    "right": "b" * 64,
+                    "operator": ">",
+                },
+            },
+            "o" * 64: _canon_obs("USD", "o"),
+            "b" * 64: _canon_obs("USD", "b"),
+            "p" * 64: {
+                "id": "p" * 64,
+                "payload": {
+                    "type": "ConditionalValue",
+                    "condition": "c" * 64,
+                    "true_value": "o" * 64,
+                    "false_value": "b" * 64,
+                },
+            },
+        }
+        pg = _compile_from_canonical(nodes, "p" * 64)
+        assert pg.identity.startswith("payoffgraph:sha256:")
+
+
+class TestValueUnitInternalMalformed:
+    def test_unit_non_dict(self) -> None:
+        nodes = {
+            "n" * 64: {
+                "id": "n" * 64,
+                "payload": {"type": "Number", "value": "1", "unit": 123},
+            },
+            "p" * 64: _canon_payment("n" * 64),
+        }
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, "p" * 64)
+
+    def test_unit_unknown_kind(self) -> None:
+        nodes = {
+            "n" * 64: {
+                "id": "n" * 64,
+                "payload": {"type": "Number", "value": "1", "unit": {"kind": "weird"}},
+            },
+            "p" * 64: _canon_payment("n" * 64),
+        }
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, "p" * 64)
+
+    def test_unit_money_missing_currency(self) -> None:
+        nodes = {
+            "n" * 64: {
+                "id": "n" * 64,
+                "payload": {
+                    "type": "Number",
+                    "value": "1",
+                    "unit": {"kind": "money", "currency": 123},
+                },
+            },
+            "p" * 64: _canon_payment("n" * 64),
+        }
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, "p" * 64)
+
+
+# ---------------------------------------------------------------------------
+# Trusted canonical-document structure guards (requirement 3)
+# ---------------------------------------------------------------------------
+
+
+class TestCanonicalDocumentStructure:
+    def test_missing_canonical_payload(self) -> None:
+        nodes = {"c" * 64: {"id": "c" * 64}}
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, "c" * 64)
+
+    def test_non_dict_canonical_payload(self) -> None:
+        nodes = {"c" * 64: {"id": "c" * 64, "payload": 123}}
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, "c" * 64)
+
+    def test_missing_canonical_type(self) -> None:
+        nodes = {"c" * 64: {"id": "c" * 64, "payload": {"value": 1}}}
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, "c" * 64)
+
+    def test_missing_required_reference_field(self) -> None:
+        nodes = {
+            "c" * 64: {"id": "c" * 64, "payload": {"type": "Add"}},
+            "p" * 64: _canon_payment("c" * 64),
+        }
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, "p" * 64)
+
+    def test_missing_canonical_target(self) -> None:
+        nodes = {
+            "p" * 64: {
+                "id": "p" * 64,
+                "payload": {
+                    "type": "Payment",
+                    "amount": "missing",
+                    "currency": "USD",
+                    "settlement_time": "2030-01-01T00:00:00.000000Z",
+                },
+            }
+        }
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, "p" * 64)
+
+    def test_valid_shared_dag(self) -> None:
+        from derivatrace.payoffgraph._compiler import _traverse_payoff_graph
+
+        types = {"A": "PGAdd", "B": "PGConstant", "C": "PGConstant"}
+        payloads = {"A": {"operands": ["B", "C"]}, "B": {}, "C": {}}
+        reachable, records = _traverse_payoff_graph("A", types, payloads)
+        assert reachable == {"A", "B", "C"}
+        assert set(records) == {"A", "B", "C"}
+
+
+# ---------------------------------------------------------------------------
+# Executable conformance registry (requirement 4)
+# ---------------------------------------------------------------------------
+
+
+class TestConformanceRegistry:
+    def test_every_vector_matches_registry(self) -> None:
+        from conformance_registry import CONFORMANCE_VECTORS
+
+        for name, (expected, builders) in CONFORMANCE_VECTORS.items():
+            identities = {compile_payoff_graph(b()).identity for b in builders}
+            assert identities == {expected}, name
+
+
 class TestMultiplySwapBranch:
     def test_canonical_multiply_order_else_branch(self) -> None:
         from derivatrace.payoffgraph._compiler import _canonical_multiply_order
