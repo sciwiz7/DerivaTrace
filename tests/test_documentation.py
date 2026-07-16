@@ -3,9 +3,9 @@ from __future__ import annotations
 import importlib
 import re
 import tomllib
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable
 
 import pytest
 
