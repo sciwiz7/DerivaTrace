@@ -16,8 +16,8 @@ evidence-carrying derivatives compiler and model-risk laboratory. DerivaTrace is
   and [ADR 0007](./adr/0007-canonical-contract-identity-and-payoff-graph.md).
 - **Stage 1B-R1 canonical runtime is Implemented:** `derivatrace.canonical`
   canonicalizes a validated contract graph into byte-exact canonical JSON with a
-  deterministic canonical contract identity. The Stage 1B-R2 payoff-graph runtime
-  remains Planned (specified, not implemented).
+  deterministic canonical contract identity. The Stage 1B-R2 payoff-graph
+  runtime remains Planned (its specification is now closed; not implemented).
 - Stage 1C (validation levels and equivalence reporting) is planned.
 - No pricing, valuation, Greeks, Monte Carlo, PDE, calibration, or hedging
   functionality exists yet.

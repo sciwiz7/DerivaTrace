@@ -187,6 +187,14 @@ specification's rules and the canonical runtime's tests.
   raises `canonicalization.collision` if the same id maps to different payload
   bytes, so differing nodes are never silently merged. Identical payloads may be
   shared; duplicate operands remain duplicate references.
+- **Payoff-graph collision** — within the Stage 1B-R2 payoff graph, two distinct
+  payoff payloads hash to the same payoff-node id. The same SHA-256 collision
+  assumption applies, but the payoff graph uses its **own** dedicated error code
+  `payoff_graph.collision` (never reusing `canonicalization.collision`). The
+  compiler raises `payoff_graph.collision` if the same payoff-node id maps to
+  different payoff payload bytes, so differing payoff nodes are never silently
+  merged. Reachability uses an explicit per-node-type reference-field map, so
+  discarded compilation intermediates never participate in the graph identity.
 - **Forged / non-canonical input** — a decoded canonical form is not itself
   canonical but is presented as an identity. Mitigated by rejecting any
   canonical form that is not self-canonical, and by never trusting a claimed

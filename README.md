@@ -5,8 +5,8 @@
 - **Current status:** Stage 1A implemented — Immutable contract algebra and
   runtime type system. Stage 1B architecture baseline complete; **Stage 1B-R1
   canonical runtime implemented** (byte-exact canonicalization and canonical
-  contract identity). Stage 1B-R2 payoff-graph runtime planned. Stage 0
-  foundation complete.
+  contract identity). **Stage 1B-R2 payoff-graph runtime planned** (specification
+  closed; not implemented). Stage 0 foundation complete.
 - **Release stage:** Pre-Alpha. **Not published.** Not available on PyPI.
 - **License:** [MIT](LICENSE)
 
@@ -69,7 +69,8 @@ These capabilities are **planned** for later stages and do **not** exist today:
 
 - Immutable, typed contract algebra (delivered in Stage 1A) and a canonical
   contract representation with deterministic identity (Stage 1B-R1 implemented);
-  the canonical payoff graph remains planned for Stage 1B-R2.
+  the canonical payoff graph is fully specified for Stage 1B-R2 but its runtime
+  remains planned.
 - Market snapshots with deterministic evidence identity.
 - Reference pricing engines (Black–Scholes, trees, Monte Carlo).
 - Evidence-carrying valuation certificates.
@@ -113,9 +114,10 @@ Explicitly unimplemented:
 - Market data, snapshots, or evaluation of observables.
 - A canonical payoff-graph **implementation**, valuation, or any pricing,
   model, or engine behaviour. (The canonical contract representation and its
-  identity are implemented in Stage 1B-R1; the canonical payoff graph remains
-  planned for Stage 1B-R2 — see `docs/canonicalization-spec.md`,
-  `docs/payoff-graph-spec.md`, `docs/canonical-test-vectors.md`, and
+  identity are implemented in Stage 1B-R1; the canonical payoff graph is fully
+  specified but its runtime remains planned for Stage 1B-R2 — see
+  `docs/canonicalization-spec.md`, `docs/payoff-graph-spec.md`,
+  `docs/canonical-test-vectors.md`, and
   [ADR 0007](docs/adr/0007-canonical-contract-identity-and-payoff-graph.md).)
 - Equivalence checks or validation levels beyond Stage 1A structural checks.
 - An evidence certificate or reproducibility hash.

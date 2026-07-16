@@ -17,14 +17,22 @@ change, content-addressed sharing, timestamp precision, and a payoff-graph
 compilation). No vector contains a placeholder, `TBD`, `example-hash`, or
 all-zero identity.
 
-> These vectors are **executed by the Stage 1B-R1 canonical runtime**. Every
-> source contract is constructed through the public Stage 1A API and
-> `validate_contract` succeeds; the canonical bytes, node identities, and
-> contract identities are produced by the runtime and reproduced byte-for-byte in
-> the accompanying test suite (`tests/canonical/test_vectors.py`). Payoff-graph
-> compilation (CV-011) remains deferred to Stage 1B-R2, but the CV-011 source
-> contract is constructed, validated, and canonicalized here, and its canonical
-> contract identity must agree with R1.
+> The R1 canonical vectors (CV-001–CV-010) are **executed by the Stage 1B-R1
+> canonical runtime**. Every source contract is constructed through the public
+> Stage 1A API and `validate_contract` succeeds; the canonical bytes, node
+> identities, and contract identities are produced by the runtime and reproduced
+> byte-for-byte in the accompanying test suite (`tests/canonical/test_vectors.py`).
+>
+> **CV-011 is a normative Stage 1B-R2 payoff-graph vector.** Its exact canonical
+> payload bytes, node ids, structural bytes, document bytes, and graph identity
+> were computed with a small, isolated **standard-library-only** verification
+> script (not shipped in the repository) using the byte-exact rules of
+> `canonicalization-spec.md` §3 and the payoff-graph identity preimage of
+> `payoff-graph-spec.md` §9. The script cross-checks every hash preimage
+> independently; no placeholder or deferred hash is used. The CV-011 source
+> contract is the same canonical contract already verified by R1 (its canonical
+> contract identity must agree with R1), so the vector is fully pinned even though
+> the R2 runtime does not yet exist.
 
 ## 1. Conventions
 
@@ -50,7 +58,13 @@ all-zero identity.
   (`Unit.scalar()`) appears only where it is structurally dimensionless: the
   `Scale` factor and the `Multiply`/`Add`/`Subtract`/`Maximum`/`Minimum` operand
   paired with a money observable (e.g. CV-005, CV-008). `Payment` settlement
-  time is `2030-01-01T00:00:00.000000Z` unless stated.
+  time is `2030-01-01T00:00:00.000000Z` unless stated. Let `T0` denote
+  `2030-01-01T00:00:00.000000Z`. Two **scalar** observables `scalar_A` and
+  `scalar_B` are defined as
+  `Observable(ObservableId(field="level", identifier="SCALARA"|"SCALARB",
+  namespace="macro"), ObservationTime=T0, Unit=scalar())` and are used wherever a
+  dimensionless observable is required (for example the `PGDivide` scalar-division
+  planned vector).
 
 ## 2. Normative vectors
 
@@ -180,28 +194,157 @@ all-zero identity.
 - **Canonical contract identity:** `canonical:sha256:0271e7069e4b0ca82dcea2533c7737e15780b204762ddb7b1f90e99f0837d9b2`
 - **Expected structural equivalence:** distinct from CV-001 (which used `...000000Z`) — microsecond precision participates in identity.
 
-### CV-011 — Payoff-graph compilation
+### CV-011 — Payoff-graph compilation (regenerated under the corrected schema)
 
 - **Source contract:** `Payment(amount=Add(obs_A, obs_B), currency=USD, T0)` (canonical contract identity `canonical:sha256:259ab84dcede671196db17812e1efd629dd287c0d57f77d054e876568d6eb1ce`, identical to CV-003).
-- **Applied rules:** `compile:payoff`, `commute:PGAdd`, `flatten:PGAdd`.
-- **Forbidden rules:** `implementation-finalized` mapping; reciprocal rewrite of `Divide` (n/a here).
-- **Root payoff-node identity (bare 64-hex):** `e42ac8884412f81618967fbd8d92abf59a07f0b6204b06b00114e1f40357c2a8`
-- **Complete payoff-graph JSON bytes** (the `provenance` field is shown but is **excluded** from the graph identity preimage):
-  `{"nodes":{"14a7077a77fc751fdea28fc8685de67dd691fa5f3057d1f1e276d233bfa0a8ae":{"id":"14a7077a77fc751fdea28fc8685de67dd691fa5f3057d1f1e276d233bfa0a8ae","payload":{"observable_id":{"field":"close","identifier":"AAA","namespace":"equity"},"observation_time":"2030-01-01T00:00:00.000000Z","settlement_time":null,"type":"PGObservable","unit":{"currency":"USD","kind":"money"}}},"8f0818b65f5b8cc970b348c3f7b00051cd3b3705833e9862527187ac455e78d5":{"id":"8f0818b65f5b8cc970b348c3f7b00051cd3b3705833e9862527187ac455e78d5","payload":{"observable_id":{"field":"close","identifier":"BBB","namespace":"equity"},"observation_time":"2030-01-01T00:00:00.000000Z","settlement_time":null,"type":"PGObservable","unit":{"currency":"USD","kind":"money"}}},"b8c284535d888887c1c7fde19c44a4f5e59a56f2251b50ec7e05fb7800c62bc2":{"id":"b8c284535d888887c1c7fde19c44a4f5e59a56f2251b50ec7e05fb7800c62bc2","payload":{"operands":["8f0818b65f5b8cc970b348c3f7b00051cd3b3705833e9862527187ac455e78d5","14a7077a77fc751fdea28fc8685de67dd691fa5f3057d1f1e276d233bfa0a8ae"],"type":"PGAdd"}},"e42ac8884412f81618967fbd8d92abf59a07f0b6204b06b00114e1f40357c2a8":{"id":"e42ac8884412f81618967fbd8d92abf59a07f0b6204b06b00114e1f40357c2a8","payload":{"currency":"USD","payoff_leaf":"b8c284535d888887c1c7fde19c44a4f5e59a56f2251b50ec7e05fb7800c62bc2","settlement_time":"2030-01-01T00:00:00.000000Z","type":"PGPayment"}}},"provenance":{"compiler":"derivatrace.stage1b.baseline","source_contract_identity":"canonical:sha256:259ab84dcede671196db17812e1efd629dd287c0d57f77d054e876568d6eb1ce"},"root":"e42ac8884412f81618967fbd8d92abf59a07f0b6204b06b00114e1f40357c2a8","schema_name":"derivatrace.payoffgraph","schema_version":"1.0.0"}`
-- **UTF-8 byte length:** `1605`
-- **Payoff-graph identity:** `payoffgraph:sha256:21e03bda08044ba0a7c4558cdaab10eb75d2e21f6b764dae39446f5df996096d`
-- **Expected structural equivalence:** the compiled graph is deterministic and model-independent; recompiling the same contract yields the same graph identity.
+- **Applied rules (corrected):** `compile:payoff`, `commute:PGAdd`, `flatten:PGAdd`, `payment:amount` (field named `amount`, not `payoff_leaf`), `observable:no_settlement_time`, `payment:owns_settlement_time`.
+- **Forbidden rules:** `payoff_leaf` field; `settlement_time` inside `PGObservable`/`PGConstant`; lowering `Subtract` to `PGAdd`+`PGNegate` (n/a here); reciprocal rewrite of `Divide` (n/a here); implementation-finalized mapping.
+- **Expected structure:** two `PGObservable` nodes (no `settlement_time`), one `PGAdd` node, one `PGPayment` node using `amount`, with `settlement_time` present only in `PGPayment`.
+- **`PGObservable` (obs_A / AAA) node identity (bare 64-hex):** `e173bb55806349d78a2bb783ea8a9df4ec1f4604f92b5ad2f2496a485dc6bc63`
+- **`PGObservable` (obs_B / BBB) node identity (bare 64-hex):** `ccb83e94063e4aca86182b91aee32dfd4b6a8c3d3f954b62f4502e8f521fd0b5`
+- **`PGAdd` node identity (bare 64-hex):** `2f96aed4cfc2c7c6ab7923a3f57d6ce600367f168ae75997b084390175d0cf8b`
+- **Root `PGPayment` node identity (bare 64-hex):** `5ee2594b6c230a97e1b44115db479624a2de6780c192558a7c64b589f545c94c`
+- **Complete payoff-graph structural bytes** (provenance **excluded**; this is the identity preimage): `{"nodes":{"2f96aed4cfc2c7c6ab7923a3f57d6ce600367f168ae75997b084390175d0cf8b":{"id":"2f96aed4cfc2c7c6ab7923a3f57d6ce600367f168ae75997b084390175d0cf8b","payload":{"operands":["ccb83e94063e4aca86182b91aee32dfd4b6a8c3d3f954b62f4502e8f521fd0b5","e173bb55806349d78a2bb783ea8a9df4ec1f4604f92b5ad2f2496a485dc6bc63"],"type":"PGAdd"}},"5ee2594b6c230a97e1b44115db479624a2de6780c192558a7c64b589f545c94c":{"id":"5ee2594b6c230a97e1b44115db479624a2de6780c192558a7c64b589f545c94c","payload":{"amount":"2f96aed4cfc2c7c6ab7923a3f57d6ce600367f168ae75997b084390175d0cf8b","currency":"USD","settlement_time":"2030-01-01T00:00:00.000000Z","type":"PGPayment"}},"ccb83e94063e4aca86182b91aee32dfd4b6a8c3d3f954b62f4502e8f521fd0b5":{"id":"ccb83e94063e4aca86182b91aee32dfd4b6a8c3d3f954b62f4502e8f521fd0b5","payload":{"observable_id":{"field":"close","identifier":"BBB","namespace":"equity"},"observation_time":"2030-01-01T00:00:00.000000Z","type":"PGObservable","unit":{"currency":"USD","kind":"money"}}},"e173bb55806349d78a2bb783ea8a9df4ec1f4604f92b5ad2f2496a485dc6bc63":{"id":"e173bb55806349d78a2bb783ea8a9df4ec1f4604f92b5ad2f2496a485dc6bc63","payload":{"observable_id":{"field":"close","identifier":"AAA","namespace":"equity"},"observation_time":"2030-01-01T00:00:00.000000Z","type":"PGObservable","unit":{"currency":"USD","kind":"money"}}}},"root":"5ee2594b6c230a97e1b44115db479624a2de6780c192558a7c64b589f545c94c","schema_name":"derivatrace.payoffgraph","schema_version":"1.0.0"}`
+- **Structural UTF-8 byte length:** `1456`
+- **Complete payoff-graph document bytes** (provenance **included**): `{"nodes":{"2f96aed4cfc2c7c6ab7923a3f57d6ce600367f168ae75997b084390175d0cf8b":{"id":"2f96aed4cfc2c7c6ab7923a3f57d6ce600367f168ae75997b084390175d0cf8b","payload":{"operands":["ccb83e94063e4aca86182b91aee32dfd4b6a8c3d3f954b62f4502e8f521fd0b5","e173bb55806349d78a2bb783ea8a9df4ec1f4604f92b5ad2f2496a485dc6bc63"],"type":"PGAdd"}},"5ee2594b6c230a97e1b44115db479624a2de6780c192558a7c64b589f545c94c":{"id":"5ee2594b6c230a97e1b44115db479624a2de6780c192558a7c64b589f545c94c","payload":{"amount":"2f96aed4cfc2c7c6ab7923a3f57d6ce600367f168ae75997b084390175d0cf8b","currency":"USD","settlement_time":"2030-01-01T00:00:00.000000Z","type":"PGPayment"}},"ccb83e94063e4aca86182b91aee32dfd4b6a8c3d3f954b62f4502e8f521fd0b5":{"id":"ccb83e94063e4aca86182b91aee32dfd4b6a8c3d3f954b62f4502e8f521fd0b5","payload":{"observable_id":{"field":"close","identifier":"BBB","namespace":"equity"},"observation_time":"2030-01-01T00:00:00.000000Z","type":"PGObservable","unit":{"currency":"USD","kind":"money"}}},"e173bb55806349d78a2bb783ea8a9df4ec1f4604f92b5ad2f2496a485dc6bc63":{"id":"e173bb55806349d78a2bb783ea8a9df4ec1f4604f92b5ad2f2496a485dc6bc63","payload":{"observable_id":{"field":"close","identifier":"AAA","namespace":"equity"},"observation_time":"2030-01-01T00:00:00.000000Z","type":"PGObservable","unit":{"currency":"USD","kind":"money"}}}},"provenance":{"compiler":"derivatrace.payoffgraph.compiler/1.0.0","source_contract_identity":"canonical:sha256:259ab84dcede671196db17812e1efd629dd287c0d57f77d054e876568d6eb1ce"},"root":"5ee2594b6c230a97e1b44115db479624a2de6780c192558a7c64b589f545c94c","schema_name":"derivatrace.payoffgraph","schema_version":"1.0.0"}`
+- **Document UTF-8 byte length:** `1634`
+- **Payoff-graph identity (over structural bytes; provenance excluded):** `payoffgraph:sha256:59fbb00dbb585755a799cd7e387e4ee51fd9b77ed3cc032758a825f2f8836e1a`
+- **Payoff-graph identity if provenance were included (must differ, cross-check):** `payoffgraph:sha256:e256cbbf291ba3135213c2eea700b46e0658ddcff853f187cd654cbeb474e5b0`
+- **Expected structural equivalence:** the compiled graph is deterministic and model-independent; recompiling the same contract yields the same graph identity. Provenance is excluded from the identity preimage, so changing the `compiler` tag or `source_contract_identity` would not change the graph identity (it only changes `document_bytes`).
 
-## 3. Coverage obligations (at implementation time)
+### Planned R2 vectors (source contracts and expected relationships specified; runtime-generated hashes deferred)
 
-When Stage 1B is implemented, the suite must additionally guarantee:
+These vectors are **planned** for the Stage 1B-R2 runtime. Their exact
+runtime-generated node ids, structural bytes, document bytes, and graph
+identities will be finalized when `compile_payoff_graph` is implemented. To
+avoid fake hashes, no `<hex>` placeholder is given here for the R2-only vectors;
+instead each entry specifies its **source contract** (constructible through the
+Stage 1A API and already canonicalizable by R1) and its **expected
+equality/distinctness relationships** under the closed mapping of
+`payoff-graph-spec.md` (§3–§4). CV-011 above already pins one fully-computed R2
+vector. All sources below use `currency=USD`, `settlement_time=T0`, and the
+observables defined in §1.
 
-- **Injectivity:** every pair of vectors with distinct `expected structural equivalence` yields distinct identities (no canonicalization collision).
-- **Stability:** re-running canonicalization on the same input yields identical bytes and identity.
+- **PGConstant under PGPayment** — source
+  `Payment(Number(ExactNumber("100"), Unit.money(USD)), USD, T0)`. Expect a
+  `PGConstant` (no `settlement_time`) referenced by `PGPayment.amount`; graph
+  distinct from any `PGObservable`-backed payment.
+- **PGAdd commutation** — sources
+  `Payment(Add((obs_A, obs_B)), USD, T0)` versus
+  `Payment(Add((obs_B, obs_A)), USD, T0)`. Expect identical `PGAdd` operand array
+  (sorted by id) and identical graph identity (commutative multiset).
+- **PGSubtract order sensitivity** — sources
+  `Payment(Subtract(obs_A, obs_B), USD, T0)` versus
+  `Payment(Subtract(obs_B, obs_A), USD, T0)`. Expect distinct `PGSubtract`
+  (`minuend`/`subtrahend` swapped) and **distinct** graph identities; **not**
+  lowered to `PGAdd`+`PGNegate`.
+- **Nested PGAdd flattening** — compare
+  `Payment(Add((obs_A, Add((obs_B, obs_X)))), USD, T0)` against
+  `Payment(Add((obs_A, obs_B, obs_X)), USD, T0)`. Both sources canonicalize to the
+  **identical** R1 canonical contract (associative flattening), so they compile to
+  the **identical** payoff graph with exactly one reachable `PGAdd` and no inner
+  `PGAdd`. Do not treat the nested-author form as a distinct graph.
+- **Binary PGMultiply commutation without associativity** — use a dimensionless
+  factor `Number(ExactNumber("2"), Unit.scalar())`. Within one grouping compare
+  `Payment(Multiply(obs_A, Number(ExactNumber("2"), Unit.scalar())), USD, T0)`
+  versus `Payment(Multiply(Number(ExactNumber("2"), Unit.scalar()), obs_A), USD,
+  T0)`: expect identical binary `PGMultiply` (left/right reordered by id) and
+  identical graph identity. Separately compare that grouping against a different
+  valid binary grouping
+  `Payment(Multiply(obs_A, Multiply(Number(ExactNumber("2"), Unit.scalar()),
+  Number(ExactNumber("3"), Unit.scalar()))), USD, T0)`: the two distinct groupings
+  remain **distinct** graph identities; `Multiply(Multiply(a,b),c)` must **not**
+  flatten into a ternary node.
+- **PGDivide order sensitivity** — use two distinct scalar observables
+  `scalar_A` and `scalar_B`. Compare
+  `Scale(Divide(scalar_A, scalar_B), Payment(obs_A, USD, T0))` versus
+  `Scale(Divide(scalar_B, scalar_A), Payment(obs_A, USD, T0))`. Both sources
+  validate (scalar ÷ scalar is dimensionless; the factor drives `Scale`). Expect
+  distinct `PGDivide` (`numerator`/`denominator` swapped) and distinct graph
+  identities; **no** reciprocal rewrite. (A money observable must **not** divide a
+  money observable.)
+- **PGCombine author-order sensitivity** — sources
+  `Both((Payment(obs_A, USD, T0), Payment(obs_B, USD, T0)))` versus
+  `Both((Payment(obs_B, USD, T0), Payment(obs_A, USD, T0)))`. Expect distinct
+  `PGCombine` operand order and distinct graph identities (author order
+  preserved, not commutative).
+- **Duplicate operand preservation** — compare
+  `Payment(Add((obs_A, obs_A)), USD, T0)` against `Payment(obs_A, USD, T0)`. Expect
+  `PGAdd.operands == [id_A, id_A]`; the duplicated graph is **distinct** from the
+  single-observable payment (which has no `Add` wrapper). Do not refer to an
+  invalid `Add(obs_A)` single-operand form.
+- **Shared versus copied subgraphs** — use a **Contract** subtree (not an `Add`
+  expression) as `Scale.contract`. Shared version: construct one
+  `shared = Payment(Add((obs_A, obs_B)), USD, T0)` and reference that same object
+  directly and inside `Scale`:
+  `Both((shared, Scale(Number(ExactNumber("2"), Unit.scalar()), shared)))`. Copied
+  version: construct two independently allocated but structurally identical
+  subtrees `pay1 = Payment(Add((obs_A, obs_B)), USD, T0)` and
+  `pay2 = Payment(Add((obs_A, obs_B)), USD, T0)`, then
+  `Both((pay1, Scale(Number(ExactNumber("2"), Unit.scalar()), pay2)))`. Both
+  complete contracts validate and produce identical canonical/payoff identities
+  (content-addressed sharing, independent of Python object identity).
+- **PGAllOf / PGAnyOf flattening** — provide separate nested-versus-flat pairs
+  using non-literal `Comparison` conditions. For `AllOf` compare
+  `Payment(ConditionalValue(AllOf((Comparison(obs_A, obs_B, GREATER_THAN),
+  AllOf((Comparison(obs_B, obs_X, GREATER_THAN), Comparison(obs_A, obs_X,
+  GREATER_THAN)))), obs_A, obs_B), USD, T0)` against
+  `Payment(ConditionalValue(AllOf((Comparison(obs_A, obs_B, GREATER_THAN),
+  Comparison(obs_B, obs_X, GREATER_THAN), Comparison(obs_A, obs_X,
+  GREATER_THAN))), obs_A, obs_B), USD, T0)`. Both canonicalize to the identical R1
+  contract (nested `AllOf` flattened) and compile to the identical payoff graph
+  with a single `PGAllOf` and no inner `PGAllOf`. The `AnyOf` pair uses the same
+  structure with `AnyOf` and expects the same identical-graph relationship.
+- **PGConditionalValue** — source
+  `Payment(ConditionalValue(Comparison(obs_A, obs_B, GREATER_THAN), obs_A,
+  obs_B), USD, T0)`. Expect `PGConditionalValue` with `condition` (a `PGComparison`)
+  /`true_payoff`/`false_payoff` author order preserved.
+- **PGConditionalContract** — source
+  `ConditionalContract(Comparison(obs_A, obs_B, GREATER_THAN),
+  Payment(obs_A, USD, T0), Payment(obs_B, USD, T0))`. Expect
+  `PGConditionalContract` with author order preserved; graph distinct from the
+  swapped-branch contract.
+- **Zero to empty PGCombine** — `Both((Zero(), Zero()))` (or a `Zero()` alone
+  compiled to a payoff root). Expect each `Zero` to compile to a `PGCombine` with
+  an empty `operands` array; node ids equal across distinct `Zero` sources
+  (content-addressed).
+- **Provenance exclusion from identity** — this is an **internal serialization /
+  identity test seam**, not a public API feature. The public `compile_payoff_graph`
+  does **not** accept caller-supplied `compiler` or `source` provenance overrides.
+  The test holds `structural_bytes` fixed, varies `provenance` only while
+  constructing the full document, observes that `document_bytes` changes, and
+  confirms the graph identity (which hashes `structural_bytes` only) remains
+  unchanged. CV-011 demonstrates this explicitly via its two identity values
+  above.
+- **Timestamp microsecond precision** — source
+  `Payment(Number(ExactNumber("1"), Unit.money(USD)), USD,
+  SettlementTime=2030-01-01T00:00:00.500000Z)`. Expect `PGPayment.settlement_time`
+  to carry full microsecond precision and participate in the graph identity;
+  distinct from the `...000000Z` variant.
+- **Collision seam** — a constructed case where two distinct payoff payloads hash
+  to the same payoff-node id must raise `payoff_graph.collision` (never silently
+  merged); mirrors the R1 collision seam but uses the dedicated payoff-graph
+  code.
+
+When the R2 runtime lands, each entry above is promoted to a normative vector
+with concrete hashes, and the suite must additionally guarantee the coverage
+obligations below.
+
+## 3. Coverage obligations (when the Stage 1B-R2 runtime is implemented)
+
+When the Stage 1B-R2 runtime is implemented, the suite must additionally guarantee:
+
+- **Injectivity:** every pair of vectors with distinct `expected structural equivalence` yields distinct identities (no canonicalization or payoff-graph collision).
+- **Stability:** re-running compilation on the same input yields identical bytes and identity.
 - **Forbidden-rule enforcement:** none of the `forbidden_rules` ever occurs.
-- **Validation gate:** unvalidated / cyclic / oversized graphs are rejected before canonicalization.
-- **Schema participation:** changing `schema_version` changes the identity.
-- **Collision rule:** if the same id maps to different payload bytes, `canonicalization.collision` is raised.
+- **Validation gate:** invalid / cyclic / oversized inputs are rejected before payoff output.
+- **Schema participation:** changing the `payoff_graph` `schema_version` changes the identity.
+- **Collision rule:** if the same payoff-node id maps to different payload bytes, `payoff_graph.collision` is raised. R1 canonicalization failures propagate to the caller according to the payoff-graph specification (§11) without silent reclassification, and are never remapped onto `payoff_graph.collision`.
 
-> These vectors are design commitments for the Stage 1B baseline. They are not
-> executed by the current package, which contains no canonicalization code.
+> The R1 canonical vectors (CV-001–CV-010) are executed by the Stage 1B-R1
+> canonical runtime (`derivatrace.canonical`) in `tests/canonical/test_vectors.py`.
+> CV-011 and the planned R2 vectors are design commitments for Stage 1B-R2;
+> CV-011 is fully pinned by the isolated verification script, and the remaining
+> planned vectors specify their source contracts and expected
+> equality/distinctness relationships. The R2 payoff-graph runtime is not yet
+> implemented.

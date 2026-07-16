@@ -75,9 +75,13 @@ Stages are marked as:
   canonical contract identity (SHA-256 domain separation). The normative test
   vectors (`docs/canonical-test-vectors.md`) are produced and verified by this
   runtime.
-- **Stage 1B-R2 payoff-graph runtime — Status: Planned.** Payoff-graph
-  compilation (PG* node taxonomy and the compile mapping) remains deferred to
-  Stage 1B-R2; it is specified but not yet implemented.
+- **Stage 1B-R2 payoff-graph runtime — Status: Planned (specification
+  closed).** Payoff-graph compilation (PG* node taxonomy and the compile
+  mapping) is now fully specified and its contradictions closed; the runtime is
+  not yet implemented. The specification includes a dedicated `PGSubtract` node,
+  `PGBooleanConstant`, the `amount`-based `PGPayment` with settlement-time
+  ownership, the `payoff_graph.*` error taxonomy, `PayoffGraphLimits`, and
+  provenance-excluded identity.
 - **Acceptance criteria:** Equivalent contracts produce identical canonical
   forms and identities; non-equivalent contracts do not collapse through
   undocumented transformations.

@@ -27,8 +27,11 @@ definitions.
 - **Numerical engine** — a method that computes results from a model and inputs.
 - **Observation time** — when a market value is read.
 - **Payoff graph** — a canonical, model-independent representation of a
-  contract's payoffs. Its Stage 1B taxonomy and compilation mapping are
-  specified in `payoff-graph-spec.md` (Stage 1B-R2 runtime planned).
+  contract's payoffs. Its Stage 1B-R2 taxonomy and compilation mapping are
+  specified in `payoff-graph-spec.md` (Stage 1B-R2 runtime planned). The graph
+  is reachable-only (discarded compilation intermediates never participate in the
+  identity), and its identity (`payoffgraph:sha256:<hex>`) is computed over the
+  structural projection that excludes deterministic provenance.
 - **Canonical contract identity** — a deterministic `SHA-256` fingerprint
   (`canonical:sha256:<hex>`) over the canonical bytes of a validated contract,
   under a fixed, versioned domain-separation tag. A structural identity under
@@ -57,12 +60,23 @@ definitions.
 - **Canonical collision** — the event (assumed negligible) that two distinct
   canonical payloads hash to the same id; canonicalization raises
   `canonicalization.collision` rather than silently merging them.
+- **Payoff-graph collision** — the Stage 1B-R2 analogue for the payoff graph:
+  two distinct payoff payloads hash to the same payoff-node id; the compiler
+  raises `payoff_graph.collision` (a dedicated code, **not**
+  `canonicalization.collision`) rather than silently merging them. Canonical
+  collisions from the Stage 1B-R1 runtime propagate to the payoff compiler
+  without silent reclassification.
 - **Payoff-graph node (PG node)** — a node in the canonical payoff graph
-  (`PGConstant`, `PGObservable`, `PGAdd`, `PGMultiply`, `PGNegate`,
-  `PGMaximum`, `PGMinimum`, `PGScale`, `PGConditionalValue`, `PGDivide`,
+  (`PGConstant`, `PGObservable`, `PGAdd`, `PGSubtract`, `PGMultiply`, `PGNegate`,
+  `PGMaximum`, `PGMinimum`, `PGDivide`, `PGScale`, `PGConditionalValue`,
+  `PGBooleanConstant`, `PGComparison`, `PGAllOf`, `PGAnyOf`, `PGNot`,
   `PGCombine`, `PGPayment`, `PGConditionalContract`); a model-independent
   compiled representation of a contract node. `Divide` compiles directly to
-  `PGDivide`, never to a reciprocal.
+  `PGDivide`, never to a reciprocal. `Subtract` compiles directly to `PGSubtract`
+  (`minuend`/`subtrahend`), never to `PGAdd` + `PGNegate`. `Payment` owns the
+  settlement time and references its amount via an `amount` field (never
+  `payoff_leaf`); `PGObservable` owns the observation time; `PGConstant` carries
+  neither time. `BooleanConstant` compiles to an explicit `PGBooleanConstant`.
 - **Reachability pruning (semantic closure)** — after canonicalization applies
   all approved structural laws (flattening, literal folding, conditional branch
   selection), a deterministic traversal from the final canonical root collects

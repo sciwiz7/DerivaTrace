@@ -1,8 +1,42 @@
 from __future__ import annotations
 
+import importlib
 import re
 import tomllib
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
+
+import pytest
+
+from derivatrace.contracts import (
+    Add,
+    AllOf,
+    AnyOf,
+    Both,
+    Comparison,
+    ComparisonOperator,
+    ConditionalContract,
+    ConditionalValue,
+    Contract,
+    ContractError,
+    Currency,
+    Divide,
+    ExactNumber,
+    Multiply,
+    Number,
+    Observable,
+    ObservableId,
+    ObservationTime,
+    Payment,
+    ScalarExpression,
+    Scale,
+    SettlementTime,
+    Subtract,
+    Unit,
+    Zero,
+    validate_contract,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DOCS_DIR = REPO_ROOT / "docs"
@@ -406,7 +440,10 @@ def test_stage_1b_status_distinctions() -> None:
 
 
 def test_no_canonicalization_or_hashing_implementation_claimed() -> None:
-    # The Stage 1B baseline must not claim a runtime implementation exists.
+    # The Stage 1B baseline / R2 spec must not claim a runtime implementation
+    # exists. The proposed (future) `compile_payoff_graph` signature is allowed
+    # to be documented as a specification, so it is deliberately not listed here;
+    # runtime presence is instead guarded by test_no_payoff_graph_runtime_module.
     impl_claims = [
         "canonicalize(",
         "def canonicalize",
@@ -415,8 +452,6 @@ def test_no_canonicalization_or_hashing_implementation_claimed() -> None:
         "hash_canonical",
         "serialize(",
         "def serialize",
-        "compile_payoff",
-        "payoff_graph(",
     ]
     for markdown in markdown_files():
         text = markdown.read_text(encoding="utf-8")
@@ -654,6 +689,9 @@ def test_no_placeholder_identities_in_normative_vectors() -> None:
 
 
 def test_no_stage_1b_runtime_implementation_in_docs() -> None:
+    # The proposed (future) payoff-graph API may be documented as a specification,
+    # so `compile_payoff_graph` / `payoff_graph(` are not flagged here; runtime
+    # presence is guarded by test_no_payoff_graph_runtime_module.
     impl_claims = [
         "canonicalize(",
         "def canonicalize",
@@ -662,8 +700,6 @@ def test_no_stage_1b_runtime_implementation_in_docs() -> None:
         "hash_canonical",
         "serialize(",
         "def serialize",
-        "compile_payoff",
-        "payoff_graph(",
     ]
     for markdown in markdown_files():
         text = markdown.read_text(encoding="utf-8")
@@ -683,3 +719,644 @@ def test_payoff_graph_schema_and_identity_defined() -> None:
     # PG boolean condition nodes must be specified (no mapping left finalised).
     for node in ("PGComparison", "PGAllOf", "PGAnyOf", "PGNot"):
         assert node in pg, node
+
+
+# ---- Stage 1B-R2 payoff-graph specification-closure guards (issues #1 / #3) ----
+
+
+SRC_ROOT = REPO_ROOT / "src" / "derivatrace"
+
+CANONICAL_NODES = [
+    "Number",
+    "Observable",
+    "Add",
+    "Subtract",
+    "Multiply",
+    "Divide",
+    "Negate",
+    "Maximum",
+    "Minimum",
+    "ConditionalValue",
+    "BooleanConstant",
+    "Comparison",
+    "AllOf",
+    "AnyOf",
+    "Not",
+    "Zero",
+    "Payment",
+    "Both",
+    "Scale",
+    "ConditionalContract",
+]
+
+
+def test_pg_payment_uses_amount_not_payoff_leaf() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    # The field is explicitly denied the obsolete name.
+    assert "never `payoff_leaf`" in pg
+    # PGPayment carries an `amount` field (with currency and settlement_time).
+    assert "| `PGPayment` | `amount`, `currency`, `settlement_time` |" in pg
+
+
+def test_pg_constant_and_observable_no_settlement_time() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    # The obsolete blanket "leaves carry settlement time" statement is gone.
+    assert "Leaves are the only nodes that carry" not in pg
+    assert "PGConstant" in pg and "does **not** contain `settlement_time`" in pg
+    assert "PGObservable" in pg and "does **not** contain `settlement_time`" in pg
+
+
+def test_pg_payment_contains_settlement_time() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    assert "is owned exclusively by `PGPayment`" in pg
+
+
+def test_pg_subtract_exists() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    assert "`PGSubtract`" in pg
+
+
+def test_subtract_does_not_lower_to_pgadd_pgnegate() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    assert "PGAdd`+`PGNegate`" in pg
+    assert "NOT lowered" in pg or "not lowered" in pg.lower()
+
+
+def test_pg_allof_anyof_flattened_sorted_commutative() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    assert "Commutative, associative, flattened, sorted" in pg
+
+
+def test_pg_comparison_preserves_order() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    assert "operator-sensitive, author-order preserved, not commutative" in pg
+
+
+def test_pg_multiply_binary_not_flattened() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md").lower()
+    assert "pgmultiply" in pg
+    assert "binary" in pg
+    assert "not flattened" in pg
+
+
+def test_provenance_excluded_from_identity() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    assert "changing provenance alone does **not** change payoff-graph identity" in pg
+    assert "provenance" in pg.lower()
+    assert "excluded" in pg.lower()
+
+
+def test_all_stage1a_r1_nodes_have_pg_mapping() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    for node in CANONICAL_NODES:
+        assert node in pg, f"canonical node {node} not mentioned in payoff spec"
+    # The complete matrix header must enumerate all twenty output mappings.
+    for pg_node in (
+        "PGConstant",
+        "PGObservable",
+        "PGAdd",
+        "PGSubtract",
+        "PGMultiply",
+        "PGDivide",
+        "PGNegate",
+        "PGMaximum",
+        "PGMinimum",
+        "PGConditionalValue",
+        "PGBooleanConstant",
+        "PGComparison",
+        "PGAllOf",
+        "PGAnyOf",
+        "PGNot",
+        "PGCombine",
+        "PGPayment",
+        "PGScale",
+        "PGConditionalContract",
+    ):
+        assert pg_node in pg, f"payoff node {pg_node} missing from mapping"
+
+
+def test_r1_complete_r2_planned_status() -> None:
+    road = _text(REPO_ROOT / "ROADMAP.md")
+    # Stage 1B baseline complete; R1 implemented; R2 planned.
+    assert _near(road, r"stage 1b\b", "in progress")
+    assert "complete" in road.lower()
+    # R2 explicitly not implemented.
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md").lower()
+    assert "not implemented" in pg
+    # R1 is implemented.
+    canon = _text(DOCS_DIR / "canonicalization-spec.md").lower()
+    assert "implemented" in canon
+    adr = _text(
+        DOCS_DIR / "adr" / "0007-canonical-contract-identity-and-payoff-graph.md"
+    ).lower()
+    assert "implemented" in adr
+    assert "planned" in adr
+
+
+def test_no_payoff_graph_runtime_module() -> None:
+    # No payoff-graph runtime package may exist yet (either spelling).
+    assert not (SRC_ROOT / "payoffgraph").exists()
+    assert not (SRC_ROOT / "payoff_graph").exists()
+
+    # No importable derivatrace.payoffgraph / derivatrace.payoff_graph package.
+    for mod in ("derivatrace.payoffgraph", "derivatrace.payoff_graph"):
+        try:
+            importlib.import_module(mod)
+        except ImportError:
+            pass
+        else:
+            raise AssertionError(f"importable module present: {mod}")
+
+    # No runtime implementation of the proposed R2 API in src/.
+    forbidden_defs = ("def compile_payoff_graph",)
+    forbidden_classes = (
+        "class PayoffGraph",
+        "class PayoffGraphLimits",
+        "class PayoffGraphSchemaVersion",
+    )
+    hits: list[str] = []
+    for path in SRC_ROOT.rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        if any(d in text for d in forbidden_defs):
+            hits.append(f"def:{path}")
+        if any(c in text for c in forbidden_classes):
+            hits.append(f"class:{path}")
+    assert not hits, f"payoff-graph runtime implementation present: {hits}"
+
+    # No package exports of the proposed R2 API.
+    pkg_text = (REPO_ROOT / "src" / "derivatrace" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
+    for name in (
+        "PayoffGraph",
+        "PayoffGraphLimits",
+        "PayoffGraphSchemaVersion",
+        "compile_payoff_graph",
+        "payoffgraph",
+    ):
+        assert name not in pkg_text, f"package export present: {name}"
+
+
+def test_payoff_graph_error_taxonomy_is_dedicated() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    assert "payoff_graph.collision" in pg
+    assert "payoff_graph.error" in pg
+    assert "payoff_graph.input" in pg
+    assert "payoff_graph.compilation" in pg
+    assert "payoff_graph.complexity" in pg
+    assert "payoff_graph.encoding" in pg
+    # Must not reuse the canonicalization collision code for payoff nodes.
+    assert "must **not** reuse `canonicalization.collision`" in pg
+
+
+def test_payoff_graph_limits_are_exact_positive_ints() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    for limit in (
+        "max_payoff_nodes",
+        "max_document_bytes",
+        "max_structural_bytes",
+    ):
+        assert limit in pg, limit
+    assert "exact positive `int`" in pg
+
+
+def test_reachable_only_policy_excludes_intermediates() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    assert "reachable" in pg.lower()
+    # Intermediates must never participate in identity / node_count.
+    assert "node_count" in pg
+    assert "structural_bytes" in pg
+    assert "document_bytes" in pg
+
+
+def test_zeros_compile_to_empty_pgcombine() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    assert "PGCombine` with an **empty** `operands` array" in pg
+
+
+def test_pg_boolean_constant_made_explicit() -> None:
+    pg = _text(DOCS_DIR / "payoff-graph-spec.md")
+    assert "PGBooleanConstant" in pg
+    assert "explicit" in pg.lower()
+
+
+# ---- Stage 1B-R2 specification-closure guards (PR #6) ----
+
+_PG_SPEC = DOCS_DIR / "payoff-graph-spec.md"
+_VEC = DOCS_DIR / "canonical-test-vectors.md"
+
+
+def _sections(text: str) -> dict[str, str]:
+    out: dict[str, str] = {}
+    current: str | None = None
+    buf: list[str] = []
+    for line in text.splitlines():
+        m = re.match(r"^#{2,6}\s+(.*)$", line)
+        if m:
+            if current is not None:
+                out[current] = "\n".join(buf)
+            current = m.group(1)
+            buf = []
+        else:
+            buf.append(line)
+    if current is not None:
+        out[current] = "\n".join(buf)
+    return out
+
+
+def _is_separator(line: str) -> bool:
+    return set(line.replace("|", "").strip()) <= set("-: ")
+
+
+def _table_rows(section_body: str) -> list[list[str]]:
+    rows: list[list[str]] = []
+    for line in section_body.splitlines():
+        if not line.strip().startswith("|"):
+            continue
+        if _is_separator(line):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        rows.append(cells)
+    return rows
+
+
+EXPECTED_SOURCES = [
+    "Number",
+    "Observable",
+    "Add",
+    "Subtract",
+    "Multiply",
+    "Divide",
+    "Negate",
+    "Maximum",
+    "Minimum",
+    "ConditionalValue",
+    "BooleanConstant",
+    "Comparison",
+    "AllOf",
+    "AnyOf",
+    "Not",
+    "Zero",
+    "Payment",
+    "Both",
+    "Scale",
+    "ConditionalContract",
+]
+
+EXPECTED_MAPPING = {
+    "Number": "PGConstant",
+    "Observable": "PGObservable",
+    "Add": "PGAdd",
+    "Subtract": "PGSubtract",
+    "Multiply": "PGMultiply",
+    "Divide": "PGDivide",
+    "Negate": "PGNegate",
+    "Maximum": "PGMaximum",
+    "Minimum": "PGMinimum",
+    "ConditionalValue": "PGConditionalValue",
+    "BooleanConstant": "PGBooleanConstant",
+    "Comparison": "PGComparison",
+    "AllOf": "PGAllOf",
+    "AnyOf": "PGAnyOf",
+    "Not": "PGNot",
+    "Zero": "PGCombine",
+    "Payment": "PGPayment",
+    "Both": "PGCombine",
+    "Scale": "PGScale",
+    "ConditionalContract": "PGConditionalContract",
+}
+
+EXPECTED_19_PG = {
+    "PGConstant",
+    "PGObservable",
+    "PGAdd",
+    "PGSubtract",
+    "PGMultiply",
+    "PGDivide",
+    "PGNegate",
+    "PGMaximum",
+    "PGMinimum",
+    "PGConditionalValue",
+    "PGBooleanConstant",
+    "PGComparison",
+    "PGAllOf",
+    "PGAnyOf",
+    "PGNot",
+    "PGCombine",
+    "PGPayment",
+    "PGScale",
+    "PGConditionalContract",
+}
+
+EXPECTED_PAYLOAD_FIELDS = {
+    "PGConstant": {"type", "amount", "unit"},
+    "PGObservable": {"type", "observable_id", "observation_time", "unit"},
+    "PGAdd": {"type", "operands"},
+    "PGSubtract": {"type", "minuend", "subtrahend"},
+    "PGMultiply": {"type", "left", "right"},
+    "PGDivide": {"type", "numerator", "denominator"},
+    "PGNegate": {"type", "operand"},
+    "PGMaximum": {"type", "operands"},
+    "PGMinimum": {"type", "operands"},
+    "PGConditionalValue": {"type", "condition", "true_payoff", "false_payoff"},
+    "PGBooleanConstant": {"type", "value"},
+    "PGComparison": {"type", "left", "right", "operator"},
+    "PGAllOf": {"type", "operands"},
+    "PGAnyOf": {"type", "operands"},
+    "PGNot": {"type", "operand"},
+    "PGCombine": {"type", "operands"},
+    "PGPayment": {"type", "amount", "currency", "settlement_time"},
+    "PGScale": {"type", "factor", "payoff"},
+    "PGConditionalContract": {"type", "condition", "true_payoff", "false_payoff"},
+}
+
+
+def _payload_keys(template: str) -> set[str]:
+    return set(re.findall(r'"([A-Za-z_]+)":', template))
+
+
+def test_exact_mapping_table_parser() -> None:
+    pg = _text(_PG_SPEC)
+    sections = _sections(pg)
+    body = sections[next(k for k in sections if "Complete node mapping" in k)]
+    rows = _table_rows(body)
+    # drop header row
+    rows = [r for r in rows if "Canonical node" not in r[0]]
+    sources = [r[0].strip("`") for r in rows]
+    outputs = [r[1].strip("`") for r in rows]
+    assert len(rows) == 20, len(rows)
+    assert set(sources) == set(EXPECTED_SOURCES), set(sources) ^ set(EXPECTED_SOURCES)
+    assert len(set(sources)) == 20  # every source appears exactly once
+    for src, out in zip(sources, outputs, strict=True):
+        assert EXPECTED_MAPPING[src] == out, (src, out)
+    assert set(outputs) == EXPECTED_19_PG
+    assert all(o in EXPECTED_19_PG for o in outputs)
+    assert all(s in EXPECTED_SOURCES for s in sources)
+
+
+def test_exact_payload_schema_parser() -> None:
+    pg = _text(_PG_SPEC)
+    sections = _sections(pg)
+    body = sections[next(k for k in sections if "Exact payoff payload schema" in k)]
+    rows = _table_rows(body)
+    rows = [r for r in rows if r[0] not in ("Node", "`Node`")]
+    nodes = [r[0].strip("`") for r in rows]
+    assert len(rows) == 19, len(rows)
+    assert set(nodes) == set(EXPECTED_PAYLOAD_FIELDS), set(nodes) ^ set(
+        EXPECTED_PAYLOAD_FIELDS
+    )
+    for row in rows:
+        node = row[0].strip("`")
+        template = row[1].strip("`")
+        keys = _payload_keys(template)
+        assert keys == EXPECTED_PAYLOAD_FIELDS[node], (node, keys)
+        assert "payoff_leaf" not in template
+    # Unit field policy: only PGConstant / PGObservable serialize `unit`.
+    for row in rows:
+        node = row[0].strip("`")
+        keys = _payload_keys(row[1].strip("`"))
+        if node in ("PGConstant", "PGObservable"):
+            assert "unit" in keys, node
+        else:
+            assert "unit" not in keys, node
+        if node in ("PGConstant", "PGObservable"):
+            assert "settlement_time" not in keys, node
+    # PGPayment required fields.
+    pay = next(r for r in rows if r[0].strip("`") == "PGPayment")
+    assert {"amount", "currency", "settlement_time"} <= _payload_keys(pay[1].strip("`"))
+    # PGSubtract dedicated fields.
+    sub = next(r for r in rows if r[0].strip("`") == "PGSubtract")
+    assert {"minuend", "subtrahend"} <= _payload_keys(sub[1].strip("`"))
+
+
+def test_reference_target_category_restrictions() -> None:
+    pg = _text(_PG_SPEC)
+    sections = _sections(pg)
+    body = sections[
+        next(k for k in sections if "Payoff node categories and reference-target" in k)
+    ]
+    phrases = [
+        "`PGPayment.amount` -> a **money-denominated value payoff node**",
+        "`PGScale.factor` -> a **dimensionless value payoff node**",
+        "`PGScale.payoff` -> a **contract payoff node**",
+        "`PGConditionalValue.condition` -> a **Boolean payoff node**",
+        "`PGConditionalValue.true_payoff` / `false_payoff` -> **value payoff nodes of",
+        "`PGConditionalContract.condition` -> a **Boolean payoff node**",
+        "`PGConditionalContract.true_payoff` / `false_payoff` -> **contract payoff",
+        "`PGCombine.operands` -> **contract payoff nodes**",
+        "`PGComparison.left` / `right` -> **value payoff nodes**",
+        "`PGAllOf` / `PGAnyOf` `operands` -> **Boolean payoff nodes**",
+        "`PGNot.operand` -> a **Boolean payoff node**",
+    ]
+    for phrase in phrases:
+        assert phrase in body, phrase
+
+
+USD = Currency.from_code("USD")
+T0 = ObservationTime.from_datetime(datetime(2030, 1, 1, tzinfo=UTC))
+T0_ST = SettlementTime.from_datetime(datetime(2030, 1, 1, tzinfo=UTC))
+T0_MS_ST = SettlementTime.from_datetime(
+    datetime(2030, 1, 1, 0, 0, 0, 500000, tzinfo=UTC)
+)
+
+
+def _obs(ident: str) -> Observable:
+    return Observable(
+        ObservableId.from_parts("equity", ident, "close"), T0, Unit.money(USD)
+    )
+
+
+def _scobs(ident: str) -> Observable:
+    return Observable(
+        ObservableId.from_parts("macro", ident, "level"), T0, Unit.scalar()
+    )
+
+
+def _num(v: str, scalar: bool = False) -> Number:
+    return Number(
+        ExactNumber.from_string(v), Unit.scalar() if scalar else Unit.money(USD)
+    )
+
+
+def _pay(amt: ScalarExpression) -> Payment:
+    return Payment(amt, USD, T0_ST)
+
+
+def _shared() -> Both:
+    shared = _pay(Add((_obs("AAA"), _obs("BBB"))))
+    return Both((shared, Scale(_num("2", scalar=True), shared)))
+
+
+def test_planned_vector_sources_construct_and_validate() -> None:
+    sources: list[Callable[[], Contract]] = [
+        lambda: _pay(_num("100")),
+        lambda: _pay(Add((_obs("AAA"), _obs("BBB")))),
+        lambda: _pay(Subtract(_obs("AAA"), _obs("BBB"))),
+        lambda: _pay(Add((_obs("AAA"), Add((_obs("BBB"), _obs("XXX")))))),
+        lambda: _pay(Add((_obs("AAA"), _obs("BBB"), _obs("XXX")))),
+        lambda: _pay(Multiply(_obs("AAA"), _num("2", scalar=True))),
+        lambda: _pay(Multiply(_num("2", scalar=True), _obs("AAA"))),
+        lambda: _pay(
+            Multiply(
+                _obs("AAA"),
+                Multiply(_num("2", scalar=True), _num("3", scalar=True)),
+            )
+        ),
+        lambda: Scale(Divide(_scobs("SCALARA"), _scobs("SCALARB")), _pay(_obs("AAA"))),
+        lambda: Scale(Divide(_scobs("SCALARB"), _scobs("SCALARA")), _pay(_obs("AAA"))),
+        lambda: Both((_pay(_obs("AAA")), _pay(_obs("BBB")))),
+        lambda: Both((_pay(_obs("BBB")), _pay(_obs("AAA")))),
+        lambda: _pay(Add((_obs("AAA"), _obs("AAA")))),
+        lambda: _pay(_obs("AAA")),
+        lambda: _shared(),
+        lambda: Both(
+            (
+                _pay(Add((_obs("AAA"), _obs("BBB")))),
+                Scale(_num("2", scalar=True), _pay(Add((_obs("AAA"), _obs("BBB"))))),
+            )
+        ),
+        lambda: _pay(
+            ConditionalValue(
+                AllOf(
+                    (
+                        Comparison(
+                            _obs("AAA"), _obs("BBB"), ComparisonOperator.GREATER_THAN
+                        ),
+                        AllOf(
+                            (
+                                Comparison(
+                                    _obs("BBB"),
+                                    _obs("XXX"),
+                                    ComparisonOperator.GREATER_THAN,
+                                ),
+                                Comparison(
+                                    _obs("AAA"),
+                                    _obs("XXX"),
+                                    ComparisonOperator.GREATER_THAN,
+                                ),
+                            )
+                        ),
+                    )
+                ),
+                _obs("AAA"),
+                _obs("BBB"),
+            )
+        ),
+        lambda: _pay(
+            ConditionalValue(
+                AllOf(
+                    (
+                        Comparison(
+                            _obs("AAA"), _obs("BBB"), ComparisonOperator.GREATER_THAN
+                        ),
+                        Comparison(
+                            _obs("BBB"), _obs("XXX"), ComparisonOperator.GREATER_THAN
+                        ),
+                        Comparison(
+                            _obs("AAA"), _obs("XXX"), ComparisonOperator.GREATER_THAN
+                        ),
+                    )
+                ),
+                _obs("AAA"),
+                _obs("BBB"),
+            )
+        ),
+        lambda: _pay(
+            ConditionalValue(
+                AnyOf(
+                    (
+                        Comparison(
+                            _obs("AAA"), _obs("BBB"), ComparisonOperator.GREATER_THAN
+                        ),
+                        AnyOf(
+                            (
+                                Comparison(
+                                    _obs("BBB"),
+                                    _obs("XXX"),
+                                    ComparisonOperator.GREATER_THAN,
+                                ),
+                                Comparison(
+                                    _obs("AAA"),
+                                    _obs("XXX"),
+                                    ComparisonOperator.GREATER_THAN,
+                                ),
+                            )
+                        ),
+                    )
+                ),
+                _obs("AAA"),
+                _obs("BBB"),
+            )
+        ),
+        lambda: _pay(
+            ConditionalValue(
+                AnyOf(
+                    (
+                        Comparison(
+                            _obs("AAA"), _obs("BBB"), ComparisonOperator.GREATER_THAN
+                        ),
+                        Comparison(
+                            _obs("BBB"), _obs("XXX"), ComparisonOperator.GREATER_THAN
+                        ),
+                        Comparison(
+                            _obs("AAA"), _obs("XXX"), ComparisonOperator.GREATER_THAN
+                        ),
+                    )
+                ),
+                _obs("AAA"),
+                _obs("BBB"),
+            )
+        ),
+        lambda: _pay(
+            ConditionalValue(
+                Comparison(_obs("AAA"), _obs("BBB"), ComparisonOperator.GREATER_THAN),
+                _obs("AAA"),
+                _obs("BBB"),
+            )
+        ),
+        lambda: ConditionalContract(
+            Comparison(_obs("AAA"), _obs("BBB"), ComparisonOperator.GREATER_THAN),
+            _pay(_obs("AAA")),
+            _pay(_obs("BBB")),
+        ),
+        lambda: Both((Zero(), Zero())),
+        lambda: _pay(Add((_obs("AAA"), _obs("BBB")))),
+        lambda: Payment(_num("1"), USD, T0_MS_ST),
+    ]
+    for builder in sources:
+        contract = builder()
+        metrics = validate_contract(contract)
+        assert metrics.node_count > 0
+
+
+def test_planned_vector_invalid_sources_rejected() -> None:
+    # money-denominated Divide denominator must be rejected
+    with pytest.raises(ContractError):
+        validate_contract(Divide(_obs("AAA"), _obs("BBB")))  # type: ignore[arg-type]
+    # single-operand Add must be rejected
+    with pytest.raises(ContractError):
+        validate_contract(Add((_obs("AAA"),)))  # type: ignore[arg-type]
+    # an Expression passed where a Contract is required must be rejected
+    with pytest.raises(ContractError):
+        validate_contract(Scale(_num("2", scalar=True), _obs("AAA")))  # type: ignore[arg-type]
+    # Multiply without a dimensionless factor (money x money) must be rejected
+    with pytest.raises(ContractError):
+        validate_contract(Multiply(_obs("AAA"), _obs("BBB")))  # type: ignore[arg-type]
+
+
+def test_r2_coverage_section_no_stale_rules() -> None:
+    vec = _VEC.read_text(encoding="utf-8")
+    sections = _sections(vec)
+    r2_parts = "\n".join(
+        v
+        for k, v in sections.items()
+        if ("Planned R2 vectors" in k) or ("Coverage obligations" in k)
+    )
+    # payoff collisions must not map onto canonicalization.collision
+    assert "canonicalization.collision" not in r2_parts, "stale payoff collision rule"
+    # R2 coverage must not say "When Stage 1B is implemented"
+    assert "When Stage 1B is implemented" not in r2_parts
+    # R2 stability must not be "re-running canonicalization"
+    assert "re-running canonicalization" not in r2_parts
+    # no `<hex>` placeholder identity values
+    assert ":sha256:<hex>" not in r2_parts
