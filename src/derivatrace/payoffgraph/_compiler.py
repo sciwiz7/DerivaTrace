@@ -59,6 +59,55 @@ _CANON_LIST_REF: dict[str, tuple[str, ...]] = {
     "Both": ("operands",),
 }
 
+# Every canonical node type the trusted R1 document policy may name. A node
+# whose payload ``type`` is not in this set is rejected before any traversal or
+# mapping happens, so an unknown type can never reach ``map_node``.
+_CANON_TYPES: frozenset[str] = frozenset(
+    {
+        "Number",
+        "Observable",
+        "BooleanConstant",
+        "Zero",
+        "Negate",
+        "Subtract",
+        "Multiply",
+        "Divide",
+        "Add",
+        "Maximum",
+        "Minimum",
+        "ConditionalValue",
+        "Comparison",
+        "Not",
+        "AllOf",
+        "AnyOf",
+        "Payment",
+        "Both",
+        "Scale",
+        "ConditionalContract",
+    }
+)
+
+# Minimum operand cardinality per canonical collection node, taken from the
+# trusted R1 document policy (which derives these from the Stage 1A author
+# policy). ``Zero`` is the only node that legitimately produces an empty
+# ``PGCombine``; every other collection requires at least two operands.
+_CANON_MIN_OPERANDS: dict[str, int] = {
+    "Add": 2,
+    "Maximum": 2,
+    "Minimum": 2,
+    "AllOf": 2,
+    "AnyOf": 2,
+    "Both": 2,
+}
+
+# Encoded comparison operators accepted from the trusted canonical document.
+_SUPPORTED_OPERATORS: frozenset[str] = frozenset({"<", "<=", "==", "!=", ">=", ">"})
+
+# Three-state colours for the iterative canonical-graph compilation walk.
+_CANON_UNSEEN: int = 0
+_CANON_VISITING: int = 1
+_CANON_VISITED: int = 2
+
 # Reference-field maps for traversal of the compiled payoff-graph node graph.
 _PG_SINGLE_REF: dict[str, tuple[str, ...]] = {
     "PGSubtract": ("minuend", "subtrahend"),
@@ -163,18 +212,147 @@ def _divide_payoff_units(num: tuple[str, ...], den: tuple[str, ...]) -> tuple[st
     return num
 
 
-def _require_canonical_payload(
+def _require_exact_number_shape(value: object) -> None:
+    """Validate the trusted exact-number payload shape.
+
+    The trusted R1 document encodes a finite decimal as
+    ``{"sign": 0|1, "digits": str, "exponent": int}``. Any deviation raises
+    ``PayoffGraphCompilationError`` with a fixed, non-sensitive message.
+    """
+    if not isinstance(value, dict):
+        raise PayoffGraphCompilationError(
+            "internal canonical exact-number is malformed"
+        )
+    sign = value.get("sign")
+    if type(sign) is not int or sign not in (0, 1):
+        raise PayoffGraphCompilationError(
+            "internal canonical exact-number sign is malformed"
+        )
+    digits = value.get("digits")
+    if type(digits) is not str:
+        raise PayoffGraphCompilationError(
+            "internal canonical exact-number digits is malformed"
+        )
+    exponent = value.get("exponent")
+    if type(exponent) is not int:
+        raise PayoffGraphCompilationError(
+            "internal canonical exact-number exponent is malformed"
+        )
+    if digits and not digits.lstrip("-").isdigit():
+        raise PayoffGraphCompilationError(
+            "internal canonical exact-number digits is malformed"
+        )
+
+
+def _require_observable_id_shape(oid: object) -> None:
+    """Validate the trusted ``ObservableId`` payload shape."""
+    if not isinstance(oid, dict):
+        raise PayoffGraphCompilationError(
+            "internal canonical observable_id is malformed"
+        )
+    for field in ("field", "identifier", "namespace"):
+        part = oid.get(field)
+        if not isinstance(part, str):
+            raise PayoffGraphCompilationError(
+                "internal canonical observable_id is malformed"
+            )
+
+
+def _require_record_fields(ctype: str, payload: dict[str, Any]) -> None:
+    """Validate the required non-reference fields of a canonical record.
+
+    Called after the record dict, its ``id``/``payload`` envelope, and the
+    reference fields have already been validated, so every direct index below
+    is safe. A malformed field raises ``PayoffGraphCompilationError``.
+    """
+    if ctype == "Number":
+        _require_exact_number_shape(payload.get("value"))
+        _parse_payoff_unit(payload.get("unit"))
+    elif ctype == "Observable":
+        _require_observable_id_shape(payload.get("observable_id"))
+        observation_time = payload.get("observation_time")
+        if not isinstance(observation_time, str):
+            raise PayoffGraphCompilationError(
+                "internal canonical observation_time is malformed"
+            )
+        _parse_payoff_unit(payload.get("unit"))
+    elif ctype == "BooleanConstant":
+        if type(payload.get("value")) is not bool:
+            raise PayoffGraphCompilationError(
+                "internal canonical BooleanConstant value is malformed"
+            )
+    elif ctype == "Comparison":
+        if payload.get("operator") not in _SUPPORTED_OPERATORS:
+            raise PayoffGraphCompilationError(
+                "internal canonical comparison operator is malformed"
+            )
+    elif ctype == "Payment":
+        if not isinstance(payload.get("currency"), str):
+            raise PayoffGraphCompilationError(
+                "internal canonical payment currency is malformed"
+            )
+        if not isinstance(payload.get("settlement_time"), str):
+            raise PayoffGraphCompilationError(
+                "internal canonical payment settlement_time is malformed"
+            )
+
+
+def _decode_canonical_record(
     nodes: dict[str, Any], cid: str
 ) -> tuple[str, dict[str, Any]]:
+    """Decode and fully validate one reachable canonical node record.
+
+    Returns ``(ctype, payload)`` only after every required structural and
+    field-level invariant has been checked. Any malformed record raises
+    ``PayoffGraphCompilationError`` with a fixed, non-sensitive message; no
+    built-in exception (``KeyError``/``TypeError``/``ValueError``/...) may
+    escape this function.
+    """
     node = nodes.get(cid)
     if not isinstance(node, dict):
         raise PayoffGraphCompilationError("internal canonical node record is malformed")
+    rid = node.get("id")
+    if not isinstance(rid, str):
+        raise PayoffGraphCompilationError("internal canonical record id is malformed")
+    if rid != cid:
+        raise PayoffGraphCompilationError(
+            "internal canonical record id does not match its key"
+        )
     payload = node.get("payload")
     if not isinstance(payload, dict):
         raise PayoffGraphCompilationError("internal canonical node payload is missing")
     ctype = payload.get("type")
     if not isinstance(ctype, str):
         raise PayoffGraphCompilationError("internal canonical node type is missing")
+    if ctype not in _CANON_TYPES:
+        raise PayoffGraphCompilationError("unknown canonical node type encountered")
+    # Reference fields must retain their exact validation before child
+    # scheduling, so validate them here regardless of node type.
+    if ctype in _CANON_SINGLE_REF:
+        for field in _CANON_SINGLE_REF[ctype]:
+            ref = payload.get(field)
+            if not isinstance(ref, str):
+                raise PayoffGraphCompilationError(
+                    "internal canonical reference is malformed"
+                )
+    elif ctype in _CANON_LIST_REF:
+        for field in _CANON_LIST_REF[ctype]:
+            refs = payload.get(field)
+            if not isinstance(refs, list):
+                raise PayoffGraphCompilationError(
+                    "internal canonical reference is malformed"
+                )
+            for ref in refs:
+                if not isinstance(ref, str):
+                    raise PayoffGraphCompilationError(
+                        "internal canonical reference is malformed"
+                    )
+            min_count = _CANON_MIN_OPERANDS.get(ctype)
+            if min_count is not None and len(refs) < min_count:
+                raise PayoffGraphCompilationError(
+                    "internal canonical collection is too small"
+                )
+    _require_record_fields(ctype, payload)
     return ctype, payload
 
 
@@ -360,7 +538,7 @@ def compile_payoff_graph(
             )
         if ctype == "BooleanConstant":
             return (
-                {"type": "PGBooleanConstant", "value": bool(cpayload["value"])},
+                {"type": "PGBooleanConstant", "value": cpayload["value"]},
                 None,
             )
         if ctype == "Zero":
@@ -509,7 +687,11 @@ def compile_payoff_graph(
                 },
                 true_unit,
             )
-        if ctype == "ConditionalContract":
+        # ``ctype`` is guaranteed to be one of ``_CANON_TYPES`` by
+        # ``_decode_canonical_record`` (which rejects anything else), and every
+        # other member is handled by the branches above, so this is the
+        # exhaustive final case.
+        else:
             condition = pg_id_by_canon[cpayload["condition"]]
             require_category(
                 condition, BOOLEAN_CATEGORY, "PGConditionalContract.condition"
@@ -531,16 +713,21 @@ def compile_payoff_graph(
                 },
                 None,
             )
-        raise PayoffGraphCompilationError("unknown canonical node type encountered")
 
-    # Iterative, recursion-free post-order compilation from the canonical root.
+    # Iterative, recursion-free post-order compilation from the canonical root
+    # using an explicit three-state colouring. A canonical id is marked
+    # ``_CANON_VISITING`` *before* its children are scheduled, so re-encountering
+    # a ``_CANON_VISITING`` id is a definitive back-edge (a cycle). A canonical id
+    # is marked ``_CANON_VISITED`` only *after* its payoff node has compiled
+    # successfully, so a failure leaves no partial ``PayoffGraph`` behind. Shared
+    # subtrees and duplicate child references simply observe ``_CANON_VISITED``
+    # and are skipped.
+    state: dict[str, int] = {}
     stack: list[tuple[str, bool]] = [(root_canon_id, False)]
     while stack:
         cid, leaving = stack.pop()
-        if cid in pg_id_by_canon:
-            continue
         if leaving:
-            ctype, cpayload = _require_canonical_payload(nodes, cid)
+            ctype, cpayload = _decode_canonical_record(nodes, cid)
             payload, unit = map_node(ctype, cpayload)
             payload_bytes = canonical_json(payload)
             nid = payoff_node_identity(payload_bytes, version)
@@ -555,30 +742,25 @@ def compile_payoff_graph(
             pg_payload_by_pgid[nid] = payload
             pg_type_by_pgid[nid] = payload["type"]
             pg_unit_by_canon[cid] = unit
+            state[cid] = _CANON_VISITED
             continue
+        colour = state.get(cid, _CANON_UNSEEN)
+        if colour == _CANON_VISITING:
+            raise PayoffGraphCompilationError(
+                "internal canonical graph contains a cycle"
+            )
+        if colour == _CANON_VISITED:
+            continue
+        state[cid] = _CANON_VISITING
         stack.append((cid, True))
-        ctype, cpayload = _require_canonical_payload(nodes, cid)
-        if ctype in _CANON_SINGLE_REF:
-            for field in _CANON_SINGLE_REF[ctype]:
-                child = cpayload.get(field)
-                if not isinstance(child, str):
-                    raise PayoffGraphCompilationError(
-                        "internal canonical reference is malformed"
-                    )
+        ctype, cpayload = _decode_canonical_record(nodes, cid)
+        # References were already validated as exact string ids by
+        # ``_decode_canonical_record`` above, so scheduling is safe.
+        for field in _CANON_SINGLE_REF.get(ctype, ()):
+            stack.append((cpayload[field], False))
+        for field in _CANON_LIST_REF.get(ctype, ()):
+            for child in cpayload[field]:
                 stack.append((child, False))
-        elif ctype in _CANON_LIST_REF:
-            for field in _CANON_LIST_REF[ctype]:
-                refs = cpayload.get(field)
-                if not isinstance(refs, list):
-                    raise PayoffGraphCompilationError(
-                        "internal canonical reference is malformed"
-                    )
-                for child in refs:
-                    if not isinstance(child, str):
-                        raise PayoffGraphCompilationError(
-                            "internal canonical reference is malformed"
-                        )
-                    stack.append((child, False))
 
     root_pg_id = pg_id_by_canon[root_canon_id]
 

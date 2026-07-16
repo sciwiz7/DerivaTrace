@@ -1447,9 +1447,16 @@ def test_r2_coverage_section_no_stale_rules() -> None:
 
 def test_r2_conformance_identities_match_executable_registry() -> None:
     # The normative R2 conformance section must document exactly the identities
-    # recorded in the executable conformance registry: no documented identity is
-    # unused, and no runtime conformance vector is undocumented.
+    # recorded in the executable conformance registry, keyed by the stable vector
+    # key. Machine-readable `**Vector key:**` annotations are paired in document
+    # order with the `payoffgraph:sha256:` identities; the resulting keyed map
+    # must equal the registry exactly. This makes the guards explicit: a swapped
+    # identity, a missing/extra document, or a duplicate/renamed key all fail.
     from conformance_registry import CONFORMANCE_VECTORS
+
+    registry: dict[str, str] = {
+        name: identity for name, (identity, _) in CONFORMANCE_VECTORS.items()
+    }
 
     vec = _VEC.read_text(encoding="utf-8")
     sections = _sections(vec)
@@ -1457,17 +1464,52 @@ def test_r2_conformance_identities_match_executable_registry() -> None:
     assert section_name in sections, "missing R2 conformance section"
     body = sections[section_name]
 
-    documented: set[str] = set()
+    # Stable vector keys in document order (comma-separated annotations).
+    key_order: list[str] = []
+    for km in re.finditer(r"\*\*Vector key:\*\*\s*([^\n]*+)", body):
+        for raw in km.group(1).split(","):
+            key = raw.strip().strip("*").strip()
+            if key:
+                key_order.append(key)
+    # Payoff-graph identities in document order. A vector may legitimately be
+    # cross-referenced (e.g. the deterministic-recompilation note repeats the
+    # PGAdd commutation identity); collapse exact repeats so the keyed zip still
+    # aligns, while a genuinely new/different identity still breaks the count.
+    seen_identity: set[str] = set()
+    identity_order: list[str] = []
     for m in re.finditer(r"payoffgraph:sha256:([0-9a-f]{64})", body):
-        documented.add("payoffgraph:sha256:" + m.group(1))
-    assert documented, "no conformance identities found in the R2 section"
+        identity = "payoffgraph:sha256:" + m.group(1)
+        if identity not in seen_identity:
+            seen_identity.add(identity)
+            identity_order.append(identity)
 
-    registry: set[str] = {expected for expected, _ in CONFORMANCE_VECTORS.values()}
+    assert identity_order, "no conformance identities found in the R2 section"
+    assert len(key_order) == len(identity_order), (
+        f"vector-key count ({len(key_order)}) != identity count "
+        f"({len(identity_order)}) in the R2 section"
+    )
+
+    documented: dict[str, str] = {}
+    for key, identity in zip(key_order, identity_order, strict=True):
+        assert key not in documented, f"duplicate vector key '{key}' in R2 section"
+        documented[key] = identity
+
+    # Every registry vector is represented exactly once, under its stable key.
+    assert set(documented) == set(registry), (
+        "R2 documented vector keys diverge from the executable registry: "
+        f"documented-only={set(documented) - set(registry)!r}, "
+        f"registry-only={set(registry) - set(documented)!r}"
+    )
+    # Exact key -> identity correspondence (catches a swapped identity too).
     assert documented == registry, (
         "R2 documented identities diverge from the executable registry: "
-        f"documented-only={documented - registry!r}, "
-        f"registry-only={registry - documented!r}"
+        f"documented-only={set(documented) - set(registry)!r}, "
+        f"registry-only={set(registry) - set(documented)!r}"
     )
+
+    # The collision seam is documented but is not a normal graph identity; it
+    # must not be annotated as a conformance vector key.
+    assert "payoff_graph.collision" not in key_order
 
 
 def test_r2_conformance_registry_executes() -> None:

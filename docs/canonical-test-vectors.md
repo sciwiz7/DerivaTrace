@@ -230,18 +230,21 @@ deterministic compilation). No vector contains a placeholder, `TBD`,
   `Payment(Number(ExactNumber("100"), Unit.money(USD)), USD, T0)`. Expect a
   `PGConstant` (no `settlement_time`) referenced by `PGPayment.amount`; graph
   distinct from any `PGObservable`-backed payment.
+  **Vector key:** pg_constant
   **Payoff-graph identity:** `payoffgraph:sha256:858624784eed60272f1c73fb5b52d2547eec326dc2bd2862a3db3a42ecc07922`.
 - **PGAdd commutation** — sources
   `Payment(Add((obs_A, obs_B)), USD, T0)` versus
   `Payment(Add((obs_B, obs_A)), USD, T0)`. Expect identical `PGAdd` operand array
   (sorted by id) and identical graph identity (commutative multiset). The identity
   equals CV-011.
+  **Vector key:** pgadd_commutation
   **Payoff-graph identity (both):** `payoffgraph:sha256:59fbb00dbb585755a799cd7e387e4ee51fd9b77ed3cc032758a825f2f8836e1a`.
 - **PGSubtract order sensitivity** — sources
   `Payment(Subtract(obs_A, obs_B), USD, T0)` versus
   `Payment(Subtract(obs_B, obs_A), USD, T0)`. Expect distinct `PGSubtract`
   (`minuend`/`subtrahend` swapped) and **distinct** graph identities; **not**
   lowered to `PGAdd`+`PGNegate`.
+  **Vector key:** pg_subtract_ab, pg_subtract_ba
   **Payoff-graph identities:** `payoffgraph:sha256:55ada2494e58231140c15e261b80ff294db26f88bb97e454576db82fe6d8c10a` (A−B) vs `payoffgraph:sha256:e0c7bba00c37d8305ee99a0ef0c5fa041ff3ab2164298a0e8584bcfbec1713f5` (B−A).
 - **Nested PGAdd flattening** — compare
   `Payment(Add((obs_A, Add((obs_B, obs_X)))), USD, T0)` against
@@ -249,6 +252,7 @@ deterministic compilation). No vector contains a placeholder, `TBD`,
   **identical** R1 canonical contract (associative flattening), so they compile to
   the **identical** payoff graph with exactly one reachable `PGAdd` and no inner
   `PGAdd`. Do not treat the nested-author form as a distinct graph.
+  **Vector key:** pg_add_flattening
   **Payoff-graph identity (both):** `payoffgraph:sha256:7e7690a487af6a85d03f0ffe3a310fb0747936f5b0ae4e6e61bd5b5443eafa69`.
 - **Binary PGMultiply commutation without associativity** — use a dimensionless
   factor `Number(ExactNumber("2"), Unit.scalar())`. Within one grouping compare
@@ -256,6 +260,7 @@ deterministic compilation). No vector contains a placeholder, `TBD`,
   versus `Payment(Multiply(Number(ExactNumber("2"), Unit.scalar()), obs_A), USD,
   T0)`: expect identical binary `PGMultiply` (left/right reordered by id) and
   identical graph identity.
+  **Vector key:** pg_multiply_commutation, pg_multiply_right_assoc, pg_multiply_left_assoc
   **Payoff-graph identity (commuted pair):** `payoffgraph:sha256:189ad22220104a4f8f80f0e57d791365222dd435f395232857d2d09db605dae5`.
   Separately compare that grouping against a different valid binary grouping
   `Payment(Multiply(obs_A, Multiply(Number(ExactNumber("2"), Unit.scalar()),
@@ -273,17 +278,20 @@ deterministic compilation). No vector contains a placeholder, `TBD`,
   distinct `PGDivide` (`numerator`/`denominator` swapped) and distinct graph
   identities; **no** reciprocal rewrite. (A money observable must **not** divide a
   money observable.)
+  **Vector key:** pg_divide_ab, pg_divide_ba
   **Payoff-graph identities:** `payoffgraph:sha256:3859b48afb878ec09a881b8de7c13b19dcdfcb320ad39a2707119566038defac` (A÷B) vs `payoffgraph:sha256:b603b81912c92224c22fb66a9a101bdc9aeedce4370f9cb395d21f0ef011242a` (B÷A).
 - **PGCombine author-order sensitivity** — sources
   `Both((Payment(obs_A, USD, T0), Payment(obs_B, USD, T0)))` versus
   `Both((Payment(obs_B, USD, T0), Payment(obs_A, USD, T0)))`. Expect distinct
   `PGCombine` operand order and distinct graph identities (author order
   preserved, not commutative).
+  **Vector key:** pg_combine_ab, pg_combine_ba
   **Payoff-graph identities:** `payoffgraph:sha256:ea878884b83fea0dafbd1703e863cf356d59eaeaff410d50836a2d69d4535314` (A,B) vs `payoffgraph:sha256:ee2dfa4a1b99cc3f11be777668c120b593ec2464247e0320e7934270276fea05` (B,A).
 - **Duplicate operand preservation (Add)** — compare
   `Payment(Add((obs_A, obs_A)), USD, T0)` against `Payment(obs_A, USD, T0)`. Expect
   `PGAdd.operands == [id_A, id_A]`; the duplicated graph is **distinct** from the
   single-observable payment (which has no `Add` wrapper).
+  **Vector key:** pg_duplicate_add, pg_single_observable
   **Payoff-graph identities:** `payoffgraph:sha256:ac7653325470e272d3c32d96c027e3d4e93840f529b8be7e73b9376738b48742` (duplicate Add) vs `payoffgraph:sha256:07a5cf79d4942881810c8fce6158c27a623b1cf420819b7d1215f7c47c5cbaa2` (single observable).
 - **Duplicate Multiply operand (shared scalar factor)** — source
   `Scale(Multiply(shared, shared), Payment(obs_A, USD, T0))` where
@@ -292,11 +300,13 @@ deterministic compilation). No vector contains a placeholder, `TBD`,
   reference the **same** scalar node, so `PGMultiply.left == PGMultiply.right` and
   the duplicate reference appears twice in the operand graph; the compiled graph is
   **distinct** from any non-duplicated Multiply grouping above.
+  **Vector key:** pg_duplicate_multiply
   **Payoff-graph identity:** `payoffgraph:sha256:0025c2a2ed75cf9a442298ae2e78bfd6df0c8b5e19aacc47a53b2ee268c877db`.
 - **Duplicate operand preservation (PGCombine)** — source
   `Both((shared, shared))` where `shared = Payment(obs_A, USD, T0)`. Expect
   `PGCombine.operands == [id_A, id_A]`; the duplicated graph is **distinct** from the
   single-observable payment.
+  **Vector key:** pg_duplicate_combine
   **Payoff-graph identity:** `payoffgraph:sha256:48ad96391a4202b61b5bf13a16e1cf2690266b0ee9566f655505fe241297df3d`.
 - **Shared versus copied subgraphs** — use a **Contract** subtree (not an `Add`
   expression) as `Scale.contract`. Shared version: construct one
@@ -312,6 +322,7 @@ deterministic compilation). No vector contains a placeholder, `TBD`,
   graph is distinct from the duplicate PGCombine vector
   (`48ad96391a4202b61b5bf13a16e1cf2690266b0ee9566f655505fe241297df3d`) because it
   carries a `Scale` over the shared payment in addition to the shared payment itself.
+  **Vector key:** pg_shared_subgraph
   **Payoff-graph identity (both):** `payoffgraph:sha256:b5c987269d9b16f5605c4d49621aef2d93e4a65c0b083718e5e3d27e027cb04c`.
 - **PGAllOf / PGAnyOf flattening** — provide separate nested-versus-flat pairs
   using non-literal `Comparison` conditions. For `AllOf` compare
@@ -323,6 +334,7 @@ deterministic compilation). No vector contains a placeholder, `TBD`,
   GREATER_THAN))), obs_A, obs_B), USD, T0)`. Both canonicalize to the identical R1
   contract (nested `AllOf` flattened) and compile to the identical payoff graph
   with a single `PGAllOf` and no inner `PGAllOf`.
+  **Vector key:** pg_allof_flattening, pg_anyof_flattening
   **Payoff-graph identity (AllOf both):** `payoffgraph:sha256:d2ecc0ce66d3bf79f741e4e5fd1593f3049ed75fa8eb5ea4ed444ce1c80c8e26`.
   The `AnyOf` pair uses the same structure with `AnyOf` and expects the same
   identical-graph relationship.
@@ -331,17 +343,20 @@ deterministic compilation). No vector contains a placeholder, `TBD`,
   `Payment(ConditionalValue(Comparison(obs_A, obs_B, GREATER_THAN), obs_A,
   obs_B), USD, T0)`. Expect `PGConditionalValue` with `condition` (a `PGComparison`)
   /`true_payoff`/`false_payoff` author order preserved.
+  **Vector key:** pg_conditional_value
   **Payoff-graph identity:** `payoffgraph:sha256:719e567c5b7023469b5035156d1af63c0f8c70b6e4e911dc9849df01af786666`.
 - **PGConditionalContract** — source
   `ConditionalContract(Comparison(obs_A, obs_B, GREATER_THAN),
   Payment(obs_A, USD, T0), Payment(obs_B, USD, T0))`. Expect
   `PGConditionalContract` with author order preserved; graph distinct from the
   swapped-branch contract.
+  **Vector key:** pg_conditional_contract
   **Payoff-graph identity:** `payoffgraph:sha256:155177c729b3dd1673fc34d1521985bf187b2395b2300eab7cbd96c63075fa4d`.
 - **Zero to empty PGCombine** — `Both((Zero(), Zero()))` (or a `Zero()` alone
   compiled to a payoff root). Each `Zero` compiles to a `PGCombine` with an empty
   `operands` array; node ids equal across distinct `Zero` sources
   (content-addressed).
+  **Vector key:** pg_zero
   **Payoff-graph identity:** `payoffgraph:sha256:6cf223e52d6f1f016dd920568e48dcf9fd3576d374b1a073f46b768f6cdc9f67`.
 - **Deterministic recompilation** — compiling the same source contract (e.g. CV-011)
   twice yields byte-identical `structural_bytes` and the same graph identity
@@ -361,6 +376,7 @@ deterministic compilation). No vector contains a placeholder, `TBD`,
   SettlementTime=2030-01-01T00:00:00.500000Z)`. Expect `PGPayment.settlement_time`
   to carry full microsecond precision and participate in the graph identity;
   distinct from the `...000000Z` variant.
+  **Vector key:** pg_timestamp_000000, pg_timestamp_500000
   **Payoff-graph identities:** `payoffgraph:sha256:d4e7c6f6d6e90b87c13155a71c54be3c872c04165eac9a7732fb345954e88719` (…000000Z) vs `payoffgraph:sha256:698aa543f12b6ce911885c73f5cef35a1723d3be492d8b00c86a6d1865209e30` (…500000Z).
 - **Collision seam** — a constructed case where two distinct payoff payloads hash
   to the same payoff-node id must raise `payoff_graph.collision` (never silently

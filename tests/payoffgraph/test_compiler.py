@@ -1958,7 +1958,7 @@ class TestCompilerInternalPaths:
                             "id": cid_const,
                             "payload": {
                                 "type": "Number",
-                                "value": "1",
+                                "value": {"sign": 0, "digits": "1", "exponent": 0},
                                 "unit": {"kind": "money", "currency": "USD"},
                             },
                         },
@@ -2020,7 +2020,7 @@ def _canon_number(scalar: bool = False, currency: str = "USD") -> dict[str, Any]
         "id": "n" * 64,
         "payload": {
             "type": "Number",
-            "value": "1",
+            "value": {"sign": 0, "digits": "1", "exponent": 0},
             "unit": (
                 {"kind": "scalar"}
                 if scalar
@@ -2087,12 +2087,12 @@ class TestValueUnitDerivationMalformed:
 
     def test_money_scale_factor_rejected(self) -> None:
         nodes = {
-            "f" * 64: _canon_number(scalar=False),
+            "n" * 64: _canon_number(scalar=False),
             "o" * 64: _canon_obs(),
             "q" * 64: _canon_payment("o" * 64, tag="q"),
             "r" * 64: {
                 "id": "r" * 64,
-                "payload": {"type": "Scale", "factor": "f" * 64, "contract": "q" * 64},
+                "payload": {"type": "Scale", "factor": "n" * 64, "contract": "q" * 64},
             },
         }
         with pytest.raises(PayoffGraphInputError):
@@ -2417,6 +2417,454 @@ class TestCanonicalDocumentStructure:
         reachable, records = _traverse_payoff_graph("A", types, payloads)
         assert reachable == {"A", "B", "C"}
         assert set(records) == {"A", "B", "C"}
+
+
+# ---------------------------------------------------------------------------
+# Canonical three-state cycle detection (requirement 1): exercises
+# compile_payoff_graph directly through the patched canonicalize_contract seam.
+# ---------------------------------------------------------------------------
+
+
+def _node(cid: str, payload: dict[str, Any]) -> dict[str, Any]:
+    return {"id": cid, "payload": payload}
+
+
+class TestCanonicalCycleDetection:
+    def test_self_cycle_rejected(self) -> None:
+        cid = "a" * 64
+        nodes = {cid: _node(cid, {"type": "Negate", "operand": cid})}
+        with pytest.raises(PayoffGraphCompilationError, match="cycle"):
+            _compile_from_canonical(nodes, cid)
+
+    def test_two_node_cycle_rejected(self) -> None:
+        a = "a" * 64
+        b = "b" * 64
+        nodes = {
+            a: _node(a, {"type": "Negate", "operand": b}),
+            b: _node(b, {"type": "Negate", "operand": a}),
+        }
+        with pytest.raises(PayoffGraphCompilationError, match="cycle"):
+            _compile_from_canonical(nodes, a)
+
+    def test_three_node_cycle_rejected(self) -> None:
+        a = "a" * 64
+        b = "b" * 64
+        c = "c" * 64
+        nodes = {
+            a: _node(a, {"type": "Negate", "operand": b}),
+            b: _node(b, {"type": "Negate", "operand": c}),
+            c: _node(c, {"type": "Negate", "operand": a}),
+        }
+        with pytest.raises(PayoffGraphCompilationError, match="cycle"):
+            _compile_from_canonical(nodes, a)
+
+    def test_valid_shared_diamond_accepted(self) -> None:
+        a = "a" * 64
+        b = "b" * 64
+        c = "c" * 64
+        d = "d" * 64
+        e = "e" * 64
+        nodes = {
+            d: _node(
+                d,
+                {
+                    "type": "Number",
+                    "value": {"sign": 0, "digits": "1", "exponent": 0},
+                    "unit": {"kind": "money", "currency": "USD"},
+                },
+            ),
+            e: _node(
+                e,
+                {
+                    "type": "Number",
+                    "value": {"sign": 0, "digits": "2", "exponent": 0},
+                    "unit": {"kind": "money", "currency": "USD"},
+                },
+            ),
+            b: _node(b, {"type": "Subtract", "minuend": d, "subtrahend": e}),
+            c: _node(c, {"type": "Negate", "operand": d}),
+            a: _node(a, {"type": "Add", "operands": [b, c]}),
+        }
+        pg = _compile_from_canonical(nodes, a)
+        # Five distinct payoff nodes; ``d`` is shared by both ``b`` and ``c``
+        # (a genuine DAG, not just identical subtrees).
+        assert pg.node_count == 5
+
+    def test_duplicate_canonical_child_reference_accepted(self) -> None:
+        a = "a" * 64
+        b = "b" * 64
+        nodes = {
+            b: _node(
+                b,
+                {
+                    "type": "Number",
+                    "value": {"sign": 0, "digits": "1", "exponent": 0},
+                    "unit": {"kind": "money", "currency": "USD"},
+                },
+            ),
+            a: _node(a, {"type": "Add", "operands": [b, b]}),
+        }
+        pg = _compile_from_canonical(nodes, a)
+        struct = _struct(pg)
+        root = struct["nodes"][pg.root_node_id]
+        assert (
+            root["payload"]["operands"]
+            == [struct["nodes"][root["payload"]["operands"][0]]["id"]] * 2
+        )
+
+    def test_all_cycle_tests_terminate(self) -> None:
+        # Each cycle variant must raise deterministically (no infinite loop and
+        # no partial PayoffGraph). The assertions above already cover the raise;
+        # this guard ensures termination even under a tight recursion limit.
+        import sys
+
+        old = sys.getrecursionlimit()
+        try:
+            sys.setrecursionlimit(60)
+            a = "a" * 64
+            b = "b" * 64
+            c = "c" * 64
+            for nodes, root in (
+                ({a: _node(a, {"type": "Negate", "operand": a})}, a),
+                (
+                    {
+                        a: _node(a, {"type": "Negate", "operand": b}),
+                        b: _node(b, {"type": "Negate", "operand": a}),
+                    },
+                    a,
+                ),
+                (
+                    {
+                        a: _node(a, {"type": "Negate", "operand": b}),
+                        b: _node(b, {"type": "Negate", "operand": c}),
+                        c: _node(c, {"type": "Negate", "operand": a}),
+                    },
+                    a,
+                ),
+            ):
+                with pytest.raises(PayoffGraphCompilationError):
+                    _compile_from_canonical(nodes, root)
+        finally:
+            sys.setrecursionlimit(old)
+
+
+# ---------------------------------------------------------------------------
+# Canonical record / payload validation matrix (requirement 2)
+# ---------------------------------------------------------------------------
+
+
+class TestCanonicalRecordValidation:
+    def _bad(self, cid: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return {cid: _node(cid, payload)}
+
+    def test_missing_record_id(self) -> None:
+        cid = "a" * 64
+        nodes = {
+            cid: {
+                "payload": {
+                    "type": "Number",
+                    "value": {"sign": 0, "digits": "1", "exponent": 0},
+                    "unit": {"kind": "money", "currency": "USD"},
+                }
+            }
+        }
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, cid)
+
+    def test_record_id_key_mismatch(self) -> None:
+        cid = "a" * 64
+        nodes = {cid: _node("b" * 64, {"type": "Zero"})}
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, cid)
+
+    def test_non_string_record_id(self) -> None:
+        cid = "a" * 64
+        nodes = {cid: {"id": 123, "payload": {"type": "Zero"}}}
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, cid)
+
+    def test_missing_number_value(self) -> None:
+        cid = "a" * 64
+        nodes = self._bad(
+            cid, {"type": "Number", "unit": {"kind": "money", "currency": "USD"}}
+        )
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, cid)
+
+    def test_missing_number_unit(self) -> None:
+        cid = "a" * 64
+        nodes = self._bad(
+            cid, {"type": "Number", "value": {"sign": 0, "digits": "1", "exponent": 0}}
+        )
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, cid)
+
+    def test_malformed_exact_number_payload(self) -> None:
+        cid = "a" * 64
+        nodes = self._bad(
+            cid,
+            {
+                "type": "Number",
+                "value": {"sign": 5, "digits": "1", "exponent": 0},
+                "unit": {"kind": "money", "currency": "USD"},
+            },
+        )
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, cid)
+
+    def test_malformed_exact_number_digits(self) -> None:
+        cid = "a" * 64
+        nodes = self._bad(
+            cid,
+            {
+                "type": "Number",
+                "value": {"sign": 0, "digits": 123, "exponent": 0},
+                "unit": {"kind": "money", "currency": "USD"},
+            },
+        )
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, cid)
+
+    def test_missing_observable_id(self) -> None:
+        cid = "a" * 64
+        nodes = self._bad(
+            cid,
+            {
+                "type": "Observable",
+                "observation_time": "2030-01-01T00:00:00.000000Z",
+                "unit": {"kind": "money", "currency": "USD"},
+            },
+        )
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, cid)
+
+    def test_missing_observation_time(self) -> None:
+        cid = "a" * 64
+        nodes = self._bad(
+            cid,
+            {
+                "type": "Observable",
+                "observable_id": {
+                    "field": "close",
+                    "identifier": "AAA",
+                    "namespace": "equity",
+                },
+                "unit": {"kind": "money", "currency": "USD"},
+            },
+        )
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, cid)
+
+    def test_boolean_constant_string_rejected(self) -> None:
+        cid = "a" * 64
+        nodes = self._bad(cid, {"type": "BooleanConstant", "value": "true"})
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, cid)
+
+    def test_boolean_constant_int_rejected(self) -> None:
+        cid = "a" * 64
+        nodes = self._bad(cid, {"type": "BooleanConstant", "value": 1})
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, cid)
+
+    def test_comparison_missing_operator(self) -> None:
+        cid = "a" * 64
+        b = "b" * 64
+        nodes = {
+            b: _node(
+                b,
+                {
+                    "type": "Number",
+                    "value": {"sign": 0, "digits": "1", "exponent": 0},
+                    "unit": {"kind": "money", "currency": "USD"},
+                },
+            ),
+            cid: _node(cid, {"type": "Comparison", "left": b, "right": b}),
+        }
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, cid)
+
+    def test_comparison_bad_operator(self) -> None:
+        cid = "a" * 64
+        b = "b" * 64
+        nodes = {
+            b: _node(
+                b,
+                {
+                    "type": "Number",
+                    "value": {"sign": 0, "digits": "1", "exponent": 0},
+                    "unit": {"kind": "money", "currency": "USD"},
+                },
+            ),
+            cid: _node(
+                cid, {"type": "Comparison", "left": b, "right": b, "operator": "~"}
+            ),
+        }
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, cid)
+
+    def test_payment_missing_currency(self) -> None:
+        cid = "a" * 64
+        b = "b" * 64
+        nodes = {
+            b: _node(
+                b,
+                {
+                    "type": "Number",
+                    "value": {"sign": 0, "digits": "1", "exponent": 0},
+                    "unit": {"kind": "money", "currency": "USD"},
+                },
+            ),
+            cid: _node(
+                cid,
+                {
+                    "type": "Payment",
+                    "amount": b,
+                    "settlement_time": "2030-01-01T00:00:00.000000Z",
+                },
+            ),
+        }
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, cid)
+
+    def test_payment_missing_settlement_time(self) -> None:
+        cid = "a" * 64
+        b = "b" * 64
+        nodes = {
+            b: _node(
+                b,
+                {
+                    "type": "Number",
+                    "value": {"sign": 0, "digits": "1", "exponent": 0},
+                    "unit": {"kind": "money", "currency": "USD"},
+                },
+            ),
+            cid: _node(cid, {"type": "Payment", "amount": b, "currency": "USD"}),
+        }
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, cid)
+
+    def test_empty_add_rejected(self) -> None:
+        cid = "a" * 64
+        nodes = self._bad(cid, {"type": "Add", "operands": []})
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, cid)
+
+    def test_single_operand_add_rejected(self) -> None:
+        cid = "a" * 64
+        b = "b" * 64
+        nodes = {
+            b: _node(
+                b,
+                {
+                    "type": "Number",
+                    "value": {"sign": 0, "digits": "1", "exponent": 0},
+                    "unit": {"kind": "money", "currency": "USD"},
+                },
+            ),
+            cid: _node(cid, {"type": "Add", "operands": [b]}),
+        }
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, cid)
+
+    def test_empty_both_rejected(self) -> None:
+        cid = "a" * 64
+        nodes = self._bad(cid, {"type": "Both", "operands": []})
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, cid)
+
+    def test_single_operand_both_rejected(self) -> None:
+        cid = "a" * 64
+        b = "b" * 64
+        nodes = {
+            b: _node(
+                b,
+                {
+                    "type": "Number",
+                    "value": {"sign": 0, "digits": "1", "exponent": 0},
+                    "unit": {"kind": "money", "currency": "USD"},
+                },
+            ),
+            cid: _node(cid, {"type": "Both", "operands": [b]}),
+        }
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, cid)
+
+    def test_unknown_node_type_rejected(self) -> None:
+        cid = "a" * 64
+        nodes = self._bad(cid, {"type": "Frobnicate", "value": 1})
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, cid)
+
+    def test_number_unit_money_currency_non_string(self) -> None:
+        cid = "a" * 64
+        nodes = self._bad(
+            cid,
+            {
+                "type": "Number",
+                "value": {"sign": 0, "digits": "1", "exponent": 0},
+                "unit": {"kind": "money", "currency": 123},
+            },
+        )
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, cid)
+
+    def test_number_unit_unknown_kind(self) -> None:
+        cid = "a" * 64
+        nodes = self._bad(
+            cid,
+            {
+                "type": "Number",
+                "value": {"sign": 0, "digits": "1", "exponent": 0},
+                "unit": {"kind": "vector"},
+            },
+        )
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, cid)
+
+    def test_exact_number_exponent_not_int(self) -> None:
+        cid = "a" * 64
+        nodes = self._bad(
+            cid,
+            {
+                "type": "Number",
+                "value": {"sign": 0, "digits": "1", "exponent": "0"},
+                "unit": {"kind": "money", "currency": "USD"},
+            },
+        )
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, cid)
+
+    def test_exact_number_digits_not_numeric(self) -> None:
+        cid = "a" * 64
+        nodes = self._bad(
+            cid,
+            {
+                "type": "Number",
+                "value": {"sign": 0, "digits": "1a", "exponent": 0},
+                "unit": {"kind": "money", "currency": "USD"},
+            },
+        )
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, cid)
+
+    def test_observable_id_part_non_string(self) -> None:
+        cid = "a" * 64
+        nodes = self._bad(
+            cid,
+            {
+                "type": "Observable",
+                "observable_id": {
+                    "field": 123,
+                    "identifier": "AAA",
+                    "namespace": "equity",
+                },
+                "observation_time": "2030-01-01T00:00:00.000000Z",
+                "unit": {"kind": "money", "currency": "USD"},
+            },
+        )
+        with pytest.raises(PayoffGraphCompilationError):
+            _compile_from_canonical(nodes, cid)
 
 
 # ---------------------------------------------------------------------------
