@@ -18,7 +18,11 @@ evidence-carrying derivatives compiler and model-risk laboratory. DerivaTrace is
   canonicalizes a validated contract graph into byte-exact canonical JSON with a
   deterministic canonical contract identity. The Stage 1B-R2 payoff-graph
   runtime is Implemented (`derivatrace.payoffgraph`).
-- Stage 1C (validation levels and equivalence reporting) is planned.
+- **Stage 1C architecture baseline is Established.** Graded validation levels,
+  deterministic equivalence reporting, and structural diffing are specified in
+  `validation-equivalence-spec.md` and [ADR 0008](./adr/0008-validation-levels-equivalence-and-structural-diffing.md).
+  Stage 1C-R1 (validation levels and equivalence reports) and Stage 1C-R2
+  (deterministic structural diffing) are planned runtime increments.
 - No pricing, valuation, Greeks, Monte Carlo, PDE, calibration, or hedging
   functionality exists yet.
 - The deterministic core and evidence-certificate design are specified here,
@@ -46,9 +50,13 @@ evidence-carrying derivatives compiler and model-risk laboratory. DerivaTrace is
   the Stage 1B-R1 canonical runtime).
 - [Payoff-graph specification (Stage 1B)](./payoff-graph-spec.md) — model-
   independent payoff-graph node taxonomy and compilation mapping (specified;
-  Stage 1B-R2 runtime planned).
+  Stage 1B-R2 runtime implemented).
 - [Canonical test vectors (Stage 1B)](./canonical-test-vectors.md) — test-vector
   format and normative vectors produced and verified by the canonical runtime.
+- [Validation-equivalence specification (Stage 1C)](./validation-equivalence-spec.md) —
+  graded validation levels, deterministic equivalence report schema, structural
+  diffing, versioning, limits, error taxonomy, and normative conformance vectors
+  (Stage 1C architecture baseline; runtimes planned for 1C-R1 and 1C-R2).
 - [Certificate specification](./certificate-spec.md) — versioned evidence
   envelope and hashing procedure.
 - [Threat model](./threat-model.md) — assets, actors, attack surfaces, and
@@ -62,6 +70,7 @@ evidence-carrying derivatives compiler and model-risk laboratory. DerivaTrace is
   - [ADR 0005: No hidden model selection](./adr/0005-no-hidden-model-selection.md)
   - [ADR 0006: Stage 1 contract algebra and runtime type system](./adr/0006-stage-1-contract-algebra-and-runtime-type-system.md)
   - [ADR 0007: Canonical contract identity and payoff graph](./adr/0007-canonical-contract-identity-and-payoff-graph.md)
+  - [ADR 0008: Validation levels, equivalence, and structural diffing](./adr/0008-validation-levels-equivalence-and-structural-diffing.md)
 
 ## Related root documents
 

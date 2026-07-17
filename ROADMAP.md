@@ -28,10 +28,12 @@ Stages are marked as:
 - **Status:** In progress.
 - **Sub-stages:** Stage 1A Complete; **Stage 1B architecture baseline
   Complete**; **Stage 1B-R1 canonical runtime Implemented**; **Stage 1B-R2
-  payoff-graph runtime Implemented**; Stage 1C Planned.
+  payoff-graph runtime Implemented**; **Stage 1C architecture baseline
+  Established**.
 - **Objective:** Introduce an immutable, typed contract AST, a deterministic
   structural validator, a canonical contract representation with deterministic
-  identity, and (later) a canonical payoff graph.
+  identity, a canonical payoff graph with deterministic identity, and (later)
+  graded validation levels and equivalence reporting.
 - **Explicit exclusions for the whole of Stage 1:** Numerical valuation, market
   data, and any pricing engine.
 
@@ -90,13 +92,26 @@ Stages are marked as:
 
 ### Stage 1C — Validation levels and equivalence reporting
 
-- **Status:** Planned.
-- **Objective:** Define graded validation levels and equivalence reporting on
-  top of the canonical form.
-- **Main deliverables:** Validation levels, equivalence reports, structural
-  diffing.
-- **Acceptance criteria:** Validation levels are documented and reproducible.
-- **Explicit exclusions:** Numerical valuation and market data.
+- **Status:** Architecture baseline Established; Runtimes Planned (Stage 1C-R1:
+  validation levels and equivalence reports; Stage 1C-R2: deterministic
+  structural diffing).
+- **Objective:** Define graded validation levels, deterministic equivalence
+  reporting, and structural diffing on top of the canonical form.
+- **Main deliverables:**
+  - **Architecture baseline (this increment):** Validation-level taxonomy,
+    equivalence report schema, structural-diff specification, versioning and
+    compatibility policy, limits and security model, error taxonomy, normative
+    conformance vectors, ADR 0008.
+  - **Stage 1C-R1 (planned):** `compare_contracts` runtime, `ValidationLevel`
+    enum, `ValidationEquivalenceReport` type, `DiffLimits`, error classes.
+  - **Stage 1C-R2 (planned):** Iterative diff algorithm with JSON-Pointer-style
+    paths, operation taxonomy, bounded truncation, deterministic ordering.
+- **Acceptance criteria:** Validation levels are documented, complete, and
+  reproducible; report schema is fully specified; diff representation is
+  deterministic and bounded; all vectors have unique keys; no economic-equivalence
+  claim exists.
+- **Explicit exclusions:** Numerical valuation, market data, any claim of
+  economic/legal/accounting/tax/model/suitability equivalence.
 
 ## Stage 2 — Market snapshots and deterministic evidence identity
 

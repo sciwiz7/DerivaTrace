@@ -3,18 +3,21 @@
 This document describes the architecture of DerivaTrace. Stage 1A implements the
 **contract semantics** and **validation** bounded contexts as a concrete, typed
 contract algebra (`derivatrace.contracts`); no pricing, valuation, model,
-engine, risk, or certificate functionality is implemented in Stage 1A. Stages
-1B (canonicalization and a canonical payoff graph) and 1C (serialization and
-evidence records) are planned. The Stage 1B architecture baseline is now
-Complete; the **Stage 1B-R1 canonical runtime is Implemented** in
-`derivatrace.canonical` (byte-exact canonicalization and canonical contract
-identity), while the **Stage 1B-R2 payoff-graph runtime is Implemented** in
-`derivatrace.payoffgraph` (byte-exact payoff-graph identity, deterministic node
-graph, and provenance). The specification is in
+engine, risk, or certificate functionality is implemented in Stage 1A. The Stage 1B
+architecture baseline is Complete; the **Stage 1B-R1 canonical runtime is
+Implemented** in `derivatrace.canonical` (byte-exact canonicalization and
+canonical contract identity), while the **Stage 1B-R2 payoff-graph runtime is
+Implemented** in `derivatrace.payoffgraph` (byte-exact payoff-graph identity,
+deterministic node graph, and provenance). The Stage 1C architecture baseline
+is Established; the validation-equivalence bounded context is specified in
+`validation-equivalence-spec.md` and ADR 0008, with runtimes planned for
+Stage 1C-R1 and 1C-R2. The specifications are in
 [canonicalization-spec.md](./canonicalization-spec.md),
 [payoff-graph-spec.md](./payoff-graph-spec.md),
-[canonical-test-vectors.md](./canonical-test-vectors.md), and
-[ADR 0007](./adr/0007-canonical-contract-identity-and-payoff-graph.md).
+[canonical-test-vectors.md](./canonical-test-vectors.md),
+[validation-equivalence-spec.md](./validation-equivalence-spec.md), and
+[ADR 0007](./adr/0007-canonical-contract-identity-and-payoff-graph.md),
+[ADR 0008](./adr/0008-validation-levels-equivalence-and-structural-diffing.md).
 
 ## Architectural principle
 
@@ -37,6 +40,10 @@ clear responsibility and must not silently absorb another's duty.
    is the implemented `validate_contract` whole-graph validator (structural and
    semantic checks; no economic/arbitrage pricing checks, which remain planned).
 7. **Evidence certificate** — records what was calculated and how.
+8. **Validation-equivalence** — defines graded validation levels, deterministic
+   equivalence reporting, and structural diffing over trusted Stage 1B
+   representations. Architecture baseline Established in Stage 1C; runtimes
+   planned for Stage 1C-R1 (reports) and Stage 1C-R2 (diffing).
 
 ## Dependency direction
 
@@ -53,6 +60,7 @@ graph TD
     Risk["Risk"]
     Validation["Validation"]
     Certificate["Evidence certificate"]
+    ValEquiv["Validation-equivalence"]
 
     Engine --> Contract
     Engine --> Market
@@ -69,6 +77,8 @@ graph TD
     Certificate --> Engine
     Certificate --> Risk
     Certificate --> Validation
+    ValEquiv --> Contract
+    ValEquiv --> Validation
 ```
 
 ## Data-flow diagram
@@ -104,6 +114,7 @@ The deterministic core is authoritative for:
 - calculations,
 - tolerances,
 - validation,
+- **validation-equivalence reporting and structural diffing**,
 - certificate assembly and hashing.
 
 The core must remain pure, typed, and free of hidden state. External assistive
@@ -187,6 +198,8 @@ The following dependencies are explicitly forbidden:
 - A numerical engine must **not** alter contract semantics or validation rules.
 - Validation must **not** modify the value it checks.
 - The certificate layer must **not** compute prices or choose models.
+- **Validation-equivalence must not** compute prices, choose models, or alter
+  validation outcomes.
 - Assistive tooling must **not** change contracts, inputs, engine settings, or
   validation outcomes.
 - No layer may absorb another layer's responsibility silently.

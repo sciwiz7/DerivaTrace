@@ -217,6 +217,67 @@ These mitigations are recorded in the Stage 1B specification and enforced by the
 Stage 1B-R1 canonical runtime and its tests; the payoff-graph runtime mitigations
 land with Stage 1B-R2.
 
+## Validation-equivalence (Stage 1C baseline) threats
+
+Stage 1C introduces graded validation levels, deterministic equivalence reporting,
+and structural diffing over trusted Stage 1B representations. The architecture
+baseline is established in `validation-equivalence-spec.md` and ADR 0008;
+runtimes are planned for Stage 1C-R1 (validation levels and reports) and
+Stage 1C-R2 (deterministic structural diffing). The following threats are
+specific to that design and are mitigated by the specification's rules.
+
+- **Misleading "equivalent" terminology** — a report uses the unqualified word
+  "equivalent" implying economic/legal/accounting/tax/model/suitability
+  equivalence. Mitigated by the report schema: results use the precise enum
+  values `equivalent`, `not_equivalent`, `not_applicable` at each validation
+  level (`structural`, `canonical`, `payoff`); the display names are distinct
+  from economic claims; the conservative principle (§1 of
+  `validation-equivalence-spec.md`) is binding.
+- **Cross-version equivalence confusion** — comparing contracts under different
+  canonical or payoff schema versions silently yields a misleading result.
+  Mitigated by recording both schema versions in the report; cross-version
+  comparison yields `not_equivalent` with a visible version-field diff; no
+  mediation is performed.
+- **Unbounded structural diff** — an adversarial pair of large, deeply nested
+  contracts produces an excessively large diff, exhausting memory or CPU.
+  Mitigated by `DiffLimits` (`max_entries=1024`, `max_compared_bytes=2 MiB`,
+  `max_compared_nodes=4096`, `max_path_length=256`); deterministic truncation
+  in lexicographic path order with a `truncated` flag and `truncation_reason`.
+- **Non-deterministic diff output** — dictionary or set iteration order varies
+  across runs or Python versions. Mitigated by explicit sort orders: node-table
+  keys by ascending node id; object keys by sorted ASCII byte order; array
+  indices numerically; diff paths in lexicographic order. No `dict`/`set`
+  iteration order is ever relied upon.
+- **Full contract content leakage in diff** — diff entries embed entire
+  subtrees, leaking author intent or proprietary structure. Mitigated by
+  carrying only leaf differing values in `left_value`/`right_value`; no full
+  subtree embedding; report size bounded by `DiffLimits`.
+- **DAG-sharing amplification in diff** — a shared subgraph referenced from
+  many parents appears multiplied in a tree-based diff. Mitigated by diffing
+  the **node table** (one entry per node id), not a tree expansion; a change
+  in a shared node appears once in the node-table diff.
+- **Report identity collision** — two distinct reports hash to the same
+  `validation-equivalence:sha256:` identity. Mitigated by SHA-256 collision
+  resistance assumption; explicit `validation_equivalence.report_collision`
+  error code if same id maps to different structural bytes (mirrors R1/R2
+  collision rule).
+- **Upstream error suppression** — canonicalization or payoff compilation
+  failures are hidden instead of reported per-side. Mitigated by the
+  report-internal error policy: upstream errors are captured in
+  `structural_errors`, `canonicalization_errors`, `payoff_compilation_errors`
+  arrays; the function returns a complete report, does not raise.
+- **Schema version confusion in reports** — a report claims an unknown or
+  unsupported schema version. Mitigated by the report schema version
+  participating in the report identity preimage; consumers reject unknown major
+  versions; the `schema_version` field is echoed in `limits_used`.
+- **Diff path injection** — user-controlled strings appear in diff paths,
+  enabling confusion or injection. Mitigated by path syntax using only ASCII
+  node ids (bare 64-hex) and field names from the trusted schema; no
+  user-supplied strings appear in paths.
+
+These mitigations are recorded in the Stage 1C specification and will be
+enforced by the Stage 1C-R1 and 1C-R2 runtimes and their tests.
+
 ## Supply-chain threats
 
 - Compromised or typosquatted dependencies.

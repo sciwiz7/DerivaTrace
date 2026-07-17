@@ -82,7 +82,7 @@ PRICING_CLAIMS = [
 ]
 
 NEGATIONS = [
-    "not ",
+    "not",
     "never ",
     "no ",
     "without ",
@@ -1522,3 +1522,409 @@ def test_r2_conformance_registry_executes() -> None:
     for name, (expected, builders) in CONFORMANCE_VECTORS.items():
         identities = {compile_payoff_graph(builder()).identity for builder in builders}
         assert identities == {expected}, name
+
+
+# ---- Stage 1C validation-equivalence architecture baseline guards ----
+
+_STAGE1C_SPEC = DOCS_DIR / "validation-equivalence-spec.md"
+_ADR_0008 = (
+    DOCS_DIR / "adr" / "0008-validation-levels-equivalence-and-structural-diffing.md"
+)
+
+
+def test_stage_1c_baseline_files_exist() -> None:
+    for path in (_STAGE1C_SPEC, _ADR_0008):
+        assert path.exists(), f"missing Stage 1C baseline file: {path}"
+
+
+def test_stage_1c_status_established_not_implemented() -> None:
+    # Architecture baseline is "Established"; runtimes remain "Planned" /
+    # "Unimplemented".
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "architecture baseline established" in spec or "established" in spec
+    # Runtime must not be claimed as implemented.
+    assert "stage 1c-r1" not in spec or "planned" in spec
+    assert "stage 1c-r2" not in spec or "planned" in spec
+    assert "no stage 1c runtime module exists" in spec
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8").lower()
+    assert "architecture baseline established" in readme
+    assert "unimplemented" in readme or "planned" in readme
+    road = (REPO_ROOT / "ROADMAP.md").read_text(encoding="utf-8").lower()
+    assert "architecture baseline established" in road
+
+
+def test_stage_1c_no_economic_equivalence_claim() -> None:
+    # The conservative principle: no economic equivalence claim anywhere.
+    # Occurrences in "forbidden" / "prohibited" / "must not" /
+    # "asserting or implying" contexts are allowed.
+    prohibition_contexts = [
+        "forbidden",
+        "prohibited",
+        "must not",
+        "mustn't",
+        "shall not",
+        "shan't",
+        "not allowed",
+        "disallowed",
+        "excluded",
+        "forbids",
+        "prohibits",
+        "asserting or implying",
+        "implying",
+        "asserting",
+    ]
+    for markdown in markdown_files():
+        text = markdown.read_text(encoding="utf-8").lower()
+        for match in re.finditer(r"economic equivalence", text):
+            before = text[max(0, match.start() - 500) : match.start()]
+            before_stripped = re.sub(r"\*+", "", before)
+            has_negation = any(neg in before_stripped for neg in NEGATIONS)
+            has_prohibition = any(
+                ctx in before_stripped for ctx in prohibition_contexts
+            )
+            assert has_negation or has_prohibition, (
+                f"{markdown}: unqualified 'economic equivalence' claim"
+            )
+    # The validation-equivalence spec must explicitly deny all these.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    spec_stripped = re.sub(r"\*+", "", spec)
+    for claim in [
+        "must not claim",
+        "general economic equivalence",
+        "equal value",
+        "equal cash flow",
+        "legal equivalence",
+        "accounting equivalence",
+        "tax equivalence",
+        "model equivalence",
+        "suitability",
+        "recommendation",
+    ]:
+        assert claim in spec_stripped, f"spec must deny: {claim}"
+
+
+def test_stage_1c_level_taxonomy_describes_evaluation_depth() -> None:
+    # The level taxonomy describes progressive EVALUATION DEPTH, not a logical
+    # implication hierarchy between equivalence results.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    for level in ("structural", "canonical", "payoff"):
+        assert level in spec, f"validation level '{level}' missing from spec"
+    assert "evaluation depth" in spec
+    assert (
+        "progressive processing depth" in spec or "progressive evaluation depth" in spec
+    )
+    # Explicitly NOT a logical implication hierarchy.
+    assert "logical implication hierarchy" in spec
+    # Display names present.
+    assert "structural validity" in spec
+    assert "canonical-contract equivalence" in spec
+    assert "payoff-graph structural equivalence" in spec
+    # Normative statements present.
+    for stmt in (
+        "canonical evaluation requires successful structural validation",
+        "payoff evaluation requires successful structural validation and r1",
+        "requesting a deeper level causes prior stages to be evaluated",
+    ):
+        assert stmt in spec, stmt
+
+
+def test_stage_1c_conclusions_independent() -> None:
+    # Canonical and payoff conclusions are independently represented; they are
+    # not collapsed into a single boolean and not ordered as an implication.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "separately reported" in spec
+    assert "independent comparison conclusions" in spec
+    assert "independent comparison conclusions" in spec
+    assert "guarantee that payoff-graph equivalence implies" in spec
+    assert "guarantee the converse" in spec
+    assert "no permanent injectivity guarantee" in spec
+
+
+def test_stage_1c_comparison_statuses_closed_and_distinct() -> None:
+    # All four comparison statuses are present, closed, and distinct.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    for status in ("equivalent", "different", "not_comparable", "not_evaluated"):
+        assert status in spec, status
+    # The old boolean-like / nullable vocabulary must not appear.
+    assert "not_applicable" not in spec
+    # not_comparable and not_evaluated are distinct (both present, defined apart).
+    assert "not_comparable" in spec and "not_evaluated" in spec
+    assert "never collapsed into" in spec or "distinct" in spec
+
+
+def test_stage_1c_validation_outcome_taxonomy() -> None:
+    # Per-side validation outcomes use a closed taxonomy; null is not used.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    for v in ("valid", "invalid", "not_evaluated"):
+        assert v in spec, v
+    assert "validation outcome taxonomy" in spec
+    assert "null" in spec and "never used to mean multiple" in spec
+
+
+def test_stage_1c_incompatible_schema_never_different() -> None:
+    # Incompatible schema versions must never map to different / not_equivalent /
+    # false; the normative result is not_comparable with a stable reason code.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "incompatible_schema_versions" in spec
+    assert "not_comparable" in spec
+    # The spec must explicitly deny the forbidden mapping.
+    assert "incompatible schema versions never map to" in spec
+    # The incompatible vectors map to not_comparable (not different).
+    assert "ve_024_incompatible_canonical_schema" in spec
+    assert "ve_027_incompatible_payoff_schema" in spec
+    # No cross-version structural diff is promised.
+    assert "content structural diff" in spec
+    assert "equivalence claim" in spec
+
+
+def test_stage_1c_caller_errors_raise() -> None:
+    # Caller-owned failures raise Stage 1C-owned typed errors.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "caller-owned" in spec
+    assert "raised" in spec
+    for code in (
+        "validation_equivalence.unsupported_level",
+        "validation_equivalence.input",
+        "validation_equivalence.encoding",
+        "validation_equivalence.report_collision",
+        "validation_equivalence.error",
+        "validation_equivalence.incompatible_schemas",
+    ):
+        assert code in spec, code
+    # Specific raised cases mentioned.
+    for phrase in (
+        "wrong exact input types",
+        "unsupported validation level",
+        "malformed stage 1c limits",
+        "unsupported stage 1c report schema version",
+        "invalid diff representation selection",
+        "impossible or contradictory caller configuration",
+        "report encoding failure",
+        "report identity collision",
+        "malformed stage 1c internal state",
+    ):
+        assert phrase in spec, phrase
+    # If the report cannot be encoded/identified, no report is returned.
+    assert "no report is returned" in spec
+
+
+def test_stage_1c_operand_failures_captured() -> None:
+    # Operand-owned failures are captured inside the report, not raised.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "operand-owned" in spec
+    assert "captured inside the report" in spec
+    for stage in (
+        "stage 1a contract validation failure",
+        "stage 1b-r1 canonicalization failure",
+        "stage 1b-r2 payoff compilation failure",
+        "upstream complexity failure",
+        "upstream encoding or collision error",
+    ):
+        assert stage in spec, stage
+    # Captured structured fields.
+    for field in ("stage", "code", "side", "classification"):
+        assert field in spec, field
+    # Forbidden content in captured failures.
+    for forbidden in (
+        "raw traceback",
+        "repr",
+        "unstable exception text",
+        "secret or full-content leakage",
+    ):
+        assert forbidden in spec, forbidden
+
+
+def test_stage_1c_upstream_namespace_preserved() -> None:
+    # Upstream error codes retain their original namespace; Stage 1C must not
+    # relabel a canonicalization or payoff-graph failure as its own error.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    for ns in ("validation.*", "canonicalization.*", "payoff_graph.*"):
+        assert ns in spec, ns
+    assert "must not relabel" in spec
+    assert (
+        "retain their original namespace" in spec
+        or "retains its original namespace" in spec
+    )
+    assert "original namespace" in spec
+
+
+def test_stage_1c_diff_availability_rules_explicit() -> None:
+    # Structural diff availability rules are explicit; when unavailable, a stable
+    # reason is reported and no misleading partial content diff is emitted.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "diff availability" in spec
+    for cond in (
+        "the selected representation exists for both sides",
+        "both representations use compatible schema versions",
+        "the selected diff mode is supported",
+        "limits permit the comparison",
+    ):
+        assert cond in spec, cond
+    assert "unavailable_reason" in spec
+    assert (
+        "no misleading partial content diff" in spec
+        or "no partial content diff" in spec
+    )
+    assert "no content structural diff" in spec
+
+
+def test_stage_1c_change_replace_non_overlapping() -> None:
+    # change and replace cannot overlap: change keeps the structural role,
+    # replace changes it; they are disjoint by construction.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "non-overlap" in spec or "non-overlapping" in spec
+    assert "change" in spec and "replace" in spec
+    assert "structural role is identical" in spec
+    assert "structural role changed" in spec
+    assert "disjoint" in spec
+
+
+def test_stage_1c_structural_diff_schema_specified() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    for sel in ("canonical", "payoff", "both", "none"):
+        assert sel in spec, f"diff selection '{sel}' missing from spec"
+    assert "/nodes/" in spec
+    assert "operands/" in spec
+    for op in ("add", "remove", "change", "replace"):
+        assert op in spec, f"diff op '{op}' missing from spec"
+    for limit in (
+        "max_entries",
+        "max_compared_bytes",
+        "max_compared_nodes",
+        "max_path_length",
+    ):
+        assert limit in spec, f"diff limit '{limit}' missing from spec"
+    assert "truncated" in spec
+    assert "truncation_reason" in spec
+    assert "lexicographic" in spec.lower() or "ascending" in spec.lower()
+    assert "node table" in spec.lower() or "node-table" in spec.lower()
+
+
+def test_stage_1c_limits_and_security_specified() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    assert "1024" in spec  # max_entries
+    assert "2_097_152" in spec or "2097152" in spec  # max_compared_bytes
+    assert "4096" in spec  # max_compared_nodes
+    assert "256" in spec  # max_path_length
+    for threat in [
+        "Adversarially deep graphs",
+        "Very wide collections",
+        "Duplicate-reference amplification",
+        "Malformed internal documents",
+        "Cycles at private seams",
+        "Hash collisions",
+        "Confusing Unicode in paths or display labels",
+        "Accidental leakage of full contract content",
+        'Misleading "equivalent" terminology',
+        "Denial of service through oversized diffs",
+        "Non-deterministic dictionary/set iteration",
+    ]:
+        assert threat in spec, f"threat '{threat}' not addressed in spec"
+
+
+def test_stage_1c_report_schema_aligned() -> None:
+    # The proposed report schema includes unambiguous fields equivalent to every
+    # required semantic role, each represented exactly once.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    assert "derivatrace.validation-equivalence.report" in spec
+    assert "1.0.0" in spec
+    for field in (
+        "requested_level",
+        "left_validation_outcome",
+        "right_validation_outcome",
+        "canonical_comparison_status",
+        "canonical_comparison_reason",
+        "payoff_comparison_status",
+        "payoff_comparison_reason",
+        "diff_representation",
+        "diff_summary",
+        "truncated",
+        "limits_used",
+        "schema_metadata",
+        "report_id",
+        "provenance",
+    ):
+        assert field in spec, f"report field '{field}' missing from spec"
+    # The closed comparison-status values appear in the report.
+    for val in ("equivalent", "different", "not_comparable", "not_evaluated"):
+        assert val in spec, val
+
+
+def test_stage_1c_normative_vectors_unique_and_complete() -> None:
+    # Every vector key is unique; the minimum required cases are present; no
+    # vector establishes economic equivalence.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    section = _section(spec, r"vector inventory")
+    rows = _table_rows(section)
+    inv_keys = [r[0].strip("`") for r in rows if r[0].strip("`").startswith("ve_")]
+    assert len(inv_keys) == len(set(inv_keys)), (
+        f"duplicate inventory key: {[k for k in inv_keys if inv_keys.count(k) > 1]}"
+    )
+    assert len(inv_keys) >= 31, len(inv_keys)
+    # Minimum required cases.
+    for key in (
+        "ve_022_invalid_left",
+        "ve_023_invalid_right",
+        "ve_024_incompatible_canonical_schema",
+        "ve_027_incompatible_payoff_schema",
+        "ve_028_unsupported_level_raises",
+        "ve_029_malformed_limits_raise",
+        "ve_030_report_encoding_failure_raises",
+        "ve_031_deterministic_repeated_captured_failure",
+    ):
+        assert key in inv_keys, key
+    # Shallower levels leave deeper statuses not_evaluated.
+    # (ve_014 canonical level -> payoff not_evaluated; ve_022/ve_023 structural
+    #  level -> canonical and payoff not_evaluated.)
+    assert "ve_014_provenance_only_diff" in inv_keys
+    # No result establishes economic equivalence.
+    assert "economic_equivalence_claim" in spec
+
+
+def test_stage_1c_documentation_guards_enforced() -> None:
+    # The spec must declare the documentation guards.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    for guard in [
+        "stage 1b is no longer marked",
+        "stage 1c architecture baseline",
+        "stage 1c runtime:",
+        "no economic-equivalence claim",
+        "validation-level taxonomy is complete",
+        "report schema",
+        "structural-diff schema",
+        "every vector key",
+        "all internal markdown links resolve",
+        "status language is consistent",
+        "never collapsed",
+    ]:
+        assert guard in spec, f"documentation guard '{guard}' missing from spec"
+
+
+def test_stage_1c_runtime_unimplemented() -> None:
+    # No Stage 1C runtime module may be added.
+    assert not (SRC_ROOT / "validationequivalence").exists()
+    assert not (SRC_ROOT / "validation_equivalence").exists()
+    assert not (SRC_ROOT / "stage1c").exists()
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "unimplemented" in spec
+    assert "no stage 1c runtime module exists" in spec
+    # The public entry point is explicitly not yet implemented.
+    assert "not yet implemented" in spec
+
+
+def test_adr_0008_records_key_decisions() -> None:
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    for decision in [
+        "validation-level taxonomy",
+        "progressive evaluation depth",
+        "independent comparison conclusions",
+        "comparison status taxonomy",
+        "validation outcome taxonomy",
+        "report-internal error policy",
+        "cross-version comparison semantics",
+        "structural diff availability",
+        "change-versus-replace",
+        "report schema alignment",
+        "updated conformance vectors",
+    ]:
+        assert decision in adr, f"ADR 0008 missing decision: {decision}"
