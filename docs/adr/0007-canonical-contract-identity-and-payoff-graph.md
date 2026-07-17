@@ -3,8 +3,9 @@
 - **Status:** Accepted (Stage 1B baseline)
 - **Stage:** 1B (architecture baseline Complete; **Stage 1B-R1 canonical runtime
   Implemented** in `derivatrace.canonical`; **Stage 1B-R2 payoff-graph runtime
-  Planned** — its specification closed by the `docs/stage-1b-r2-spec-closure`
-  pass, issue #1 / #3; runtime still not implemented)
+  Implemented** — its specification was closed by the `docs/stage-1b-r2-spec-closure`
+  pass, issue #1 / #3, and the runtime is now delivered by `derivatrace.payoffgraph`
+  as CV-011)
 - **Date:** 2026-07-15
 - **Supersedes:** — (builds on ADR 0001–0006)
 - **Superseded by:** —
@@ -251,7 +252,8 @@ version) requires a version bump.
 - Stage 1B-R1 canonical runtime (canonicalization, serialization, hashing,
   canonical contract identity) is implemented under this baseline.
 - Stage 1B-R2 payoff-graph compilation: its **specification is closed** (this
-  decision plus `docs/payoff-graph-spec.md`), but the **runtime remains
-  planned** and is not yet implemented.
+  decision plus `docs/payoff-graph-spec.md`) and the **runtime is implemented**
+  by `derivatrace.payoffgraph` (CV-011), yielding a byte-exact `payoffgraph:sha256:`
+  identity. (It was previously **planned** before this implementation landed.)
 - Stage 1C: graded validation levels, equivalence reporting, structural
   diffing.

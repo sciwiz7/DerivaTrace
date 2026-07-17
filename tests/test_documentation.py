@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib
 import re
 import tomllib
 from collections.abc import Callable
@@ -198,6 +197,42 @@ def test_readme_does_not_claim_pricing_exists() -> None:
         if lines_without_negation(text, claim):
             offending.append(claim)
     assert not offending, f"Pricing claims in README: {offending}"
+
+
+def test_readme_stage_1b_r2_byte_semantics_accurate() -> None:
+    # Finding 1: the Stage 1B-R2 section must not describe document_bytes as
+    # "pretty-printed" (as a positive claim) or as "content-equal" to
+    # structural_bytes. Both are compact canonical JSON; document_bytes
+    # additionally carries provenance and is therefore distinct from
+    # structural_bytes. The documentation-guard blockquote intentionally quotes
+    # the forbidden phrasing, so it is stripped before the negative checks.
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    sections = _sections(readme)
+    r2_body = "\n".join(v for k, v in sections.items() if "Stage 1B-R2" in k)
+    assert r2_body, "README has no Stage 1B-R2 section"
+    prose = "\n".join(
+        line for line in r2_body.splitlines() if not line.lstrip().startswith(">")
+    )
+    # The false positive claim "content-equal `document_bytes`" must not appear
+    # anywhere in the section prose.
+    assert "content-equal" not in prose, (
+        "Stage 1B-R2 section must not claim document_bytes is 'content-equal' "
+        "to structural_bytes"
+    )
+    # "pretty-printed" may only appear as an explicit negation (e.g. "Neither
+    # representation is pretty-printed"); a positive assertion of it is forbidden.
+    for line in prose.splitlines():
+        lowered = line.lower()
+        idx = lowered.find("pretty-printed")
+        while idx != -1:
+            before = lowered[:idx]
+            assert ("neither representation" in before) or ("not " in before), (
+                f"Stage 1B-R2 section positively asserts 'pretty-printed': {line!r}"
+            )
+            idx = lowered.find("pretty-printed", idx + 1)
+    # Positive guard: the corrected wording must be present.
+    assert "structural_bytes" in r2_body
+    assert "document_bytes" in r2_body
 
 
 def test_docs_do_not_claim_pypi_availability() -> None:
@@ -403,15 +438,15 @@ def test_stage_1b_baseline_status() -> None:
     road = (REPO_ROOT / "ROADMAP.md").read_text(encoding="utf-8").lower()
     # Stage 1A is complete.
     assert _near(road, r"stage 1a\b", "complete")
-    # Stage 1B in progress: baseline complete; R1 implemented; R2 planned.
+    # Stage 1B in progress: baseline complete; R1 implemented; R2 implemented.
     assert _near(road, r"stage 1b\b", "in progress")
     # Stage 1C remains planned.
     assert _near(road, r"stage 1c\b", "planned")
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8").lower()
     assert "stage 1b" in readme
-    # R1 canonical runtime implemented; R2 payoff-graph runtime planned.
+    # R1 canonical runtime implemented; R2 payoff-graph runtime implemented.
     assert "implemented" in readme
-    assert "payoff-graph runtime" in readme and "planned" in readme
+    assert "payoff-graph runtime" in readme
 
 
 def test_stage_1b_status_distinctions() -> None:
@@ -423,7 +458,7 @@ def test_stage_1b_status_distinctions() -> None:
     assert "conservative" in canon
 
     pgspec = (DOCS_DIR / "payoff-graph-spec.md").read_text(encoding="utf-8").lower()
-    assert "not implemented" in pgspec
+    assert "implemented" in pgspec
 
     vectors = (
         (DOCS_DIR / "canonical-test-vectors.md").read_text(encoding="utf-8").lower()
@@ -441,9 +476,10 @@ def test_stage_1b_status_distinctions() -> None:
 
 def test_no_canonicalization_or_hashing_implementation_claimed() -> None:
     # The Stage 1B baseline / R2 spec must not claim a runtime implementation
-    # exists. The proposed (future) `compile_payoff_graph` signature is allowed
-    # to be documented as a specification, so it is deliberately not listed here;
-    # runtime presence is instead guarded by test_no_payoff_graph_runtime_module.
+    # exists for the canonical contract identity (R1). The payoff-graph runtime
+    # (R2) is implemented and exercised by test_payoff_graph_runtime_module_present;
+    # its specification may document `compile_payoff_graph` without an
+    # implementation claim for the R1 canonicalization internals.
     impl_claims = [
         "canonicalize(",
         "def canonicalize",
@@ -689,9 +725,9 @@ def test_no_placeholder_identities_in_normative_vectors() -> None:
 
 
 def test_no_stage_1b_runtime_implementation_in_docs() -> None:
-    # The proposed (future) payoff-graph API may be documented as a specification,
-    # so `compile_payoff_graph` / `payoff_graph(` are not flagged here; runtime
-    # presence is guarded by test_no_payoff_graph_runtime_module.
+    # The R1 canonicalization internals (canonicalize / sha256 / serialize) must
+    # not be claimed as implemented in documentation prose; the implemented
+    # payoff-graph runtime is guarded by test_payoff_graph_runtime_module_present.
     impl_claims = [
         "canonicalize(",
         "def canonicalize",
@@ -835,14 +871,14 @@ def test_all_stage1a_r1_nodes_have_pg_mapping() -> None:
         assert pg_node in pg, f"payoff node {pg_node} missing from mapping"
 
 
-def test_r1_complete_r2_planned_status() -> None:
+def test_r1_complete_r2_implemented_status() -> None:
     road = _text(REPO_ROOT / "ROADMAP.md")
-    # Stage 1B baseline complete; R1 implemented; R2 planned.
+    # Stage 1B baseline complete; R1 implemented; R2 implemented.
     assert _near(road, r"stage 1b\b", "in progress")
     assert "complete" in road.lower()
-    # R2 explicitly not implemented.
+    # R2 is implemented (CV-011).
     pg = _text(DOCS_DIR / "payoff-graph-spec.md").lower()
-    assert "not implemented" in pg
+    assert "implemented" in pg
     # R1 is implemented.
     canon = _text(DOCS_DIR / "canonicalization-spec.md").lower()
     assert "implemented" in canon
@@ -850,51 +886,81 @@ def test_r1_complete_r2_planned_status() -> None:
         DOCS_DIR / "adr" / "0007-canonical-contract-identity-and-payoff-graph.md"
     ).lower()
     assert "implemented" in adr
-    assert "planned" in adr
 
 
-def test_no_payoff_graph_runtime_module() -> None:
-    # No payoff-graph runtime package may exist yet (either spelling).
-    assert not (SRC_ROOT / "payoffgraph").exists()
+def test_payoff_graph_runtime_module_present() -> None:
+    # The payoff-graph runtime package exists now (CV-011).
+    assert (SRC_ROOT / "payoffgraph").is_dir()
     assert not (SRC_ROOT / "payoff_graph").exists()
 
-    # No importable derivatrace.payoffgraph / derivatrace.payoff_graph package.
-    for mod in ("derivatrace.payoffgraph", "derivatrace.payoff_graph"):
-        try:
-            importlib.import_module(mod)
-        except ImportError:
-            pass
-        else:
-            raise AssertionError(f"importable module present: {mod}")
+    import datetime
 
-    # No runtime implementation of the proposed R2 API in src/.
-    forbidden_defs = ("def compile_payoff_graph",)
-    forbidden_classes = (
-        "class PayoffGraph",
-        "class PayoffGraphLimits",
-        "class PayoffGraphSchemaVersion",
+    import derivatrace.payoffgraph as pgpkg
+    from derivatrace.canonical import canonicalize_contract
+    from derivatrace.contracts import (
+        Add,
+        Currency,
+        Observable,
+        ObservableId,
+        ObservationTime,
+        Payment,
+        SettlementTime,
+        Unit,
     )
-    hits: list[str] = []
-    for path in SRC_ROOT.rglob("*.py"):
-        text = path.read_text(encoding="utf-8")
-        if any(d in text for d in forbidden_defs):
-            hits.append(f"def:{path}")
-        if any(c in text for c in forbidden_classes):
-            hits.append(f"class:{path}")
-    assert not hits, f"payoff-graph runtime implementation present: {hits}"
+    from derivatrace.payoffgraph import (
+        PayoffGraph,
+        PayoffGraphLimits,
+        PayoffGraphSchemaVersion,
+        compile_payoff_graph,
+    )
 
-    # No package exports of the proposed R2 API.
-    pkg_text = (REPO_ROOT / "src" / "derivatrace" / "__init__.py").read_text(
-        encoding="utf-8"
+    assert pgpkg.compile_payoff_graph is compile_payoff_graph
+    assert pgpkg.PayoffGraph is PayoffGraph
+    assert pgpkg.PayoffGraphLimits is PayoffGraphLimits
+    assert pgpkg.PayoffGraphSchemaVersion is PayoffGraphSchemaVersion
+
+    UTC = datetime.UTC
+    USD = Currency.from_code("USD")
+    T0 = ObservationTime.from_datetime(datetime.datetime(2030, 1, 1, tzinfo=UTC))
+    T0ST = SettlementTime.from_datetime(datetime.datetime(2030, 1, 1, tzinfo=UTC))
+    obsA = Observable(
+        ObservableId.from_parts("equity", "AAA", "close"), T0, Unit.money(USD)
     )
-    for name in (
-        "PayoffGraph",
-        "PayoffGraphLimits",
-        "PayoffGraphSchemaVersion",
-        "compile_payoff_graph",
-        "payoffgraph",
-    ):
-        assert name not in pkg_text, f"package export present: {name}"
+    obsB = Observable(
+        ObservableId.from_parts("equity", "BBB", "close"), T0, Unit.money(USD)
+    )
+    contract = Payment(Add((obsA, obsB)), USD, T0ST)
+    pg = compile_payoff_graph(contract)
+
+    assert isinstance(pg, PayoffGraph)
+    assert pg.schema_version == "1.0.0"
+    assert pg.identity == (
+        "payoffgraph:sha256:"
+        "59fbb00dbb585755a799cd7e387e4ee51fd9b77ed3cc032758a825f2f8836e1a"
+    )
+    assert pg.root_node_id == (
+        "5ee2594b6c230a97e1b44115db479624a2de6780c192558a7c64b589f545c94c"
+    )
+    assert pg.node_count == 4
+    assert pg.source_contract_identity == canonicalize_contract(contract).identity
+    # document_bytes includes provenance and is distinct from structural_bytes.
+    assert pg.document_bytes != pg.structural_bytes
+    assert len(pg.document_bytes) > len(pg.structural_bytes)
+    # provenance is not a public attribute of PayoffGraph
+    assert not hasattr(pg, "provenance") or not isinstance(
+        getattr(type(pg), "provenance", None), property
+    )
+    # document_bytes contains provenance; structural_bytes does not.
+    import json
+
+    doc_parsed = json.loads(pg.document_bytes.decode())
+    struct_parsed = json.loads(pg.structural_bytes.decode())
+    assert "provenance" in doc_parsed
+    assert "provenance" not in struct_parsed
+    assert doc_parsed["provenance"] == {
+        "compiler": "derivatrace.payoffgraph.compiler/1.0.0",
+        "source_contract_identity": pg.source_contract_identity,
+    }
 
 
 def test_payoff_graph_error_taxonomy_is_dedicated() -> None:
@@ -1187,7 +1253,7 @@ def _shared() -> Both:
     return Both((shared, Scale(_num("2", scalar=True), shared)))
 
 
-def test_planned_vector_sources_construct_and_validate() -> None:
+def test_r2_vector_sources_construct_and_validate() -> None:
     sources: list[Callable[[], Contract]] = [
         lambda: _pay(_num("100")),
         lambda: _pay(Add((_obs("AAA"), _obs("BBB")))),
@@ -1329,7 +1395,7 @@ def test_planned_vector_sources_construct_and_validate() -> None:
         assert metrics.node_count > 0
 
 
-def test_planned_vector_invalid_sources_rejected() -> None:
+def test_r2_vector_invalid_sources_rejected() -> None:
     # money-denominated Divide denominator must be rejected
     with pytest.raises(ContractError):
         validate_contract(Divide(_obs("AAA"), _obs("BBB")))  # type: ignore[arg-type]
@@ -1350,13 +1416,109 @@ def test_r2_coverage_section_no_stale_rules() -> None:
     r2_parts = "\n".join(
         v
         for k, v in sections.items()
-        if ("Planned R2 vectors" in k) or ("Coverage obligations" in k)
+        if ("Stage 1B-R2 runtime conformance vectors" in k)
+        or ("Coverage obligations" in k)
     )
+    # The obsolete "Planned R2 vectors" section must no longer exist.
+    assert not any("Planned R2 vectors" in k for k in sections), (
+        "obsolete 'Planned R2 vectors' section still present"
+    )
+    # Obsolete future-tense phrases from the pre-runtime draft must be gone
+    # everywhere in the document.
+    stale_phrases = [
+        "runtime-generated hashes deferred",
+        "will be finalized when compile_payoff_graph is implemented",
+        "When the R2 runtime lands",
+        "when the Stage 1B-R2 runtime is implemented",
+        "remaining planned R2 vectors",
+    ]
+    for phrase in stale_phrases:
+        assert phrase not in vec, f"stale R2 phrase still present: {phrase!r}"
     # payoff collisions must not map onto canonicalization.collision
     assert "canonicalization.collision" not in r2_parts, "stale payoff collision rule"
     # R2 coverage must not say "When Stage 1B is implemented"
     assert "When Stage 1B is implemented" not in r2_parts
     # R2 stability must not be "re-running canonicalization"
     assert "re-running canonicalization" not in r2_parts
-    # no `<hex>` placeholder identity values
+    # no `<hex>` placeholder identity values in the R2 vectors / coverage section
+    # (the Conventions section legitimately uses `<hex>` to describe the format)
     assert ":sha256:<hex>" not in r2_parts
+
+
+def test_r2_conformance_identities_match_executable_registry() -> None:
+    # The normative R2 conformance section must document exactly the identities
+    # recorded in the executable conformance registry, keyed by the stable vector
+    # key. Machine-readable `**Vector key:**` annotations are paired in document
+    # order with the `payoffgraph:sha256:` identities; the resulting keyed map
+    # must equal the registry exactly. This makes the guards explicit: a swapped
+    # identity, a missing/extra document, or a duplicate/renamed key all fail.
+    from conformance_registry import CONFORMANCE_VECTORS
+
+    registry: dict[str, str] = {
+        name: identity for name, (identity, _) in CONFORMANCE_VECTORS.items()
+    }
+
+    vec = _VEC.read_text(encoding="utf-8")
+    sections = _sections(vec)
+    section_name = "Stage 1B-R2 runtime conformance vectors"
+    assert section_name in sections, "missing R2 conformance section"
+    body = sections[section_name]
+
+    # Stable vector keys in document order (comma-separated annotations).
+    key_order: list[str] = []
+    for km in re.finditer(r"\*\*Vector key:\*\*\s*([^\n]*+)", body):
+        for raw in km.group(1).split(","):
+            key = raw.strip().strip("*").strip()
+            if key:
+                key_order.append(key)
+    # Payoff-graph identities in document order. A vector may legitimately be
+    # cross-referenced (e.g. the deterministic-recompilation note repeats the
+    # PGAdd commutation identity); collapse exact repeats so the keyed zip still
+    # aligns, while a genuinely new/different identity still breaks the count.
+    seen_identity: set[str] = set()
+    identity_order: list[str] = []
+    for m in re.finditer(r"payoffgraph:sha256:([0-9a-f]{64})", body):
+        identity = "payoffgraph:sha256:" + m.group(1)
+        if identity not in seen_identity:
+            seen_identity.add(identity)
+            identity_order.append(identity)
+
+    assert identity_order, "no conformance identities found in the R2 section"
+    assert len(key_order) == len(identity_order), (
+        f"vector-key count ({len(key_order)}) != identity count "
+        f"({len(identity_order)}) in the R2 section"
+    )
+
+    documented: dict[str, str] = {}
+    for key, identity in zip(key_order, identity_order, strict=True):
+        assert key not in documented, f"duplicate vector key '{key}' in R2 section"
+        documented[key] = identity
+
+    # Every registry vector is represented exactly once, under its stable key.
+    assert set(documented) == set(registry), (
+        "R2 documented vector keys diverge from the executable registry: "
+        f"documented-only={set(documented) - set(registry)!r}, "
+        f"registry-only={set(registry) - set(documented)!r}"
+    )
+    # Exact key -> identity correspondence (catches a swapped identity too).
+    assert documented == registry, (
+        "R2 documented identities diverge from the executable registry: "
+        f"documented-only={set(documented) - set(registry)!r}, "
+        f"registry-only={set(registry) - set(documented)!r}"
+    )
+
+    # The collision seam is documented but is not a normal graph identity; it
+    # must not be annotated as a conformance vector key.
+    assert "payoff_graph.collision" not in key_order
+
+
+def test_r2_conformance_registry_executes() -> None:
+    # Every registry entry must compile through the public Stage 1A API to the
+    # exact documented identity (reorder / flatten / copy invariance included).
+    from conformance_registry import CONFORMANCE_VECTORS
+
+    from derivatrace.payoffgraph import compile_payoff_graph
+
+    for name, (expected, builders) in CONFORMANCE_VECTORS.items():
+        identities = {compile_payoff_graph(builder()).identity for builder in builders}
+        assert identities == {expected}, name

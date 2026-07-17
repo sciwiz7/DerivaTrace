@@ -28,7 +28,7 @@ Stages are marked as:
 - **Status:** In progress.
 - **Sub-stages:** Stage 1A Complete; **Stage 1B architecture baseline
   Complete**; **Stage 1B-R1 canonical runtime Implemented**; **Stage 1B-R2
-  payoff-graph runtime Planned**; Stage 1C Planned.
+  payoff-graph runtime Implemented**; Stage 1C Planned.
 - **Objective:** Introduce an immutable, typed contract AST, a deterministic
   structural validator, a canonical contract representation with deterministic
   identity, and (later) a canonical payoff graph.
@@ -75,13 +75,14 @@ Stages are marked as:
   canonical contract identity (SHA-256 domain separation). The normative test
   vectors (`docs/canonical-test-vectors.md`) are produced and verified by this
   runtime.
-- **Stage 1B-R2 payoff-graph runtime — Status: Planned (specification
-  closed).** Payoff-graph compilation (PG* node taxonomy and the compile
-  mapping) is now fully specified and its contradictions closed; the runtime is
-  not yet implemented. The specification includes a dedicated `PGSubtract` node,
-  `PGBooleanConstant`, the `amount`-based `PGPayment` with settlement-time
-  ownership, the `payoff_graph.*` error taxonomy, `PayoffGraphLimits`, and
-  provenance-excluded identity.
+- **Stage 1B-R2 payoff-graph runtime — Status: Implemented.** The payoff-graph
+  compilation runtime (`derivatrace.payoffgraph`) is implemented: it compiles a
+  validated and canonicalized Stage 1A contract into a deterministic, reachable-only
+  payoff DAG with byte-exact `payoffgraph:sha256:` identity derived from canonical
+  structural bytes (provenance excluded). All 20 canonical-to-payoff node mappings
+  are implemented and tested, including `PGSubtract`, `PGBooleanConstant`, the
+  `amount`-based `PGPayment` with settlement-time ownership, the `payoff_graph.*`
+  error taxonomy, `PayoffGraphLimits`, and provenance-excluded identity.
 - **Acceptance criteria:** Equivalent contracts produce identical canonical
   forms and identities; non-equivalent contracts do not collapse through
   undocumented transformations.

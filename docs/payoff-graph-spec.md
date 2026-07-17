@@ -1,10 +1,10 @@
 # Payoff-graph specification (Stage 1B-R2)
 
-- **Status:** Specification only. **Not implemented.** This document is the
-  **Stage 1B-R2 specification-closure** pass: it closes every contradiction found
-  in the earlier Stage 1B baseline payoff-graph draft before runtime
-  implementation begins.
-- **Stage:** 1B-R2 (specification closure; **runtime Planned**).
+- **Status:** Specification **implemented** by the `derivatrace.payoffgraph`
+  runtime (CV-011). This document is the **Stage 1B-R2 specification-closure**
+  pass: it closes every contradiction found in the earlier Stage 1B baseline
+  payoff-graph draft prior to (and now satisfied by) the runtime implementation.
+- **Stage:** 1B-R2 (specification closure; **runtime Implemented**).
 - **Depends on:** `canonicalization-spec.md`, the Stage 1B-R1 canonical runtime
   (`derivatrace.canonical`), and ADR 0001–0007.
 - **Schema name:** `derivatrace.payoffgraph`.
@@ -12,9 +12,7 @@
 
 This document specifies the **canonical payoff graph**: the model-independent,
 compiled representation of a validated and canonicalized DerivaTrace contract.
-It is the design specification for Stage 1B-R2. **No compilation logic, node
-classes, or serialization code described here exists in the package yet.** The
-payoff-graph runtime remains Planned; only this specification is closed here.
+It is the design specification and implementation reference for Stage 1B-R2.
 
 > **Conservative principle (binding).** The payoff graph is a *structural*
 > compilation of the contract under the approved canonicalization laws. It
@@ -539,5 +537,6 @@ identifiers, and arbitrary string literals are never confused with node ids.
   [ADR 0007](./adr/0007-canonical-contract-identity-and-payoff-graph.md).
 - Normative and planned vectors in `canonical-test-vectors.md`.
 
-> **Reminder:** This file is a specification. No payoff-graph compilation or
-> node code exists in Stage 1B-R2 yet; the runtime remains Planned.
+> **Reminder:** This file is the Stage 1B-R2 specification and implementation
+> reference. The payoff-graph compilation runtime is implemented in
+> `derivatrace.payoffgraph`.
