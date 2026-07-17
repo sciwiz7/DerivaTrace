@@ -117,19 +117,25 @@ taxonomy:
 |--------|---------|
 | `equivalent` | Both trusted representations were produced under compatible schema rules; their relevant identities are equal. |
 | `different` | Both trusted representations were produced under compatible schema rules; their relevant identities differ. |
-| `not_comparable` | The requested comparison could not be validly established, including: incompatible schema versions; one or both sides failed an upstream stage; required representation unavailable; explicitly unsupported migration boundary. |
+| `not_comparable` | The requested comparison could not be validly established, including: one or both sides failed an upstream stage; required representation unavailable; failed runtime precondition. |
 | `not_evaluated` | The caller requested a shallower validation level, so the comparison was not attempted. |
 
 **Required meaning:**
 
 - `equivalent` — both sides succeeded through the required upstream stages under
-  compatible schema versions and the relevant identities are byte-equal.
+  the selected compatible schema versions and the relevant identities are byte-equal.
 - `different` — both sides succeeded through the required upstream stages under
-  compatible schema versions and the relevant identities differ.
+  the selected compatible schema versions and the relevant identities differ.
 - `not_comparable` — the comparison could not be validly established. This
-  includes incompatible schema versions, upstream stage failures, unavailable
-  representations, and explicitly unsupported migration boundaries. It does **not**
-  mean "different" or "false".
+  includes upstream stage failures, unavailable representations, and failed
+  runtime preconditions. It does **not** mean "different" or "false".
+
+  Left/right **schema-version incompatibility is not a report outcome**: because
+  schema selection is per-call (one `canonical_schema` and one `payoff_schema`
+  for both operands, §1C architecture), a left/right schema mismatch is not
+  constructible. An unsupported selection is a raised caller-owned input error;
+  a contradictory configuration raises `incompatible_schemas`. Cross-version
+  comparison is deferred (§7).
 - `not_evaluated` — the caller requested a shallower validation level, so this
   comparison was not attempted.
 
@@ -143,7 +149,7 @@ Per-side validation outcomes use a closed taxonomy:
 | Status | Meaning |
 |--------|---------|
 | `valid` | The operand passed the stage successfully. |
-| `invalid` | The operand failed the stage (errors captured in the corresponding error array). |
+| `invalid` | The operand failed the stage (failures captured in the corresponding side's `failures` array). |
 | `not_evaluated` | The stage was not reached because the caller requested a shallower level or a prior stage failed. |
 
 Do not use `null` to mean multiple different states.
@@ -154,6 +160,7 @@ Do not use `null` to mean multiple different states.
 
 - Wrong exact input types at the Stage 1C API boundary.
 - Unsupported validation level.
+- Unsupported or contradictory `canonical_schema` / `payoff_schema` selection.
 - Malformed Stage 1C limits.
 - Unsupported Stage 1C report schema version.
 - Invalid diff representation selection.
@@ -175,13 +182,27 @@ left or right):
 Captured failures must contain stable structured data only:
 
 - Stage identifier.
-- Existing upstream error code.
-- Side: `left` or `right`.
-- Deterministic classification.
+- Existing upstream error code (original namespace retained).
+- Deterministic classification from the closed taxonomy
+  (`validation_failure`, `canonicalization_failure`,
+  `payoff_compilation_failure`, `complexity_failure`, `collision_failure`,
+  `encoding_failure`).
 - No raw traceback.
 - No `repr` of the malformed object.
 - No unstable exception text.
 - No secret or full-content leakage.
+
+The side (`left` or `right`) is **implicit in which `failures` array holds the
+record** (the `left`/`right` operand block), not stored as a per-record field.
+Records carry only `{stage, code, classification}` and are ordered
+deterministically (stage → code → classification). The `failures` array is
+always present and is an array (empty on success). The deprecated field names
+`structural_errors`, `canonicalization_errors`, and
+`payoff_compilation_errors` are not used.
+
+Unsupported or contradictory caller schema configuration is **not** captured as
+a failure; it is a raised caller-owned error (§6 first list, and
+`incompatible_schemas` for contradictory configuration).
 
 Upstream error codes retain their original namespace. Stage 1C must not relabel
 a canonicalization or payoff-graph failure as a Stage 1C error merely because it
@@ -193,28 +214,36 @@ report is returned; the Stage 1C error is raised.
 ### 7. Cross-version comparison semantics
 
 **Remove every rule that maps incompatible schema versions directly to**
-`not_equivalent`, `different`, or `false`.
+`not_equivalent`, `different`, or `false`, and remove the `incompatible_schema_versions`
+reason code from the report taxonomy.
 
-The normative result for incompatible schema versions must be:
+Schema selection is **per-call**: a single `canonical_schema` and a single
+`payoff_schema` apply to both operands (Stage 1C v1 public API). Because the
+schema is selected once for the comparison, a left/right schema-version
+mismatch is **not constructible** — there is no per-side schema input. The
+normative consequences are:
 
-- Comparison status: `not_comparable`.
-- Stable reason code: `incompatible_schema_versions` (or an equally precise
-  fixed code).
-- No canonical or payoff equivalence claim.
-- No content structural diff across the incompatible representations.
-- Deterministic schema metadata may still be included in the report.
+- An **unsupported** `canonical_schema` / `payoff_schema` selection is a raised
+  caller-owned `validation_equivalence.input` error; no report is returned.
+- A **contradictory** schema configuration is a raised caller-owned
+  `validation_equivalence.incompatible_schemas` error; no report is returned.
+- Neither an unsupported nor a contradictory selection produces a
+  `not_comparable` report outcome.
+- No left/right cross-version report or content structural diff exists.
 
-Cross-version comparison may become possible only through an explicitly
-versioned migration or compatibility adapter approved in a later architecture
-change.
-
-The incompatible-schema conformance vector is updated accordingly.
+Cross-version **representation** comparison (comparing two canonical/payoff
+identities produced under different schema versions) is **deferred** to a
+future separately-specified adapter, described in a separate ADR approved in a
+later architecture change. The Stage 1C v1 baseline includes no cross-version
+report, no cross-version adapter, and no `incompatible_schema_versions` reason
+code.
 
 Documentation guards prove:
 
-- The specification never says cross-version means `not_equivalent`.
-- Incompatible versions produce `not_comparable`.
-- No cross-version structural diff is promised.
+- The specification never says cross-version means `not_equivalent`/`different`.
+- No per-side schema input exists; left/right schema incompatibility is not a
+  report outcome.
+- No cross-version structural diff is promised by the Stage 1C v1 baseline.
 
 ### 8. Structural diff availability
 
@@ -239,23 +268,39 @@ overlap:
   same.
 - `replace`: node/payload kind or structural role changed.
 
+When diffing the node table, node identities are **content-addressed**: a node
+whose content changed receives a new id, so the change is reported as a node
+`remove` (old id) plus a node `add` (new id), not as a same-id leaf `change`.
+The `change` op is reserved for genuinely same-role path changes (notably
+`/root`) and for scalar/leaf values at paths that are not node-table entries.
 Use another exact distinction only if it is demonstrably non-overlapping.
 
 ### 10. Updated conformance vectors
 
-Retain the existing 26 vector keys unless a split requires additional vectors.
-At minimum update or add cases for:
+Retain the existing 35 vector keys (§9.2 of the spec) unless a split requires
+additional vectors. At minimum update or add cases for:
 
 - `structural` level produces canonical/payoff status `not_evaluated`.
 - `canonical` level produces payoff status `not_evaluated`.
-- Incompatible canonical schema versions produce `not_comparable`.
-- Incompatible payoff schema versions produce `not_comparable`.
-- Invalid left operand is captured in the report.
-- Invalid right operand is captured in the report.
+- Unsupported canonical schema selection raises `validation_equivalence.input`.
+- Unsupported payoff schema selection raises `validation_equivalence.input`.
+- Contradictory schema configuration raises
+  `validation_equivalence.incompatible_schemas`.
+- Invalid left operand is captured in the report (`failures`, `stage: structural`).
+- Invalid right operand is captured in the report (`failures`, `stage: structural`).
 - Unsupported level raises Stage 1C input/unsupported-level error.
 - Malformed limits raise Stage 1C input error.
 - Report encoding failure raises rather than returning a partial report.
-- No diff when schema versions are incompatible.
+- Upstream R1 canonicalization failure is captured in `failures` with the
+  original `canonicalization.*` code.
+- Upstream R2 payoff compilation failure is captured in `failures` with the
+  original `payoff_graph.*` code.
+- Commutative constructs and shared-vs-copied canonical-equivalent subgraphs
+  produce equivalent / no-diff.
+- Author-order-sensitive constructs produce content-addressed
+  `remove`/`add`/`/root` diffs.
+- `report_id` is mandatory, non-null, and deterministic on every successful
+  report.
 - Deterministic repeated report including captured upstream failure.
 
 For every vector preserve the explicit rule that no result establishes economic
@@ -277,13 +322,16 @@ The report schema includes unambiguous fields equivalent to:
 - `truncated`
 - `limits`
 - Schema metadata
-- Report identity (if retained)
+- Report identity (`report_id`, mandatory, non-null, deterministic)
 - Deterministic provenance policy
 
 Validation outcomes use the closed taxonomy (`valid`, `invalid`, `not_evaluated`).
 Comparison statuses use the closed taxonomy (`equivalent`, `different`,
-`not_comparable`, `not_evaluated`). Do not use `null` to mean multiple
-different states.
+`not_comparable`, `not_evaluated`). Captured failures use the closed record
+shape `{stage, code, classification}` with the classification taxonomy
+(`validation_failure`, `canonicalization_failure`, `payoff_compilation_failure`,
+`complexity_failure`, `collision_failure`, `encoding_failure`). Do not use
+`null` to mean multiple different states.
 
 ---
 
@@ -311,8 +359,10 @@ different states.
    length. Truncation is deterministic.
 
 6. **Ignoring schema-version differences** — Rejected. Schema version
-   participates in identity (ADR 0007). Cross-version comparison must yield
-   `not_comparable` with a stable reason code.
+   participates in identity (ADR 0007). Cross-version comparison is deferred to
+   a future adapter (separate ADR); a left/right schema-version mismatch is not
+   constructible because schema selection is per-call, and an unsupported or
+   contradictory selection is a raised caller-owned error.
 
 7. **AI-generated equivalence explanations inside the deterministic core** —
    Rejected. The deterministic core produces only structural facts. Any
@@ -348,7 +398,10 @@ different states.
 - Documentation guards in `tests/test_documentation.py` enforce: no
   economic-equivalence language, taxonomy completeness, report/diff schema
   presence, vector key uniqueness, link resolution, consistent status language,
-  independent comparison conclusions, closed comparison status taxonomy.
+  independent comparison conclusions, closed comparison status taxonomy, single
+  captured-failure representation, mandatory `report_id`, content-addressed
+  diff model, per-call schema selection (no left/right incompatibility outcome),
+  and cross-version comparison deferral.
 
 ## Future migration implications
 
@@ -357,7 +410,8 @@ different states.
 - Adding `reasons` array with classification codes is additive (MINOR).
 - Changing path syntax or `op` taxonomy is breaking (MAJOR).
 - Cross-version mediation (if ever added) would introduce a new report field
-  and a new error code; current policy rejects it.
+  and a new error code; current policy defers it to a separately-specified
+  adapter via a separate ADR.
 
 ---
 

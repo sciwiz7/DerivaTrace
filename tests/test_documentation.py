@@ -1661,20 +1661,31 @@ def test_stage_1c_validation_outcome_taxonomy() -> None:
     assert "null" in spec and "never used to mean multiple" in spec
 
 
-def test_stage_1c_incompatible_schema_never_different() -> None:
-    # Incompatible schema versions must never map to different / not_equivalent /
-    # false; the normative result is not_comparable with a stable reason code.
+def test_stage_1c_schema_selection_per_call_and_raised() -> None:
+    # Schema selection is per-call, so a left/right schema-version mismatch is not
+    # constructible. Unsupported/contradictory schema selection is a caller-owned
+    # raised error (not a reported not_comparable outcome), and cross-version
+    # comparison is deferred. The old incompatible-schema -> not_comparable mapping
+    # must not exist.
     spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
-    assert "incompatible_schema_versions" in spec
-    assert "not_comparable" in spec
-    # The spec must explicitly deny the forbidden mapping.
-    assert "incompatible schema versions never map to" in spec
-    # The incompatible vectors map to not_comparable (not different).
-    assert "ve_024_incompatible_canonical_schema" in spec
-    assert "ve_027_incompatible_payoff_schema" in spec
-    # No cross-version structural diff is promised.
-    assert "content structural diff" in spec
-    assert "equivalence claim" in spec
+    assert "per-call" in spec
+    assert "cannot construct a left/right" in spec
+    assert "caller-owned raised error" in spec
+    assert "incompatible_schemas" in spec
+    # The v1 API has no incompatible_schema_versions comparison outcome.
+    assert "`incompatible_schema_versions` reason code" in spec
+    assert "unsupported_migration_boundary" in spec
+    assert "outcome in v1" in spec
+    # Unsupported / contradictory schema selection vectors raise, not not_comparable.
+    assert "ve_024_unsupported_canonical_schema_raises" in spec
+    assert "ve_027_unsupported_payoff_schema_raises" in spec
+    assert "ve_034_contradictory_schema_config_raises" in spec
+    # Cross-version comparison is deferred; no cross-version diff is promised.
+    assert "deferred to a future" in spec
+    assert "source of diff content" in spec
+    # The forbidden mapping must not be asserted positively.
+    assert "incompatible schema versions never map to" not in spec
+    assert "incompatible schema versions produce" not in spec
 
 
 def test_stage_1c_caller_errors_raise() -> None:
@@ -1722,8 +1733,10 @@ def test_stage_1c_operand_failures_captured() -> None:
     ):
         assert stage in spec, stage
     # Captured structured fields.
-    for field in ("stage", "code", "side", "classification"):
+    for field in ("stage", "code", "classification"):
         assert field in spec, field
+    # The `side` field does NOT appear inside individual records: the array is
+    # nested under `left` or `right`, making the side implicit.
     # Forbidden content in captured failures.
     for forbidden in (
         "raw traceback",
@@ -1755,7 +1768,7 @@ def test_stage_1c_diff_availability_rules_explicit() -> None:
     assert "diff availability" in spec
     for cond in (
         "the selected representation exists for both sides",
-        "both representations use compatible schema versions",
+        "both operands are processed under one per-call",
         "the selected diff mode is supported",
         "limits permit the comparison",
     ):
@@ -1765,17 +1778,17 @@ def test_stage_1c_diff_availability_rules_explicit() -> None:
         "no misleading partial content diff" in spec
         or "no partial content diff" in spec
     )
-    assert "no content structural diff" in spec
+    assert "source of diff content" in spec
 
 
 def test_stage_1c_change_replace_non_overlapping() -> None:
-    # change and replace cannot overlap: change keeps the structural role,
+    # change and replace cannot overlap: change keeps the JSON structural kind,
     # replace changes it; they are disjoint by construction.
     spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
     assert "non-overlap" in spec or "non-overlapping" in spec
     assert "change" in spec and "replace" in spec
-    assert "structural role is identical" in spec
-    assert "structural role changed" in spec
+    assert "both sides carry the same json" in spec
+    assert "json structural kind differs" in spec
     assert "disjoint" in spec
 
 
@@ -1784,7 +1797,8 @@ def test_stage_1c_structural_diff_schema_specified() -> None:
     for sel in ("canonical", "payoff", "both", "none"):
         assert sel in spec, f"diff selection '{sel}' missing from spec"
     assert "/nodes/" in spec
-    assert "operands/" in spec
+    assert "/root" in spec
+    assert "/schema_version" in spec
     for op in ("add", "remove", "change", "replace"):
         assert op in spec, f"diff op '{op}' missing from spec"
     for limit in (
@@ -1796,7 +1810,9 @@ def test_stage_1c_structural_diff_schema_specified() -> None:
         assert limit in spec, f"diff limit '{limit}' missing from spec"
     assert "truncated" in spec
     assert "truncation_reason" in spec
-    assert "lexicographic" in spec.lower() or "ascending" in spec.lower()
+    assert any(
+        w in spec.lower() for w in ("lexicographic", "ascending", "ascii byte order")
+    )
     assert "node table" in spec.lower() or "node-table" in spec.lower()
 
 
@@ -1860,17 +1876,21 @@ def test_stage_1c_normative_vectors_unique_and_complete() -> None:
     assert len(inv_keys) == len(set(inv_keys)), (
         f"duplicate inventory key: {[k for k in inv_keys if inv_keys.count(k) > 1]}"
     )
-    assert len(inv_keys) >= 31, len(inv_keys)
+    assert len(inv_keys) >= 35, len(inv_keys)
     # Minimum required cases.
     for key in (
         "ve_022_invalid_left",
         "ve_023_invalid_right",
-        "ve_024_incompatible_canonical_schema",
-        "ve_027_incompatible_payoff_schema",
+        "ve_024_unsupported_canonical_schema_raises",
+        "ve_027_unsupported_payoff_schema_raises",
         "ve_028_unsupported_level_raises",
         "ve_029_malformed_limits_raise",
         "ve_030_report_encoding_failure_raises",
         "ve_031_deterministic_repeated_captured_failure",
+        "ve_032_upstream_r1_failure_captured",
+        "ve_033_upstream_r2_failure_captured",
+        "ve_034_contradictory_schema_config_raises",
+        "ve_035_report_identity_mandatory",
     ):
         assert key in inv_keys, key
     # Shallower levels leave deeper statuses not_evaluated.
@@ -1928,3 +1948,141 @@ def test_adr_0008_records_key_decisions() -> None:
         "updated conformance vectors",
     ]:
         assert decision in adr, f"ADR 0008 missing decision: {decision}"
+
+
+# ---- Additional Stage 1C documentation-test guards ----
+
+
+def test_stage_1c_exactly_one_canonical_schema_per_call() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "exactly one" in spec
+    assert "canonical schema selection" in spec
+    assert "never per-side" in spec
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    assert "per-call" in adr
+    assert "never per-side" in adr or "no per-side" in adr
+
+
+def test_stage_1c_exactly_one_payoff_schema_per_call() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "exactly one" in spec
+    assert "payoff schema" in spec
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    assert "per-call" in adr
+
+
+def test_stage_1c_cross_version_deferred() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "deferred to a future" in spec
+    assert "separate architecture decision" in spec
+    assert "not" in spec and "part of `compare_contracts` v1" in spec
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    assert "deferred" in adr
+    assert "separate adr" in adr
+
+
+def test_stage_1c_single_captured_failure_representation() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "single" in spec
+    assert "structured captured-failure representation" in spec
+    assert (
+        "{stage, code, classification}" in spec or "stage, code, classification" in spec
+    )
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    assert "single" in adr
+    assert (
+        "{stage, code, classification}" in adr or "stage, code, classification" in adr
+    )
+
+
+def test_stage_1c_deprecated_field_names_absent() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "structural_errors" in spec
+    assert "deprecated" in spec
+    assert "do not exist" in spec or "does not exist" in spec
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    assert "structural_errors" in adr
+    assert "not used" in adr
+    assert "canonicalization_errors" in adr
+    assert "payoff_compilation_errors" in adr
+
+
+def test_stage_1c_failures_non_null_and_deterministic_order() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "always an array" in spec
+    assert "empty array" in spec
+    assert "never" in spec and "null" in spec
+    assert "deterministic" in spec
+    assert "stage order" in spec or "stage → code → classification" in spec
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    assert "deterministic" in adr
+    assert (
+        "stage → code → classification" in adr
+        or "stage -> code -> classification" in adr
+    )
+
+
+def test_stage_1c_report_id_mandatory_non_null() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "mandatory" in spec
+    assert "non-null" in spec
+    assert "report_id" in spec
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    assert "mandatory" in adr
+    assert "non-null" in adr
+    assert "report_id" in adr
+
+
+def test_stage_1c_content_addressed_remove_add_not_same_id_leaf() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "content-addressed" in spec
+    assert "remove" in spec and "add" in spec
+    assert "never" in spec
+    assert "same-id" in spec or "same-node-id" in spec or "leaf change" in spec
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    assert "content-addressed" in adr
+    assert "remove" in adr and "add" in adr
+
+
+def test_stage_1c_commutative_no_diff() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "commutative" in spec
+    assert "no diff" in spec or "no diff" in spec
+    assert "canonicalize identically" in spec
+
+
+def test_stage_1c_shared_copied_no_diff() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "copied" in spec or "shared" in spec
+    assert "no diff" in spec
+    assert "canonicalize identically" in spec
+
+
+def test_stage_1c_semantic_alignment_out_of_scope() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "semantic" in spec
+    assert "alignment" in spec or "node alignment" in spec
+    assert "out of scope" in spec or "explicitly deferred" in spec
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    assert "semantic" in adr or "alignment" in adr
+    assert "rejected" in adr or "deferred" in adr
+
+
+def test_stage_1c_failure_no_side_field_in_record() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "no `side`" in spec or "no side" in spec
+    assert "inside" in spec
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    assert (
+        "not stored as a per-record field" in adr or "not stored as a per-record" in adr
+    )
+
+
+def test_stage_1c_no_incompatible_schema_versions_reason() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "no" in spec
+    assert "incompatible_schema_versions" in spec
+    assert "reason code" in spec
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    assert "incompatible_schema_versions" in adr
+    assert "not constructible" in adr

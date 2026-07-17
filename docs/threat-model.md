@@ -229,15 +229,18 @@ specific to that design and are mitigated by the specification's rules.
 - **Misleading "equivalent" terminology** — a report uses the unqualified word
   "equivalent" implying economic/legal/accounting/tax/model/suitability
   equivalence. Mitigated by the report schema: results use the precise enum
-  values `equivalent`, `not_equivalent`, `not_applicable` at each validation
-  level (`structural`, `canonical`, `payoff`); the display names are distinct
-  from economic claims; the conservative principle (§1 of
+  values `equivalent`, `different`, `not_comparable`, `not_evaluated` at each
+  validation level (`structural`, `canonical`, `payoff`); the display names are
+  distinct from economic claims; the conservative principle (§1 of
   `validation-equivalence-spec.md`) is binding.
-- **Cross-version equivalence confusion** — comparing contracts under different
-  canonical or payoff schema versions silently yields a misleading result.
-  Mitigated by recording both schema versions in the report; cross-version
-  comparison yields `not_equivalent` with a visible version-field diff; no
-  mediation is performed.
+- **Cross-version equivalence confusion** — a caller assumes cross-version
+  comparison is silently mediated. Mitigated by per-call schema selection: a
+  single `canonical_schema` and a single `payoff_schema` apply to both operands,
+  so a left/right schema-version mismatch is not constructible; an unsupported or
+  contradictory selection raises a caller-owned error rather than returning a
+  misleading report; cross-version representation comparison is explicitly
+  **deferred** to a future separately-specified adapter (separate ADR), never
+  silently mediated.
 - **Unbounded structural diff** — an adversarial pair of large, deeply nested
   contracts produces an excessively large diff, exhausting memory or CPU.
   Mitigated by `DiffLimits` (`max_entries=1024`, `max_compared_bytes=2 MiB`,
@@ -263,9 +266,11 @@ specific to that design and are mitigated by the specification's rules.
   collision rule).
 - **Upstream error suppression** — canonicalization or payoff compilation
   failures are hidden instead of reported per-side. Mitigated by the
-  report-internal error policy: upstream errors are captured in
-  `structural_errors`, `canonicalization_errors`, `payoff_compilation_errors`
-  arrays; the function returns a complete report, does not raise.
+  report-internal error policy: upstream errors are captured in the per-side
+  `failures` array as `{stage, code, classification}` records with the original
+  upstream error code retained; the function returns a complete report and does
+  not raise (caller-owned errors, e.g. unsupported schema selection, raise
+  instead).
 - **Schema version confusion in reports** — a report claims an unknown or
   unsupported schema version. Mitigated by the report schema version
   participating in the report identity preimage; consumers reject unknown major
