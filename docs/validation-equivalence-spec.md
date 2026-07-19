@@ -83,6 +83,21 @@ A level never returns a comparison result for a deeper level than requested:
 requesting `structural` leaves `canonical`/`payoff` statuses `not_evaluated`;
 requesting `canonical` leaves the `payoff` status `not_evaluated`.
 
+When either operand fails Stage 1A validation, all comparison statuses **at or
+deeper than the requested level** are `not_comparable` (reason
+`upstream_stage_failure`); comparison statuses **shallower than the requested
+level** remain `not_evaluated` (reason `shallower_level_requested`):
+
+- Requested `structural`, either operand invalid: `canonical` =
+  `not_evaluated` (shallower_level_requested); `payoff` = `not_evaluated`
+  (shallower_level_requested).
+- Requested `canonical`, either operand invalid: `canonical` =
+  `not_comparable` (upstream_stage_failure); `payoff` = `not_evaluated`
+  (shallower_level_requested).
+- Requested `payoff`, either operand invalid: `canonical` =
+  `not_comparable` (upstream_stage_failure); `payoff` = `not_comparable`
+  (upstream_stage_failure).
+
 The enum is closed; `unsupported_level` is raised for any other string.
 
 ### 2.2 Documentation guard on level wording
@@ -172,8 +187,8 @@ Consequences, binding for Stage 1C v1:
   "requested_level": "structural | canonical | payoff",
   "canonical_schema_version": "1.0.0",
   "payoff_schema_version": "1.0.0",
-  "left_validation_outcome": "valid | invalid | not_evaluated",
-  "right_validation_outcome": "valid | invalid | not_evaluated",
+  "left_validation_outcome": "valid | invalid",
+  "right_validation_outcome": "valid | invalid",
   "canonical_comparison_status": "equivalent | different | not_comparable | not_evaluated",
   "canonical_comparison_reason": "<stable-code> | null",
   "payoff_comparison_status": "equivalent | different | not_comparable | not_evaluated",
@@ -190,7 +205,7 @@ Consequences, binding for Stage 1C v1:
     ]
   },
   "right": { "... same shape as left ..." },
-  "diff_representation": "canonical | payoff | both | none",
+  "diff_representation": "canonical | payoff | none",
   "diff_summary": {
     "entries": [
       {
@@ -220,7 +235,13 @@ Consequences, binding for Stage 1C v1:
     "canonicalization": { "... exact limit object ..." },
     "payoff": { "... exact limit object ..." },
     "validation": { "... exact limit object ..." },
-    "diff": { "... exact limit object ..." }
+    "diff": {
+      "max_compared_bytes": "...",
+      "max_compared_nodes": "...",
+      "max_entries": "...",
+      "max_report_bytes": "...",
+      "max_path_length": "..."
+    }
   },
   "schema_metadata": {
     "canonical": { "... deterministic schema metadata ..." },
@@ -253,9 +274,9 @@ Field-by-field rules:
   versions used for canonicalization and payoff compilation (echoed from the
   runtime or the caller's override).
 - `left_validation_outcome` / `right_validation_outcome` — per-side Stage 1A
-  validation outcome using the closed taxonomy `valid | invalid | not_evaluated`.
-  `not_evaluated` means the structural stage was not reached (e.g., an internal
-  error before validation, or a caller configuration that prevented it). These
+  validation outcome using the closed taxonomy `valid | invalid`. Every valid
+  Stage 1C call evaluates Stage 1A for both operands; caller-owned or internal
+  failures that prevent validation are raised and return no report. These
   fields are never `null`.
 - `canonical_comparison_status` — closed comparison status for the canonical
   representation (see §3.5). One of `equivalent | different | not_comparable |
@@ -278,7 +299,7 @@ Field-by-field rules:
     `payoff_compilation_errors` do **not** exist; the same failure is never
     encoded twice.
 - `diff_representation` — the selected representation (`canonical | payoff |
-  both | none`).
+  none`). One report contains at most one structural diff section.
 - `diff_summary` — deterministic structural diff (see §4). When unavailable,
   `entries` is empty and `unavailable_reason` carries a stable code; no partial
   content diff is emitted.
@@ -288,12 +309,12 @@ Field-by-field rules:
   hash domain tags) recorded for reproducibility. May be included even when a
   comparison is `not_comparable`.
 - `provenance` — compiler tag, exclusion policy, and source canonical identities.
-  Excluded from `report_id` preimage (like payoff-graph provenance). Provenance
-  fields that depend on a canonical identity that is unavailable for a side
-  (because that side failed an upstream stage) follow **one exact rule**: the
-  corresponding `source_left_identity` / `source_right_identity` value is
-  `null`. A structural-only or failed report therefore remains representable and
-  its `report_id` is still mandatory and non-null (§7).
+  Excluded from `report_id` preimage (like payoff-graph provenance). The exact
+  provenance identity rule is: `source_left_identity` / `source_right_identity`
+  is the canonical identity when canonicalization was evaluated and succeeded; it
+  is `null` when canonicalization was not requested or failed. This is one exact
+  rule covering structural-level and failed reports. Provenance remains excluded
+  from report identity.
 
 ### 3.5 Comparison status taxonomy (closed enum)
 
@@ -359,9 +380,10 @@ Per-side validation outcomes use a closed taxonomy:
 |--------|---------|
 | `valid` | The operand passed Stage 1A validation. |
 | `invalid` | The operand failed Stage 1A validation (records captured in the per-side `failures` array). |
-| `not_evaluated` | The structural stage was not reached. |
 
-`null` is never used to mean multiple different states; the three values are
+Every valid Stage 1C call evaluates Stage 1A for both operands. Caller-owned
+or internal failures that prevent validation are raised and return no report.
+`null` is never used to mean multiple different states; the two values are
 closed and exhaustive.
 
 ### 3.7 Left and right identities
@@ -423,7 +445,8 @@ Stage 1C raises a typed error in its own `validation_equivalence` namespace for:
 - unsupported validation level;
 - malformed Stage 1C limits;
 - unsupported Stage 1C report schema version;
-- invalid diff representation selection;
+- invalid diff representation selection (including `"both"`, which is not in
+  the v1 `DiffSelection` taxonomy);
 - impossible or contradictory caller configuration;
 - report encoding failure;
 - report identity collision;
@@ -526,9 +549,11 @@ participate in identity.
 
 | Situation | Report outcome |
 |-----------|----------------|
-| Either Stage 1A contract invalid | `left_validation_outcome`/`right_validation_outcome` = `invalid`; that side's `failures` populated (`stage: structural`); `canonical_comparison_status`/`payoff_comparison_status` = `not_comparable` (reason `upstream_stage_failure`) when that level was requested, else `not_evaluated`. |
-| R1 canonicalization fails | `contract_identity: null`; that side's `failures` populated (`stage: canonical`); `canonical_comparison_status` = `not_comparable` (reason `upstream_stage_failure`) when requested, else `not_evaluated`; `payoff_comparison_status` = `not_evaluated`. |
-| R2 payoff-graph compilation fails | `payoff_graph_identity: null`; that side's `failures` populated (`stage: payoff`); `payoff_comparison_status` = `not_comparable` (reason `upstream_stage_failure`) when requested, else `not_evaluated`. |
+| Requested `structural`, either operand invalid | `left_validation_outcome`/`right_validation_outcome` = `invalid` for the failing side; that side's `failures` populated (`stage: structural`); `canonical_comparison_status` = `not_evaluated` (reason `shallower_level_requested`); `payoff_comparison_status` = `not_evaluated` (reason `shallower_level_requested`). |
+| Requested `canonical`, either operand invalid | `left_validation_outcome`/`right_validation_outcome` = `invalid` for the failing side; that side's `failures` populated (`stage: structural`); `canonical_comparison_status` = `not_comparable` (reason `upstream_stage_failure`); `payoff_comparison_status` = `not_evaluated` (reason `shallower_level_requested`). |
+| Requested `payoff`, either operand invalid | `left_validation_outcome`/`right_validation_outcome` = `invalid` for the failing side; that side's `failures` populated (`stage: structural`); `canonical_comparison_status` = `not_comparable` (reason `upstream_stage_failure`); `payoff_comparison_status` = `not_comparable` (reason `upstream_stage_failure`). |
+| R1 canonicalization fails | `contract_identity: null`; that side's `failures` populated (`stage: canonical`); `canonical_comparison_status` = `not_comparable` (reason `upstream_stage_failure`) when requested; `payoff_comparison_status` = `not_comparable` (reason `upstream_stage_failure`) when requested. |
+| R2 payoff-graph compilation fails | `payoff_graph_identity: null`; that side's `failures` populated (`stage: payoff`); `payoff_comparison_status` = `not_comparable` (reason `upstream_stage_failure`) when requested; `canonical_comparison_status` retains its actual result when both R1 representations exist. |
 | Unsupported canonical schema selection | `ValidationEquivalenceInputError` is **raised** (not placed in report); no report is returned. |
 | Unsupported payoff schema selection | `ValidationEquivalenceInputError` is **raised** (not placed in report); no report is returned. |
 | Contradictory schema configuration | `ValidationEquivalenceIncompatibleSchemasError` is **raised** (not placed in report); no report is returned. |
@@ -553,10 +578,15 @@ matcher. The caller selects the representation via `DiffSelection`:
   node table and root).
 - `"payoff"` — diff the Stage 1B-R2 payoff-graph structural documents (the
   `structural_bytes` of each `PayoffGraph`).
-- `"both"` — produce two independent diff sections (canonical and payoff).
 - `"none"` — no diff; `diff_summary.entries` empty, `truncated: false`.
 
-The default is `"canonical"`.
+The default is `"canonical"`. A v1 report contains **at most one** structural
+diff section; `diff_representation` names that one selected representation or
+`none`. The value `"both"` is **not** in the v1 `DiffSelection` taxonomy:
+callers needing both canonical and payoff diffs perform two separate comparisons.
+Simultaneous independently keyed diff sections are deferred to a future
+report-schema version and separate architecture review. Unsupported `"both"`
+raises the existing Stage 1C invalid-diff-selection input error.
 
 Each selected structural document is compared **exactly as a versioned JSON
 object** of the shape `{schema_name, schema_version, nodes, root}`. The `nodes`
@@ -694,18 +724,42 @@ document differences.
 
 ### 4.13 Limits
 
-`DiffLimits` (exact positive `int` fields, never `bool`):
+`DiffLimits` (exact positive `int` fields, never `bool`) are divided into
+**admission limits** and **output limits**:
+
+**Admission limits** (input validation, evaluated before diffing begins):
+
+| Limit | Default | Purpose |
+|-------|---------|---------|
+| `max_compared_bytes` | `2_097_152` (2 MiB) | Maximum combined structural bytes of left + right considered for diffing. |
+| `max_compared_nodes` | `4096` | Maximum combined reachable nodes considered. |
+
+**Output limits** (entry emission, evaluated after successful admission):
 
 | Limit | Default | Purpose |
 |-------|---------|---------|
 | `max_entries` | `1024` | Maximum diff entries in the report. |
-| `max_compared_bytes` | `2_097_152` (2 MiB) | Maximum combined structural bytes of left + right considered for diffing. |
-| `max_compared_nodes` | `4096` | Maximum combined reachable nodes considered. |
+| `max_report_bytes` | `8_388_608` (8 MiB) | Maximum serialized report size. |
 | `max_path_length` | `256` | Maximum path string length. |
 
-Exceeding any limit causes the diff to **truncate**: `truncated: true`,
-`truncation_reason` set to the limiting factor, and no further entries added.
-Entries already collected are retained.
+Admission policy:
+
+- Validate limit objects exactly at the API boundary; malformed limits raise
+  `validation_equivalence.input`.
+- Compute deterministic input sizes before emitting diff entries.
+- When an admission limit is exceeded: return the equivalence report; emit
+  **zero** diff entries; `truncated` is `false`; `unavailable_reason` is set
+  to `comparison_limit_exceeded`; equivalence statuses and identities remain
+  available.
+
+Output policy:
+
+- After successful admission, emit entries in the specified deterministic order
+  (§4.14).
+- Stop before the entry that would exceed an output bound; retain the
+  deterministic accepted prefix.
+- Set `truncated: true`; set the precise truncation reason.
+- Never partially serialize an entry.
 
 ### 4.14 Deterministic ordering
 
@@ -859,8 +913,9 @@ All limits are exact positive integers. The limit objects are:
   `max_canonical_bytes=4_194_304` (4 MiB).
 - `PayoffGraphLimits` (Stage 1B-R2): `max_payoff_nodes=4096`,
   `max_document_bytes=4_194_304`, `max_structural_bytes=2_097_152`.
-- `DiffLimits` (Stage 1C): `max_entries=1024`, `max_compared_bytes=2_097_152`,
-  `max_compared_nodes=4096`, `max_path_length=256`.
+- `DiffLimits` (Stage 1C): admission limits `max_compared_bytes=2_097_152`,
+  `max_compared_nodes=4096`; output limits `max_entries=1024`,
+  `max_report_bytes=8_388_608`, `max_path_length=256`.
 
 ### 6.2 Threat model
 
@@ -882,14 +937,23 @@ adds:
   detection in Stage 1B (raise on same id, different payload) carries forward.
 - **Confusing Unicode in paths or display labels** — paths use only ASCII node
   ids and field names; no user-supplied strings appear in paths.
-- **Accidental leakage of full contract content** — diff entries carry only
-  leaf values; the report never embeds full canonical bytes; captured failures
-  contain no full-content leakage.
+- **Bounded structural-content disclosure in diff** — node add/remove entries
+  contain bounded complete canonical or payoff node records; `/root` and
+  metadata changes contain scalar values. The report never embeds the complete
+  canonical/payoff document as one field, but a sufficiently large non-truncated
+  diff may reveal substantial bounded structural contract content.
+  `diff="none"` is the privacy-preserving option when structural content should
+  not be disclosed. Report consumers must treat diff entries as potentially
+  sensitive contract structure. Captured failures still contain no object repr,
+  traceback, exception text, or malformed object content.
 - **Misleading "equivalent" terminology** — the report uses precise enum values
   (`equivalent`, `different`, `not_comparable`, `not_evaluated`) and never the
   word "equivalent" unqualified. The display names are distinct from economic
   claims.
-- **Denial of service through oversized diffs** — bounded by `DiffLimits`.
+- **Denial of service through oversized diffs** — bounded by admission limits
+  (`max_compared_bytes`, `max_compared_nodes`) evaluated before diffing, and
+  output limits (`max_entries`, `max_report_bytes`, `max_path_length`)
+  evaluated after successful admission.
 - **Non-deterministic dictionary/set iteration** — all iterations use sorted
   keys (canonical JSON order for objects, node-id order for node table, numeric
   order for arrays).
@@ -935,11 +999,10 @@ Stage 1C owns the `validation_equivalence` error namespace. All derive from
 | Exception | Stable `.code` | When raised (caller-owned) |
 |-----------|----------------|----------------------------|
 | `ValidationEquivalenceError` | `validation_equivalence.error` | Unexpected internal failure / malformed internal state or invariant failure. |
-| `ValidationEquivalenceInputError` | `validation_equivalence.input` | Wrong exact input type at the API boundary; malformed limits; **unsupported canonical schema selection**; **unsupported payoff schema selection**; unsupported report schema version; invalid enum value; invalid diff representation selection. |
+| `ValidationEquivalenceInputError` | `validation_equivalence.input` | Wrong exact input type at the API boundary; malformed limits; **unsupported canonical schema selection**; **unsupported payoff schema selection**; unsupported report schema version; invalid enum value; invalid diff representation selection (including `"both"`). |
 | `ValidationEquivalenceUnsupportedLevelError` | `validation_equivalence.unsupported_level` | Caller passes a `level` not in the closed enum. |
 | `ValidationEquivalenceIncompatibleSchemasError` | `validation_equivalence.incompatible_schemas` | **Contradictory schema configuration** at the call boundary (a raised caller-owned error). Cross-version comparison of previously generated representations is out of scope for v1 (§5.2) and is not a comparison outcome. |
 | `ValidationEquivalenceComparisonError` | `validation_equivalence.comparison_failed` | Internal comparison logic failure (should not occur). |
-| `ValidationEquivalenceComplexityError` | `validation_equivalence.complexity` | Diff limits exceeded at setup before diffing starts. |
 | `ValidationEquivalenceEncodingError` | `validation_equivalence.encoding` | Report serialization failed; **raised**, no partial report returned. |
 | `ValidationEquivalenceReportCollisionError` | `validation_equivalence.report_collision` | Two distinct structural projections hash to the same `report_id`; **raised**, no report returned. |
 | `ValidationEquivalenceMalformedRepresentationError` | `validation_equivalence.malformed_representation` | A trusted Stage 1B output fails internal consistency checks (e.g., node id not in table, reference to missing node). |
@@ -1016,24 +1079,33 @@ same-node-id leaf `change` entries.
 | `ve_015_settlement_timestamp_diff` | `Payment(Num("1", USD), USD, T0)` | `Payment(Num("1", USD), USD, T0_500ms)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
 | `ve_016_observation_timestamp_diff` | `Payment(Add(obs_A@T0, obs_B@T0), USD, T0)` | `Payment(Add(obs_A@T0_500ms, obs_B@T0), USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
 | `ve_017_currency_diff` | `Payment(Num("1", USD), USD, T0)` | `Payment(Num("1", EUR), EUR, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
-| `ve_018_scalar_vs_money_unit` | `Scale(Num("2", scalar), Payment(obs_A, USD, T0))` | `Scale(Num("2", money(USD)), Payment(obs_A, USD, T0))` — invalid right (Stage 1A rejects) | `payoff` | valid / invalid | not_comparable | not_evaluated | none |  | never |
+| `ve_018_scalar_vs_money_unit` | `Scale(Num("2", scalar), Payment(obs_A, USD, T0))` | `Scale(Num("2", money(USD)), Payment(obs_A, USD, T0))` — invalid right (Stage 1A rejects) | `payoff` | valid / invalid | not_comparable | not_comparable | none |  | never |
 | `ve_019_comparison_operator_diff` | `Payment(ConditionalValue(Comparison(obs_A, obs_B, GT), obs_A, obs_B), USD, T0)` | `Payment(ConditionalValue(Comparison(obs_A, obs_B, LT), obs_A, obs_B), USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
 | `ve_020_conditional_branch_order` | `Payment(ConditionalValue(cond, obs_A, obs_B), USD, T0)` | `Payment(ConditionalValue(cond, obs_B, obs_A), USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
 | `ve_021_zero_vs_nonzero` | `Zero()` | `Payment(Num("1", USD), USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
 | `ve_022_invalid_left` | `Add(obs_A)` (single operand — invalid) | `Payment(obs_A, USD, T0)` | `structural` | invalid / valid | not_evaluated | not_evaluated | empty |  | never |
 | `ve_023_invalid_right` | `Payment(obs_A, USD, T0)` | `Add(obs_A)` | `structural` | valid / invalid | not_evaluated | not_evaluated | empty |  | never |
-| `ve_024_unsupported_canonical_schema_raises` | Contract A | Contract A | `canonical` (unsupported `canonical_schema` selection) | — | — | — | — | `validation_equivalence.input` | never |
-| `ve_025_diff_truncation_at_boundary` | Large contract (4096 nodes) | Same contract + one extra leaf | `payoff` | valid / valid | different | different | truncated (entry_limit / byte_limit) |  | never |
-| `ve_026_deterministic_repeated_reporting` | Contract A | Contract A | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
-| `ve_027_unsupported_payoff_schema_raises` | Contract A | Contract A | `payoff` (unsupported `payoff_schema` selection) | — | — | — | — | `validation_equivalence.input` | never |
-| `ve_028_unsupported_level_raises` | Contract A | Contract A | `bogus` | valid / valid | — | — | — | `validation_equivalence.unsupported_level` | never |
-| `ve_029_malformed_limits_raise` | Contract A | Contract A | `canonical` | valid / valid | — | — | — | `validation_equivalence.input` | never |
-| `ve_030_report_encoding_failure_raises` | Contract A | Contract A | `canonical` | valid / valid | — | — | — | `validation_equivalence.encoding` | never |
-| `ve_031_deterministic_repeated_captured_failure` | `Add(obs_A)` (single operand — invalid) | `Payment(obs_A, USD, T0)` | `canonical` | invalid / valid | not_comparable | not_evaluated | none |  | never |
-| `ve_032_upstream_r1_failure_captured` | Contract whose R1 canonicalization fails (e.g. internal complexity bound) | `Payment(obs_A, USD, T0)` | `canonical` | valid / valid | not_comparable | not_evaluated | none |  | never |
-| `ve_033_upstream_r2_failure_captured` | Contract whose R2 payoff compilation fails (e.g. payoff complexity bound) | `Payment(obs_A, USD, T0)` | `payoff` | valid / valid | equivalent | not_comparable | none |  | never |
-| `ve_034_contradictory_schema_config_raises` | Contract A | Contract A | `canonical` (contradictory schema configuration) | — | — | — | — | `validation_equivalence.incompatible_schemas` | never |
-| `ve_035_report_identity_mandatory` | Contract A | Contract B (different structure) | `payoff` | valid / valid | different | different | remove_add_root |  | never |
+| `ve_024_invalid_left_at_payoff_level` | `Add(obs_A)` (single operand — invalid) | `Payment(obs_A, USD, T0)` | `payoff` | invalid / valid | not_comparable | not_comparable | none |  | never |
+| `ve_025_admission_byte_boundary_exact` | Large contract (exactly `max_compared_bytes` total structural bytes) | Same contract | `payoff` | valid / valid | equivalent | equivalent | none (admission limit reached, zero entries) |  | never |
+| `ve_026_admission_byte_boundary_exceeded` | Large contract (exactly `max_compared_bytes + 1` total structural bytes) | Same contract | `payoff` | valid / valid | equivalent | equivalent | none (admission limit reached, zero entries) |  | never |
+| `ve_027_admission_node_boundary_exact` | Large contract (exactly `max_compared_nodes` combined nodes) | Same contract | `payoff` | valid / valid | equivalent | equivalent | none (admission limit reached, zero entries) |  | never |
+| `ve_028_admission_node_boundary_exceeded` | Large contract (exactly `max_compared_nodes + 1` combined nodes) | Same contract | `payoff` | valid / valid | equivalent | equivalent | none (admission limit reached, zero entries) |  | never |
+| `ve_029_output_entry_boundary_exact` | Large contract producing exactly `max_entries` diff entries | Different contract | `payoff` | valid / valid | different | different | truncated (exact entry boundary) |  | never |
+| `ve_030_output_entry_boundary_exceeded` | Large contract producing `max_entries + 1` diff entries | Different contract | `payoff` | valid / valid | different | different | truncated (one beyond entry boundary) |  | never |
+| `ve_031_output_report_byte_truncation` | Large contract exceeding `max_report_bytes` | Different contract | `payoff` | valid / valid | different | different | truncated (report byte limit) |  | never |
+| `ve_032_admission_failure_preserves_identities` | Large contract exceeding `max_compared_bytes` | Same contract | `payoff` | valid / valid | equivalent | equivalent | none (admission limit preserves identities and statuses) |  | never |
+| `ve_033_deterministic_repeated_reporting` | Contract A | Contract A | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
+| `ve_034_invalid_both_diff_selection` | Contract A | Contract A | `canonical` (diff=`both`) | valid / valid | — | — | — | `validation_equivalence.input` | never |
+| `ve_035_unsupported_level_raises` | Contract A | Contract A | `bogus` | valid / valid | — | — | — | `validation_equivalence.unsupported_level` | never |
+| `ve_036_malformed_limits_raise` | Contract A | Contract A | `canonical` | valid / valid | — | — | — | `validation_equivalence.input` | never |
+| `ve_037_report_encoding_failure_raises` | Contract A | Contract A | `canonical` | valid / valid | — | — | — | `validation_equivalence.encoding` | never |
+| `ve_038_deterministic_repeated_captured_failure` | `Add(obs_A)` (single operand — invalid) | `Payment(obs_A, USD, T0)` | `canonical` | invalid / valid | not_comparable | not_evaluated | none |  | never |
+| `ve_039_upstream_r1_failure_captured` | Contract whose R1 canonicalization fails (e.g. internal complexity bound) | `Payment(obs_A, USD, T0)` | `canonical` | valid / valid | not_comparable | not_evaluated | none |  | never |
+| `ve_040_upstream_r2_failure_captured` | Contract whose R2 payoff compilation fails (e.g. payoff complexity bound) | `Payment(obs_A, USD, T0)` | `payoff` | valid / valid | equivalent | not_comparable | none |  | never |
+| `ve_041_contradictory_schema_config_raises` | Contract A | Contract A | `canonical` (contradictory schema configuration) | — | — | — | — | `validation_equivalence.incompatible_schemas` | never |
+| `ve_042_report_identity_mandatory` | Contract A | Contract B (different structure) | `payoff` | valid / valid | different | different | remove_add_root |  | never |
+| `ve_043_unsupported_canonical_schema_raises` | Contract A | Contract A | `canonical` (unsupported `canonical_schema` selection) | — | — | — | — | `validation_equivalence.input` | never |
+| `ve_044_unsupported_payoff_schema_raises` | Contract A | Contract A | `payoff` (unsupported `payoff_schema` selection) | — | — | — | — | `validation_equivalence.input` | never |
 
 **Notes:**
 
@@ -1051,34 +1123,59 @@ same-node-id leaf `change` entries.
   (commutative Multiply), and `ve_013` (shared vs copied canonical-equivalent
   subgraphs) all canonicalize identically and produce **no diff**.
 - **Content-addressed `remove_add_root` cases (§4.5, §4.7, §4.8):** `ve_006`–`ve_012`,
-  `ve_015`–`ve_017`, `ve_019`–`ve_021`, and `ve_035` (author-order-sensitive
+  `ve_015`–`ve_017`, `ve_019`–`ve_021`, and `ve_042` (author-order-sensitive
   swaps, timestamp/currency/operator changes, and duplicate-reference changes)
   produce content-addressed node removals/additions plus a `/root` change. None
   produces a same-node-id leaf `change`.
-- `ve_022` and `ve_023` demonstrate that an invalid operand is **captured** in
-  the report: `left_validation_outcome`/`right_validation_outcome` = `invalid`
-  and the corresponding side's `failures` array is populated (`stage: structural`);
-  no Stage 1C error is raised.
-- `ve_024` and `ve_027` demonstrate that an **unsupported** canonical or payoff
+- `ve_022` and `ve_023` demonstrate **invalid Stage 1A operand at requested
+  `structural` level**: `left_validation_outcome`/`right_validation_outcome` =
+  `invalid`, the corresponding side's `failures` array is populated
+  (`stage: structural`), `canonical_comparison_status` = `not_evaluated`
+  (shallower_level_requested), `payoff_comparison_status` = `not_evaluated`
+  (shallower_level_requested); no Stage 1C error is raised.
+- `ve_038` demonstrates **invalid Stage 1A operand at requested `canonical`
+  level**: `left_validation_outcome` = `invalid`, `failures` populated
+  (`stage: structural`), `canonical_comparison_status` = `not_comparable`
+  (upstream_stage_failure), `payoff_comparison_status` = `not_evaluated`
+  (shallower_level_requested).
+- `ve_024` demonstrates **invalid Stage 1A operand at requested `payoff`
+  level**: `left_validation_outcome` = `invalid`, `failures` populated
+  (`stage: structural`), `canonical_comparison_status` = `not_comparable`
+  (upstream_stage_failure), `payoff_comparison_status` = `not_comparable`
+  (upstream_stage_failure). `not_evaluated` is never used for a comparison at
+  or deeper than the requested level.
+- `ve_043` and `ve_044` demonstrate that an **unsupported** canonical or payoff
   schema selection is a caller-owned **raised** error
-  (`validation_equivalence.input`); no report is returned. They replace the
-  previous, non-constructible "incompatible left/right schema version" vectors:
-  because `canonical_schema` and `payoff_schema` are per-call (§3.1.1), a
-  left/right schema-version mismatch cannot be constructed.
-- `ve_028`, `ve_029`, `ve_030`, and `ve_034` are **caller-owned raised-error**
+  (`validation_equivalence.input`); no report is returned. Because
+  `canonical_schema` and `payoff_schema` are per-call (§3.1.1), a left/right
+  schema-version mismatch cannot be constructed.
+- `ve_034` demonstrates that `"both"` is **not** in the v1 `DiffSelection`
+  taxonomy; selecting it raises `validation_equivalence.input`.
+- `ve_035`, `ve_036`, `ve_037`, and `ve_041` are **caller-owned raised-error**
   cases: no report is returned; the listed Stage 1C error code is raised.
-  `ve_034` is a contradictory schema configuration
+  `ve_041` is a contradictory schema configuration
   (`validation_equivalence.incompatible_schemas`).
-- `ve_031` demonstrates a **deterministic repeated failed-operand report**: an
-  upstream Stage 1A failure is captured and repeated comparisons of the same
-  inputs produce byte-identical reports with identical `report_id`.
-- `ve_032` and `ve_033` demonstrate **upstream R1 / R2 failures captured** in
+- `ve_038` demonstrates a **deterministic repeated failed-operand report** at
+  requested `canonical` level: an upstream Stage 1A failure is captured
+  (`canonical_comparison_status` = `not_comparable`,
+  `payoff_comparison_status` = `not_evaluated`) and repeated comparisons of the
+  same inputs produce byte-identical reports with identical `report_id`.
+- `ve_039` and `ve_040` demonstrate **upstream R1 / R2 failures captured** in
   the failing side's `failures` array with the **original** upstream code
   (`canonicalization.*` / `payoff_graph.*`); no Stage 1C error is raised.
-- `ve_026` and `ve_035` demonstrate that `report_id` is **mandatory,
+- `ve_033` and `ve_042` demonstrate that `report_id` is **mandatory,
   non-null, and deterministic** on every successfully returned report.
 - `ve_014` demonstrates that provenance-only variation does **not** affect
   `report_id` (provenance is excluded from the structural projection, §7).
+- `ve_025`–`ve_028` demonstrate **admission limits** (`max_compared_bytes`,
+  `max_compared_nodes`): when exceeded, the report is returned with zero diff
+  entries, `truncated: false`, and `unavailable_reason: comparison_limit_exceeded`;
+  equivalence statuses and identities remain available.
+- `ve_029`–`ve_031` demonstrate **output limits** (`max_entries`,
+  `max_report_bytes`): when exceeded, the report retains the deterministic
+  accepted prefix and sets `truncated: true` with the precise reason.
+- `ve_032` demonstrates that an admission-limit failure preserves comparison
+  identities and statuses.
 - Every vector explicitly states `economic_equivalence_claim: "never"`.
 - No vector establishes economic equivalence.
 
@@ -1098,8 +1195,12 @@ merged. They are enforced by `tests/test_documentation.py`:
 - The comparison-status taxonomy is closed (`equivalent`, `different`,
   `not_comparable`, `not_evaluated`) and distinct; `not_comparable` and
   `not_evaluated` are never collapsed into `different`/`false`/`not_equivalent`.
-- The validation-outcome taxonomy is closed (`valid`, `invalid`,
-  `not_evaluated`); `null` is never used to mean multiple states.
+- The validation-outcome taxonomy is closed (`valid`, `invalid`); `null` is
+  never used to mean multiple states.
+- `not_evaluated` in validation outcomes is removed; only `valid`/`invalid`
+  remain.
+- `"both"` is absent from the v1 `DiffSelection` taxonomy.
+- One report has one diff summary (at most one structural diff section).
 - Report schema (`derivatrace.validation-equivalence.report` v1.0.0) is fully
   specified with all fields; `report_id` is mandatory, non-null on every
   successfully returned report.
@@ -1110,6 +1211,10 @@ merged. They are enforced by `tests/test_documentation.py`:
   reported as a node-table `remove` plus node-table `add` plus a `/root` change
   (no same-node-id leaf `change`); semantic alignment is **out of scope** for
   Stage 1C.
+- Admission limits (`max_compared_bytes`, `max_compared_nodes`) are separated
+  from output limits (`max_entries`, `max_report_bytes`, `max_path_length`);
+  admission failure emits zero entries and does not truncate.
+- Output-limit failure emits a deterministic truncated prefix.
 - Schema selection is **per-call** (one `canonical_schema`, one `payoff_schema`
   per comparison, §3.1.1): a left/right schema-version mismatch is not
   constructible. An **unsupported** canonical/payoff schema selection raises
@@ -1132,6 +1237,22 @@ merged. They are enforced by `tests/test_documentation.py`:
   returned report; report equality and hashing are defined on `report_id`;
   provenance is excluded from the structural projection that determines identity
   (§7).
+- Node add/remove entries may contain complete bounded node records; the threat
+  model does not claim leaf-only diffs; `diff="none"` is documented as
+  privacy-preserving.
+- `ValidationEquivalenceComplexityError` is absent from the v1 error taxonomy.
+- Provenance identities are `null` when canonicalization was not requested or
+  failed; this is one exact rule covering structural-level and failed reports.
+- Stage 1C runtime: **Unimplemented** (no public API, no runtime module exists).
+- No economic-equivalence claim exists.
+- Vector keys remain unique.
+- When either operand fails Stage 1A validation: requested `structural` →
+  `canonical` = `not_evaluated`, `payoff` = `not_evaluated`; requested
+  `canonical` → `canonical` = `not_comparable` (upstream_stage_failure),
+  `payoff` = `not_evaluated` (shallower_level_requested); requested `payoff`
+  → `canonical` = `not_comparable` (upstream_stage_failure), `payoff` =
+  `not_comparable` (upstream_stage_failure). `not_evaluated` is used only for
+  comparisons shallower than the requested level.
 - Cross-version representation comparison is **deferred** to a future
   separately-specified adapter described in a separate ADR; no Stage 1C
   cross-version report or adapter exists.
@@ -1140,7 +1261,7 @@ merged. They are enforced by `tests/test_documentation.py`:
   produce `equivalent`/no-diff; author-order-sensitive constructs (Subtract,
   Divide, Comparison, Both, ConditionalValue, Scale, ConditionalContract, plus
   payoff counterparts) produce content-addressed `remove`/`add`/`/root` diffs.
-- Every vector key in §9.2 is unique (35 vectors).
+- Every vector key in §9.2 is unique (44 vectors).
 - All internal markdown links resolve.
 - Status language is consistent across README, ROADMAP, docs/index.md,
   architecture.md, threat-model.md.

@@ -150,8 +150,9 @@ Per-side validation outcomes use a closed taxonomy:
 |--------|---------|
 | `valid` | The operand passed the stage successfully. |
 | `invalid` | The operand failed the stage (failures captured in the corresponding side's `failures` array). |
-| `not_evaluated` | The stage was not reached because the caller requested a shallower level or a prior stage failed. |
 
+Every valid Stage 1C call evaluates Stage 1A for both operands. Caller-owned
+or internal failures that prevent validation are raised and return no report.
 Do not use `null` to mean multiple different states.
 
 ### 6. Report-internal error policy (caller-owned vs. operand-owned)
@@ -254,6 +255,14 @@ A structural diff is generated **only when**:
 - The selected diff mode is supported.
 - Limits permit the comparison.
 
+A v1 report contains **at most one** structural diff section;
+`diff_representation` names that one selected representation or `none`. The
+value `"both"` is **not** in the v1 `DiffSelection` taxonomy: callers needing
+both canonical and payoff diffs perform two separate comparisons. Simultaneous
+independently keyed diff sections are deferred to a future report-schema
+version and separate architecture review. Unsupported `"both"` raises the
+existing Stage 1C invalid-diff-selection input error.
+
 When unavailable, report a stable reason rather than emitting a misleading
 partial content diff.
 
@@ -325,13 +334,60 @@ The report schema includes unambiguous fields equivalent to:
 - Report identity (`report_id`, mandatory, non-null, deterministic)
 - Deterministic provenance policy
 
-Validation outcomes use the closed taxonomy (`valid`, `invalid`, `not_evaluated`).
-Comparison statuses use the closed taxonomy (`equivalent`, `different`,
+Validation outcomes use the closed taxonomy (`valid`, `invalid`). Comparison
+statuses use the closed taxonomy (`equivalent`, `different`,
 `not_comparable`, `not_evaluated`). Captured failures use the closed record
 shape `{stage, code, classification}` with the classification taxonomy
 (`validation_failure`, `canonicalization_failure`, `payoff_compilation_failure`,
 `complexity_failure`, `collision_failure`, `encoding_failure`). Do not use
 `null` to mean multiple different states.
+
+### 12. Admission-versus-output limit distinction
+
+`DiffLimits` is divided into admission limits (`max_compared_bytes`,
+`max_compared_nodes`) and output limits (`max_entries`, `max_report_bytes`,
+`max_path_length`). Admission limits are validated at the API boundary and
+evaluated before diffing begins; when exceeded, the report is returned with
+zero diff entries, `truncated: false`, and `unavailable_reason:
+comparison_limit_exceeded`. Output limits are evaluated after successful
+admission; when exceeded, the report retains the deterministic accepted prefix
+and sets `truncated: true` with the precise reason.
+
+### 13. Bounded structural-content disclosure
+
+Node add/remove entries contain bounded complete canonical or payoff node
+records; `/root` and metadata changes contain scalar values. The report never
+embeds the complete canonical/payoff document as one field, but a sufficiently
+large non-truncated diff may reveal substantial bounded structural contract
+content. `diff="none"` is the privacy-preserving option when structural content
+should not be disclosed. Report consumers must treat diff entries as
+potentially sensitive contract structure. Captured failures still contain no
+object repr, traceback, exception text, or malformed object content.
+
+### 14. Exact requested-level status propagation
+
+- requested structural: canonical = `not_evaluated` /
+  `shallower_level_requested`, payoff = `not_evaluated` /
+  `shallower_level_requested`
+- requested canonical, either operand invalid: canonical = `not_comparable` /
+  `upstream_stage_failure`, payoff = `not_evaluated` /
+  `shallower_level_requested`
+- requested payoff, either operand invalid: canonical = `not_comparable` /
+  `upstream_stage_failure`, payoff = `not_comparable` /
+  `upstream_stage_failure`
+- requested canonical, R1 fails: canonical = `not_comparable` /
+  `upstream_stage_failure`, payoff = `not_evaluated` /
+  `shallower_level_requested`
+- requested payoff, R1 fails: canonical = `not_comparable` /
+  `upstream_stage_failure`, payoff = `not_comparable` /
+  `upstream_stage_failure`
+- requested payoff, R2 fails: canonical retains its actual equivalent/different
+  result when both R1 representations exist; payoff = `not_comparable` /
+  `upstream_stage_failure`
+
+`not_evaluated` is used only when the comparison is shallower than the
+requested evaluation level. A requested comparison blocked by an upstream
+failure is `not_comparable`, never `not_evaluated`.
 
 ---
 

@@ -243,18 +243,26 @@ specific to that design and are mitigated by the specification's rules.
   silently mediated.
 - **Unbounded structural diff** — an adversarial pair of large, deeply nested
   contracts produces an excessively large diff, exhausting memory or CPU.
-  Mitigated by `DiffLimits` (`max_entries=1024`, `max_compared_bytes=2 MiB`,
-  `max_compared_nodes=4096`, `max_path_length=256`); deterministic truncation
-  in lexicographic path order with a `truncated` flag and `truncation_reason`.
+  Mitigated by `DiffLimits` admission limits (`max_compared_bytes=2 MiB`,
+  `max_compared_nodes=4096`) evaluated before diffing begins, and output
+  limits (`max_entries=1024`, `max_report_bytes=8 MiB`, `max_path_length=256`)
+  evaluated after successful admission; admission failure returns the report
+  with zero diff entries; deterministic truncation in lexicographic path order
+  with a `truncated` flag and `truncation_reason`.
 - **Non-deterministic diff output** — dictionary or set iteration order varies
   across runs or Python versions. Mitigated by explicit sort orders: node-table
   keys by ascending node id; object keys by sorted ASCII byte order; array
   indices numerically; diff paths in lexicographic order. No `dict`/`set`
   iteration order is ever relied upon.
-- **Full contract content leakage in diff** — diff entries embed entire
-  subtrees, leaking author intent or proprietary structure. Mitigated by
-  carrying only leaf differing values in `left_value`/`right_value`; no full
-  subtree embedding; report size bounded by `DiffLimits`.
+- **Bounded structural-content disclosure in diff** — node add/remove entries
+  contain bounded complete canonical or payoff node records; `/root` and
+  metadata changes contain scalar values. The report never embeds the complete
+  canonical/payoff document as one field, but a sufficiently large non-truncated
+  diff may reveal substantial bounded structural contract content.
+  `diff="none"` is the privacy-preserving option when structural content should
+  not be disclosed. Report consumers must treat diff entries as potentially
+  sensitive contract structure. Captured failures still contain no object repr,
+  traceback, exception text, or malformed object content.
 - **DAG-sharing amplification in diff** — a shared subgraph referenced from
   many parents appears multiplied in a tree-based diff. Mitigated by diffing
   the **node table** (one entry per node id), not a tree expansion; a change

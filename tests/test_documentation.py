@@ -1654,11 +1654,16 @@ def test_stage_1c_comparison_statuses_closed_and_distinct() -> None:
 
 def test_stage_1c_validation_outcome_taxonomy() -> None:
     # Per-side validation outcomes use a closed taxonomy; null is not used.
+    # The v1 taxonomy is valid/invalid only (not_evaluated is removed).
     spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
-    for v in ("valid", "invalid", "not_evaluated"):
+    for v in ("valid", "invalid"):
         assert v in spec, v
     assert "validation outcome taxonomy" in spec
     assert "null" in spec and "never used to mean multiple" in spec
+    # not_evaluated must not appear as a validation-outcome value.
+    # It may still appear as a comparison-status value.
+    outcome_section = _section(spec, r"validation outcome taxonomy")
+    assert "not_evaluated" not in outcome_section
 
 
 def test_stage_1c_schema_selection_per_call_and_raised() -> None:
@@ -1677,9 +1682,9 @@ def test_stage_1c_schema_selection_per_call_and_raised() -> None:
     assert "unsupported_migration_boundary" in spec
     assert "outcome in v1" in spec
     # Unsupported / contradictory schema selection vectors raise, not not_comparable.
-    assert "ve_024_unsupported_canonical_schema_raises" in spec
-    assert "ve_027_unsupported_payoff_schema_raises" in spec
-    assert "ve_034_contradictory_schema_config_raises" in spec
+    assert "ve_043_unsupported_canonical_schema_raises" in spec
+    assert "ve_044_unsupported_payoff_schema_raises" in spec
+    assert "ve_041_contradictory_schema_config_raises" in spec
     # Cross-version comparison is deferred; no cross-version diff is promised.
     assert "deferred to a future" in spec
     assert "source of diff content" in spec
@@ -1702,6 +1707,9 @@ def test_stage_1c_caller_errors_raise() -> None:
         "validation_equivalence.incompatible_schemas",
     ):
         assert code in spec, code
+    # Complexity error must not be in the error taxonomy.
+    error_section = _section(spec, r"error taxonomy")
+    assert "validation_equivalence.complexity" not in error_section
     # Specific raised cases mentioned.
     for phrase in (
         "wrong exact input types",
@@ -1794,8 +1802,14 @@ def test_stage_1c_change_replace_non_overlapping() -> None:
 
 def test_stage_1c_structural_diff_schema_specified() -> None:
     spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
-    for sel in ("canonical", "payoff", "both", "none"):
+    # The v1 DiffSelection taxonomy is canonical | payoff | none.
+    # "both" must NOT be in the v1 taxonomy.
+    for sel in ("canonical", "payoff", "none"):
         assert sel in spec, f"diff selection '{sel}' missing from spec"
+    # "both" must not appear as a valid diff representation value in the report.
+    # It may appear in prose describing its removal.
+    report_section = _section(spec, r"report fields")
+    assert '"both"' not in report_section or "not" in report_section.lower()
     assert "/nodes/" in spec
     assert "/root" in spec
     assert "/schema_version" in spec
@@ -1806,6 +1820,7 @@ def test_stage_1c_structural_diff_schema_specified() -> None:
         "max_compared_bytes",
         "max_compared_nodes",
         "max_path_length",
+        "max_report_bytes",
     ):
         assert limit in spec, f"diff limit '{limit}' missing from spec"
     assert "truncated" in spec
@@ -1822,6 +1837,11 @@ def test_stage_1c_limits_and_security_specified() -> None:
     assert "2_097_152" in spec or "2097152" in spec  # max_compared_bytes
     assert "4096" in spec  # max_compared_nodes
     assert "256" in spec  # max_path_length
+    assert "8_388_608" in spec or "8388608" in spec  # max_report_bytes
+    # Admission limits are separated from output limits
+    assert "admission limit" in spec.lower() or "admission limits" in spec.lower()
+    assert "output limit" in spec.lower() or "output limits" in spec.lower()
+    assert "comparison_limit_exceeded" in spec
     for threat in [
         "Adversarially deep graphs",
         "Very wide collections",
@@ -1830,7 +1850,7 @@ def test_stage_1c_limits_and_security_specified() -> None:
         "Cycles at private seams",
         "Hash collisions",
         "Confusing Unicode in paths or display labels",
-        "Accidental leakage of full contract content",
+        "Bounded structural-content disclosure",
         'Misleading "equivalent" terminology',
         "Denial of service through oversized diffs",
         "Non-deterministic dictionary/set iteration",
@@ -1864,6 +1884,11 @@ def test_stage_1c_report_schema_aligned() -> None:
     # The closed comparison-status values appear in the report.
     for val in ("equivalent", "different", "not_comparable", "not_evaluated"):
         assert val in spec, val
+    # Validation outcomes are valid/invalid only.
+    assert '"valid | invalid"' in spec or "valid | invalid" in spec
+    # "both" is not in the v1 DiffSelection taxonomy.
+    # The diff_representation field should show canonical | payoff | none
+    assert "canonical | payoff | none" in spec
 
 
 def test_stage_1c_normative_vectors_unique_and_complete() -> None:
@@ -1876,21 +1901,35 @@ def test_stage_1c_normative_vectors_unique_and_complete() -> None:
     assert len(inv_keys) == len(set(inv_keys)), (
         f"duplicate inventory key: {[k for k in inv_keys if inv_keys.count(k) > 1]}"
     )
-    assert len(inv_keys) >= 35, len(inv_keys)
+    assert len(inv_keys) >= 44, len(inv_keys)
     # Minimum required cases.
     for key in (
         "ve_022_invalid_left",
         "ve_023_invalid_right",
-        "ve_024_unsupported_canonical_schema_raises",
-        "ve_027_unsupported_payoff_schema_raises",
-        "ve_028_unsupported_level_raises",
-        "ve_029_malformed_limits_raise",
-        "ve_030_report_encoding_failure_raises",
-        "ve_031_deterministic_repeated_captured_failure",
-        "ve_032_upstream_r1_failure_captured",
-        "ve_033_upstream_r2_failure_captured",
-        "ve_034_contradictory_schema_config_raises",
-        "ve_035_report_identity_mandatory",
+        "ve_024_invalid_left_at_payoff_level",
+        "ve_034_invalid_both_diff_selection",
+        "ve_035_unsupported_level_raises",
+        "ve_036_malformed_limits_raise",
+        "ve_037_report_encoding_failure_raises",
+        "ve_038_deterministic_repeated_captured_failure",
+        "ve_039_upstream_r1_failure_captured",
+        "ve_040_upstream_r2_failure_captured",
+        "ve_041_contradictory_schema_config_raises",
+        "ve_042_report_identity_mandatory",
+        "ve_043_unsupported_canonical_schema_raises",
+        "ve_044_unsupported_payoff_schema_raises",
+    ):
+        assert key in inv_keys, key
+    # Admission/output limit vectors.
+    for key in (
+        "ve_025_admission_byte_boundary_exact",
+        "ve_026_admission_byte_boundary_exceeded",
+        "ve_027_admission_node_boundary_exact",
+        "ve_028_admission_node_boundary_exceeded",
+        "ve_029_output_entry_boundary_exact",
+        "ve_030_output_entry_boundary_exceeded",
+        "ve_031_output_report_byte_truncation",
+        "ve_032_admission_failure_preserves_identities",
     ):
         assert key in inv_keys, key
     # Shallower levels leave deeper statuses not_evaluated.
@@ -1916,6 +1955,20 @@ def test_stage_1c_documentation_guards_enforced() -> None:
         "all internal markdown links resolve",
         "status language is consistent",
         "never collapsed",
+        "validation-outcome taxonomy is closed",
+        "the value",
+        "v1 `diffselection`",
+        "one report has one diff summary",
+        "admission limits",
+        "output limits",
+        "admission failure emits zero entries",
+        "output-limit failure emits a deterministic truncated prefix",
+        "complexityerror",
+        "node add/remove",
+        "complete bounded node records",
+        "does not claim leaf-only diffs",
+        "privacy-preserving",
+        "canonicalization was not requested or failed",
     ]:
         assert guard in spec, f"documentation guard '{guard}' missing from spec"
 
@@ -2086,3 +2139,284 @@ def test_stage_1c_no_incompatible_schema_versions_reason() -> None:
     adr = _ADR_0008.read_text(encoding="utf-8").lower()
     assert "incompatible_schema_versions" in adr
     assert "not constructible" in adr
+
+
+# ---- Final bounded architecture correction guards ----
+
+
+def test_both_absent_from_v1_diff_selection() -> None:
+    """The value 'both' must not be in the v1 DiffSelection taxonomy."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    # The report schema must show canonical | payoff | none (no 'both').
+    assert "canonical | payoff | none" in spec
+    # The prose must state 'both' is not in the v1 taxonomy.
+    spec_low = spec.lower()
+    assert '"both"' in spec
+    assert "not in the v1" in spec_low or "is not" in spec_low
+    # The error taxonomy must mention 'both' as an invalid selection.
+    assert "invalid diff representation selection" in spec_low
+
+
+def test_one_report_one_diff_summary() -> None:
+    """One report contains at most one structural diff section."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "at most one" in spec
+    assert "diff summary" in spec
+    assert "unambiguous" in spec
+
+
+def test_r1_failure_under_payoff_makes_payoff_not_comparable() -> None:
+    """R1 failure under payoff makes payoff not_comparable."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # When R1 fails and payoff is requested, both canonical
+    # and payoff are not_comparable.
+    assert "r1" in spec
+    assert "not_comparable" in spec
+    assert "upstream_stage_failure" in spec
+
+
+def test_not_evaluated_only_for_shallower_depth() -> None:
+    """not_evaluated is used only for shallower requested depth."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "not_evaluated" in spec
+    assert "shallower" in spec
+    # not_evaluated must not appear in the validation-outcome taxonomy.
+    outcome_section = _section(spec, r"validation outcome taxonomy")
+    assert "not_evaluated" not in outcome_section
+
+
+def test_stage_1a_outcomes_exactly_valid_invalid() -> None:
+    """Stage 1A validation outcomes are exactly valid/invalid."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    outcome_section = _section(spec, r"validation outcome taxonomy")
+    assert "valid" in outcome_section
+    assert "invalid" in outcome_section
+    # not_evaluated must not be in the outcome section.
+    assert "not_evaluated" not in outcome_section
+    # The field description must state valid/invalid only.
+    assert '"valid | invalid"' in spec or "valid | invalid" in spec
+
+
+def test_admission_limit_failure_emits_zero_entries() -> None:
+    """Admission-limit failure emits zero entries and does not truncate."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "admission limit" in spec
+    assert "zero" in spec
+    assert "truncated" in spec
+    assert "false" in spec
+    assert "comparison_limit_exceeded" in spec
+    # Admission preserves equivalence statuses and identities.
+    assert "identities remain available" in spec or "statuses remain" in spec
+
+
+def test_output_limit_failure_emits_truncated_prefix() -> None:
+    """Output-limit failure emits a deterministic truncated prefix."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "output limit" in spec
+    assert "truncated: true" in spec or "truncated" in spec
+    assert "accepted prefix" in spec
+    assert "deterministic" in spec
+    assert "never partially serialize" in spec
+
+
+def test_complexity_error_absent() -> None:
+    """Complexity error is absent from the v1 error taxonomy."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # The error taxonomy table must not list ValidationEquivalenceComplexityError.
+    error_section = _section(spec, r"error taxonomy")
+    assert "complexityerror" not in error_section.replace(" ", "")
+    assert "validation_equivalence.complexity" not in error_section
+
+
+def test_node_add_remove_may_contain_bounded_records() -> None:
+    """Node add/remove entries may contain complete bounded node records."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "node add/remove entries" in spec
+    assert "bounded" in spec
+    assert "complete" in spec
+    assert "node records" in spec
+    threat = _text(DOCS_DIR / "threat-model.md").lower()
+    assert "bounded structural-content disclosure" in threat
+
+
+def test_threat_model_no_leaf_only_claims() -> None:
+    """Threat model does not claim leaf-only diffs."""
+    threat = _text(DOCS_DIR / "threat-model.md").lower()
+    # The old "leaf values" / "leaf-only" claim must be replaced.
+    assert "leaf-only" not in threat
+    # The new bounded structural-content disclosure must be present.
+    assert "bounded structural-content disclosure" in threat
+    assert "complete bounded" in threat or "complete canonical" in threat
+
+
+def test_diff_none_is_privacy_preserving() -> None:
+    """diff='none' is documented as privacy-preserving."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "privacy-preserving" in spec
+    assert 'diff="none"' in spec or "diff=`none`" in spec
+    threat = _text(DOCS_DIR / "threat-model.md").lower()
+    assert "privacy-preserving" in threat
+
+
+def test_provenance_identities_null_when_not_requested_or_failed() -> None:
+    """Provenance identities are null when canonicalization was not
+    requested or failed."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "source_left_identity" in spec
+    assert "source_right_identity" in spec
+    assert "canonicalization was not requested or failed" in spec
+    assert "one exact rule" in spec
+
+
+def test_stage_1c_runtime_unimplemented_final() -> None:
+    """Stage 1C runtime remains unimplemented."""
+    assert not (SRC_ROOT / "validationequivalence").exists()
+    assert not (SRC_ROOT / "validation_equivalence").exists()
+    assert not (SRC_ROOT / "stage1c").exists()
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "no stage 1c runtime module exists" in spec
+    assert "not yet implemented" in spec
+
+
+def test_no_economic_equivalence_claim_final() -> None:
+    """No economic-equivalence claim exists."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # The conservative principle must explicitly deny economic equivalence.
+    assert "must not" in spec
+    assert "economic equivalence" in spec
+
+
+def test_vector_keys_unique_final() -> None:
+    """Vector keys remain unique."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    section = _section(spec, r"vector inventory")
+    rows = _table_rows(section)
+    inv_keys = [r[0].strip("`") for r in rows if r[0].strip("`").startswith("ve_")]
+    assert len(inv_keys) == len(set(inv_keys)), (
+        f"duplicate inventory key: {[k for k in inv_keys if inv_keys.count(k) > 1]}"
+    )
+
+
+def test_vector_exact_ordered_key_tuple() -> None:
+    """The exact ordered vector-key tuple matches the stable inventory."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    section = _section(spec, r"vector inventory")
+    rows = _table_rows(section)
+    inv_keys = tuple(r[0].strip("`") for r in rows if r[0].strip("`").startswith("ve_"))
+    expected = (
+        "ve_001_self_equivalence",
+        "ve_002_independent_identical",
+        "ve_003_pgadd_commutation",
+        "ve_004_nested_vs_flat_add",
+        "ve_005_pgmultiply_commutation",
+        "ve_006_pgmultiply_grouping",
+        "ve_007_subtract_order",
+        "ve_008_divide_order",
+        "ve_009_both_order",
+        "ve_010_duplicate_add",
+        "ve_011_duplicate_multiply_ref",
+        "ve_012_duplicate_both",
+        "ve_013_shared_vs_copied_subgraph",
+        "ve_014_provenance_only_diff",
+        "ve_015_settlement_timestamp_diff",
+        "ve_016_observation_timestamp_diff",
+        "ve_017_currency_diff",
+        "ve_018_scalar_vs_money_unit",
+        "ve_019_comparison_operator_diff",
+        "ve_020_conditional_branch_order",
+        "ve_021_zero_vs_nonzero",
+        "ve_022_invalid_left",
+        "ve_023_invalid_right",
+        "ve_024_invalid_left_at_payoff_level",
+        "ve_025_admission_byte_boundary_exact",
+        "ve_026_admission_byte_boundary_exceeded",
+        "ve_027_admission_node_boundary_exact",
+        "ve_028_admission_node_boundary_exceeded",
+        "ve_029_output_entry_boundary_exact",
+        "ve_030_output_entry_boundary_exceeded",
+        "ve_031_output_report_byte_truncation",
+        "ve_032_admission_failure_preserves_identities",
+        "ve_033_deterministic_repeated_reporting",
+        "ve_034_invalid_both_diff_selection",
+        "ve_035_unsupported_level_raises",
+        "ve_036_malformed_limits_raise",
+        "ve_037_report_encoding_failure_raises",
+        "ve_038_deterministic_repeated_captured_failure",
+        "ve_039_upstream_r1_failure_captured",
+        "ve_040_upstream_r2_failure_captured",
+        "ve_041_contradictory_schema_config_raises",
+        "ve_042_report_identity_mandatory",
+        "ve_043_unsupported_canonical_schema_raises",
+        "ve_044_unsupported_payoff_schema_raises",
+    )
+    assert inv_keys == expected, (
+        f"vector-key tuple mismatch: extra={set(inv_keys) - set(expected)!r}, "
+        f"missing={set(expected) - set(inv_keys)!r}"
+    )
+    assert len(inv_keys) == 44
+
+
+def test_invalid_stage1a_propagation_structural_level() -> None:
+    """Requested structural + invalid: canonical and payoff are not_evaluated."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # The spec must document the three requested-level propagation cases.
+    assert "requested `structural`, either operand invalid" in spec
+    assert "requested `canonical`, either operand invalid" in spec
+    assert "requested `payoff`, either operand invalid" in spec
+    # Structural-level invalid: canonical and payoff are not_evaluated.
+    # Find the structural-level row in §3.17.
+    beh_section = _section(spec, r"behaviour when preconditions fail")
+    assert "requested `structural`, either operand invalid" in beh_section
+    assert "not_evaluated" in beh_section
+    assert "shallower_level_requested" in beh_section
+
+
+def test_invalid_stage1a_propagation_canonical_level() -> None:
+    """Requested canonical + invalid: canonical=not_comparable, payoff=not_evaluated."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    beh_section = _section(spec, r"behaviour when preconditions fail")
+    assert "requested `canonical`, either operand invalid" in beh_section
+    # Canonical is at the requested level → not_comparable / upstream_stage_failure.
+    assert "not_comparable" in beh_section
+    # Payoff is shallower than requested → not_evaluated / shallower_level_requested.
+    # The row must contain both not_comparable and not_evaluated.
+    # Extract the canonical-level row.
+    for line in beh_section.splitlines():
+        if "requested `canonical`, either operand invalid" in line:
+            assert "not_comparable" in line
+            assert "not_evaluated" in line
+            assert "upstream_stage_failure" in line
+            assert "shallower_level_requested" in line
+            break
+    else:
+        pytest.fail("canonical-level invalid-operand row not found in §3.17")
+
+
+def test_invalid_stage1a_propagation_payoff_level() -> None:
+    """Requested payoff + invalid: canonical and payoff are not_comparable."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    beh_section = _section(spec, r"behaviour when preconditions fail")
+    assert "requested `payoff`, either operand invalid" in beh_section
+    for line in beh_section.splitlines():
+        if "requested `payoff`, either operand invalid" in line:
+            assert "not_comparable" in line
+            assert "upstream_stage_failure" in line
+            break
+    else:
+        pytest.fail("payoff-level invalid-operand row not found in §3.17")
+
+
+def test_not_evaluated_never_for_blocked_comparison() -> None:
+    """not_comparable is used for upstream-blocked comparisons, never not_evaluated."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # The spec must state the binding rule explicitly.
+    assert "not_evaluated" in spec
+    assert "shallower" in spec
+    # The ADR must state the binding rule.
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    assert "not_evaluated" in adr
+    assert "shallower" in adr
+    # The §2.1 propagation rule must document the three cases.
+    assert "requested `structural`, either operand invalid" in spec
+    assert "requested `canonical`, either operand invalid" in spec
+    assert "requested `payoff`, either operand invalid" in spec
