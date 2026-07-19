@@ -2874,7 +2874,8 @@ def test_ve_014_private_not_collision_seam() -> None:
     assert (
         "identical `report_id`" in ve_014_text
         or "identical report_id" in ve_014_text
-        or "identical\n" in ve_014_text and "report_id" in ve_014_text
+        or "identical\n" in ve_014_text
+        and "report_id" in ve_014_text
     ), "ve_014 must assert identical report_id"
 
 
