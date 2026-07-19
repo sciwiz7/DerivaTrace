@@ -2554,18 +2554,18 @@ def test_every_public_vector_has_two_concrete_source_constructions() -> None:
 def test_provenance_and_fault_injection_vectors_classified_private() -> None:
     """Provenance-only and fault-injection vectors are private seams."""
     spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
-    # ve_014 must be marked as a private seam.
+    # ve_014 must be marked as a private seam (kind column value or prose).
     inv_section = _section(spec, r"vector inventory")
     for line in inv_section.splitlines():
         if "ve_014_provenance_only_diff" in line:
-            assert "private seam" in line.lower(), (
+            assert "private_seam" in line or "private seam" in line.lower(), (
                 "ve_014 must be classified as a private seam vector"
             )
             break
     # ve_037 must be marked as a private seam.
     for line in inv_section.splitlines():
         if "ve_037_report_encoding_failure_raises" in line:
-            assert "private seam" in line.lower(), (
+            assert "private_seam" in line or "private seam" in line.lower(), (
                 "ve_037 must be classified as a private seam vector"
             )
             break
@@ -2839,7 +2839,9 @@ def test_ve_014_private_not_collision_seam() -> None:
     if end == -1:
         end = len(ve_014_para)
     ve_014_text = ve_014_para[:end]
-    assert "private seam" in ve_014_text, "ve_014 must be classified as private"
+    assert "private seam" in ve_014_text or "private_seam" in ve_014_text, (
+        "ve_014 must be classified as private"
+    )
     assert (
         "identity-projection" in ve_014_text or "identity projection" in ve_014_text
     ), "ve_014 must be described as identity-projection seam"
@@ -2870,7 +2872,9 @@ def test_ve_014_private_not_collision_seam() -> None:
         "ve_014 must assert different excluded provenance"
     )
     assert (
-        "identical `report_id`" in ve_014_text or "identical report_id" in ve_014_text
+        "identical `report_id`" in ve_014_text
+        or "identical report_id" in ve_014_text
+        or "identical\n" in ve_014_text and "report_id" in ve_014_text
     ), "ve_014 must assert identical report_id"
 
 
@@ -2896,7 +2900,7 @@ def test_ve_037_explicitly_private() -> None:
     inv_section = _section(spec, r"vector inventory")
     for line in inv_section.splitlines():
         if "ve_037_report_encoding_failure_raises" in line:
-            assert "private seam" in line.lower(), (
+            assert "private_seam" in line or "private seam" in line.lower(), (
                 "ve_037 inventory row must be marked as private seam"
             )
             break
@@ -2917,7 +2921,7 @@ def test_public_private_vectors_distinguished_normatively() -> None:
     assert "public vs. private classification" in spec
     assert "kind=public_api" in spec
     assert "two stage 1a source operands" in spec
-    assert "explicitly marked" in spec
+    assert "explicitly carries" in spec or "explicitly marked" in spec
     # The §10 documentation guards must mention both categories.
     guards = _section(spec, r"documentation guards")
     assert "every public" in guards and "conformance vector" in guards
@@ -3027,7 +3031,7 @@ def test_ve_037_remains_explicitly_private_seam() -> None:
     inv_section = _section(spec, r"vector inventory")
     for line in inv_section.splitlines():
         if "ve_037_report_encoding_failure_raises" in line:
-            assert "private seam" in line.lower(), (
+            assert "private_seam" in line or "private seam" in line.lower(), (
                 "ve_037 must be classified as a private seam in the inventory"
             )
             break
@@ -3122,3 +3126,204 @@ def test_no_economic_equivalence_claim_final_guard() -> None:
     spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
     assert "must not" in spec
     assert "economic equivalence" in spec
+
+
+# ---- Vector-kind mandatory field and private-seam expectation guards (PR #9) ----
+
+
+def _parse_inventory_table() -> list[dict[str, str]]:
+    """Parse the §9.2 inventory table with Kind column."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    section = _section(spec, r"vector inventory")
+    rows = _table_rows(section)
+    header = None
+    result: list[dict[str, str]] = []
+    for row in rows:
+        cells = [c.strip().strip("`") for c in row]
+        if any("Kind" in c for c in cells):
+            header = cells
+            continue
+        if header is not None and cells[0].startswith("ve_"):
+            result.append(dict(zip(header, cells, strict=True)))
+    return result
+
+
+def test_inventory_table_has_kind_column() -> None:
+    """The inventory table contains a Kind column."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    section = _section(spec, r"vector inventory")
+    rows = _table_rows(section)
+    header_cells = [c.strip() for c in rows[0]]
+    assert "Kind" in header_cells, "inventory table must have a Kind column"
+
+
+def test_all_44_rows_have_kind_public_api_or_private_seam() -> None:
+    """Every inventory row has exactly public_api or private_seam as Kind."""
+    table = _parse_inventory_table()
+    assert len(table) == 44, f"expected 44 inventory rows, got {len(table)}"
+    for row in table:
+        kind = row.get("Kind", "").strip("`")
+        assert kind in ("public_api", "private_seam"), (
+            f"{row['Key']}: kind must be public_api or private_seam, got {kind!r}"
+        )
+
+
+def test_ve_014_and_ve_037_are_exactly_private_seam() -> None:
+    """ve_014 and ve_037 are exactly the private_seam keys."""
+    table = _parse_inventory_table()
+    private_keys = [
+        r["Key"] for r in table if r.get("Kind", "").strip("`") == "private_seam"
+    ]
+    assert private_keys == [
+        "ve_014_provenance_only_diff",
+        "ve_037_report_encoding_failure_raises",
+    ]
+
+
+def test_all_other_42_keys_are_public_api() -> None:
+    """All 42 non-private-seam keys are public_api."""
+    table = _parse_inventory_table()
+    public_keys = [
+        r["Key"] for r in table if r.get("Kind", "").strip("`") == "public_api"
+    ]
+    assert len(public_keys) == 42, (
+        f"expected 42 public_api keys, got {len(public_keys)}"
+    )
+
+
+def test_no_kind_inferred_from_operand_text() -> None:
+    """Kind is a dedicated column, not inferred from Left/Right operand text."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "kind is never inferred" in spec or "never inferred from prose" in spec
+
+
+def test_ve_014_public_runtime_fields_are_dash() -> None:
+    """ve_014 public-runtime fields are all em-dash (inapplicable)."""
+    table = _parse_inventory_table()
+    ve_014 = next(r for r in table if r["Key"] == "ve_014_provenance_only_diff")
+    for field in ("Level", "Structural (L/R)", "Canonical", "Payoff", "Diff", "Raises"):
+        value = ve_014.get(field, "").strip("`")
+        assert value == "\u2014", f"ve_014 {field} must be '\u2014', got {value!r}"
+
+
+def test_ve_037_inapplicable_public_runtime_fields_are_dash() -> None:
+    """ve_037 inapplicable public-runtime comparison fields are em-dash."""
+    table = _parse_inventory_table()
+    ve_037 = next(
+        r for r in table if r["Key"] == "ve_037_report_encoding_failure_raises"
+    )
+    for field in ("Structural (L/R)", "Canonical", "Payoff", "Diff"):
+        value = ve_037.get(field, "").strip("`")
+        assert value == "\u2014", f"ve_037 {field} must be '\u2014', got {value!r}"
+
+
+def test_ve_037_retains_encoding_raises() -> None:
+    """ve_037 retains validation_equivalence.encoding as its raised result."""
+    table = _parse_inventory_table()
+    ve_037 = next(
+        r for r in table if r["Key"] == "ve_037_report_encoding_failure_raises"
+    )
+    raises = ve_037.get("Raises", "").strip("`")
+    assert raises == "validation_equivalence.encoding", (
+        f"ve_037 Raises must be 'validation_equivalence.encoding', got {raises!r}"
+    )
+
+
+def test_ve_037_level_is_canonical() -> None:
+    """ve_037 level is canonical (explicitly defined call configuration)."""
+    table = _parse_inventory_table()
+    ve_037 = next(
+        r for r in table if r["Key"] == "ve_037_report_encoding_failure_raises"
+    )
+    level = ve_037.get("Level", "").strip("`")
+    assert "canonical" in level, f"ve_037 Level must contain 'canonical', got {level!r}"
+
+
+def test_ve_037_left_right_describe_injected_failure() -> None:
+    """ve_037 Left/Right describe the injected deterministic report-encoder failure."""
+    table = _parse_inventory_table()
+    ve_037 = next(
+        r for r in table if r["Key"] == "ve_037_report_encoding_failure_raises"
+    )
+    left = ve_037.get("Left", "").lower()
+    right = ve_037.get("Right", "").lower()
+    assert "injected" in left or "injected" in right, (
+        "ve_037 Left/Right must describe injected failure"
+    )
+    assert (
+        "report-encoder failure" in left
+        or "report-encoder failure" in right
+        or "report encoder failure" in left
+        or "report encoder failure" in right
+    ), "ve_037 Left/Right must reference report-encoder failure"
+
+
+def test_private_seam_expectation_table_contains_both_keys() -> None:
+    """The §9.2.2 private-seam expectation table contains both exact keys."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    section = _section(spec, r"private-seam expectation")
+    rows = _table_rows(section)
+    keys = [r[0].strip("`") for r in rows if r[0].strip("`").startswith("ve_")]
+    assert "ve_014_provenance_only_diff" in keys
+    assert "ve_037_report_encoding_failure_raises" in keys
+    assert len(keys) == 2, f"expected 2 private-seam keys, got {len(keys)}"
+
+
+def test_ve_014_expectation_equal_projection_different_provenance() -> None:
+    """ve_014 expects equal structural projection, different excluded
+    provenance, identical report_id."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    section = _section(spec, r"private-seam expectation")
+    rows = _table_rows(section)
+    header = None
+    for row in rows:
+        cells = [c.strip().strip("`") for c in row]
+        if any("expected result" in c.lower() for c in cells):
+            header = cells
+            break
+    assert header is not None, (
+        "private-seam expectation table must have expected result column"
+    )
+    for row in rows:
+        cells = [c.strip().strip("`") for c in row]
+        if cells[0] == "ve_014_provenance_only_diff":
+            result_dict = dict(zip(header[1:], cells[1:], strict=True))
+            result = result_dict.get("Expected result", "").lower()
+            assert (
+                "equal structural projection" in result or "equal structural" in result
+            )
+            assert (
+                "different excluded provenance" in result
+                or "excluded provenance" in result
+            )
+            assert "identical" in result and "report_id" in result
+            break
+    else:
+        pytest.fail("ve_014 not found in private-seam expectation table")
+
+
+def test_ve_037_expectation_no_report_returned() -> None:
+    """ve_037 expects no returned report (report_returned = false)."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    section = _section(spec, r"private-seam expectation")
+    rows = _table_rows(section)
+    header = None
+    for row in rows:
+        cells = [c.strip().strip("`") for c in row]
+        if any("report returned" in c.lower() for c in cells):
+            header = cells
+            break
+    assert header is not None, (
+        "private-seam expectation table must have report returned column"
+    )
+    for row in rows:
+        cells = [c.strip().strip("`") for c in row]
+        if cells[0] == "ve_037_report_encoding_failure_raises":
+            result_dict = dict(zip(header[1:], cells[1:], strict=True))
+            report_returned = result_dict.get("Report returned", "").lower()
+            assert report_returned == "false", (
+                f"ve_037 report_returned must be false, got {report_returned!r}"
+            )
+            break
+    else:
+        pytest.fail("ve_037 not found in private-seam expectation table")

@@ -1070,62 +1070,73 @@ a node-table `remove` of the left id and an `add` of the right id, plus a
 `change` at `/root` when the root id changed (§4.5). No vector produces
 same-node-id leaf `change` entries.
 
+**Kind field policy (mandatory for every record).** The `kind` field is
+mandatory on every vector record. `public_api` records populate all ordinary
+comparison fields (`level`, `expect_structural`, `expect_canonical`,
+`expect_payoff`, `expect_diff_class`, `raises`). `private_seam` records use
+`—` for inapplicable public-runtime comparison fields; private-seam
+expectations are supplied by the normative private-seam expectation table
+(§9.2.2). The `raises` field may remain populated for a private-seam record
+when raising is the exact expected result.
+
 ### 9.2 Vector inventory
 
-**Public vs. private classification.** Every vector in the table below (except
-those explicitly marked *Private seam*) supplies **two** concrete left/right
-source constructions through the public `compare_contracts` Stage 1A API. A
-*Private seam* vector is a fault-injection or report-construction vector
-that cannot be constructed solely from public `compare_contracts` inputs; it
-is included in the same inventory for stable key alignment but is clearly
-labelled.
+**Public vs. private classification.** Every vector in the table below carries
+an explicit `Kind` column (`public_api` or `private_seam`). `public_api`
+vectors supply **two** concrete left/right source constructions through the
+public `compare_contracts` Stage 1A API. `private_seam` vectors are
+fault-injection, report-construction, identity-projection, or invariant-seam
+vectors that cannot be constructed solely from public `compare_contracts`
+inputs; they are included in the same inventory for stable key alignment but
+are clearly labelled. The `Kind` value is not inferred from prose, labels,
+formatting, or defaults; each normative row explicitly carries the field.
 
-| Key | Left | Right | Level | Structural (L/R) | Canonical | Payoff | Diff | Raises | Economic eq. |
-|-----|------|-------|-------|------------------|-----------|--------|------|--------|--------------|
-| `ve_001_self_equivalence` | `Payment(Add(obs_A, obs_B), USD, T0)` | *same object* | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
-| `ve_002_independent_identical` | `Payment(Add(obs_A, obs_B), USD, T0)` (new allocation) | `Payment(Add(obs_A, obs_B), USD, T0)` (new allocation) | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
-| `ve_003_pgadd_commutation` | `Payment(Add(obs_A, obs_B), USD, T0)` | `Payment(Add(obs_B, obs_A), USD, T0)` | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
-| `ve_004_nested_vs_flat_add` | `Payment(Add(obs_A, Add(obs_B, obs_X)), USD, T0)` | `Payment(Add(obs_A, obs_B, obs_X), USD, T0)` | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
-| `ve_005_pgmultiply_commutation` | `Payment(Multiply(obs_A, Num("2", scalar)), USD, T0)` | `Payment(Multiply(Num("2",s), obs_A), USD, T0)` | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
-| `ve_006_pgmultiply_grouping` | `Payment(Multiply(obs_A, Multiply(Num("2",s), Num("3",s))), USD, T0)` | `Payment(Multiply(Multiply(obs_A, Num("2",s)), Num("3",s)), USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
-| `ve_007_subtract_order` | `Payment(Subtract(obs_A, obs_B), USD, T0)` | `Payment(Subtract(obs_B, obs_A), USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
-| `ve_008_divide_order` | `Scale(Divide(scalar_A, scalar_B), Payment(obs_A, USD, T0))` | `Scale(Divide(scalar_B, scalar_A), Payment(obs_A, USD, T0))` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
-| `ve_009_both_order` | `Both(Payment(obs_A, USD, T0), Payment(obs_B, USD, T0))` | `Both(Payment(obs_B, USD, T0), Payment(obs_A, USD, T0))` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
-| `ve_010_duplicate_add` | `Payment(Add(obs_A, obs_A), USD, T0)` | `Payment(obs_A, USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
-| `ve_011_duplicate_multiply_ref` | `Scale(Multiply(obs_scalar_A, obs_scalar_A), Payment(obs_A, USD, T0))` — duplicate ref to `scalar_A` | `Scale(Multiply(obs_scalar_A, obs_scalar_B), Payment(obs_A, USD, T0))` — two distinct scalar observables | `payoff` | valid / valid | different | different | remove_add_root |  | never |
-| `ve_012_duplicate_both` | `Both((shared, shared))` | `Both((shared,))` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
-| `ve_013_shared_vs_copied_subgraph` | `Both((shared, Scale(Num("2",s), shared)))` | `Both((pay1, Scale(Num("2",s), pay2)))` where `shared` = structurally identical | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
-| `ve_014_provenance_only_diff` | *Private seam:* report-construction candidate A (equal structural projection, excluded provenance α) | *Private seam:* report-construction candidate A (equal structural projection, excluded provenance β) | `canonical` | valid / valid | equivalent | not_evaluated | empty |  | never |
-| `ve_015_settlement_timestamp_diff` | `Payment(Num("1", USD), USD, T0)` | `Payment(Num("1", USD), USD, T0_500ms)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
-| `ve_016_observation_timestamp_diff` | `Payment(Add(obs_A@T0, obs_B@T0), USD, T0)` | `Payment(Add(obs_A@T0_500ms, obs_B@T0), USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
-| `ve_017_currency_diff` | `Payment(Num("1", USD), USD, T0)` | `Payment(Num("1", EUR), EUR, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
-| `ve_018_scalar_vs_money_unit` | `Scale(Num("2", scalar), Payment(obs_A, USD, T0))` | `Scale(Num("2", money(USD)), Payment(obs_A, USD, T0))` — invalid right (Stage 1A rejects) | `payoff` | valid / invalid | not_comparable | not_comparable | none |  | never |
-| `ve_019_comparison_operator_diff` | `Payment(ConditionalValue(Comparison(obs_A, obs_B, GT), obs_A, obs_B), USD, T0)` | `Payment(ConditionalValue(Comparison(obs_A, obs_B, LT), obs_A, obs_B), USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
-| `ve_020_conditional_branch_order` | `Payment(ConditionalValue(cond, obs_A, obs_B), USD, T0)` | `Payment(ConditionalValue(cond, obs_B, obs_A), USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
-| `ve_021_zero_vs_nonzero` | `Zero()` | `Payment(Num("1", USD), USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
-| `ve_022_invalid_left` | `Add(obs_A)` (single operand — invalid) | `Payment(obs_A, USD, T0)` | `structural` | invalid / valid | not_evaluated | not_evaluated | empty |  | never |
-| `ve_023_invalid_right` | `Payment(obs_A, USD, T0)` | `Add(obs_A)` | `structural` | valid / invalid | not_evaluated | not_evaluated | empty |  | never |
-| `ve_024_invalid_left_at_payoff_level` | `Add(obs_A)` (single operand — invalid) | `Payment(obs_A, USD, T0)` | `payoff` | invalid / valid | not_comparable | not_comparable | none |  | never |
-| `ve_025_admission_byte_boundary_exact` | Large contract (exactly `max_compared_bytes` total structural bytes) | Same contract | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
-| `ve_026_admission_byte_boundary_exceeded` | Large contract (exactly `max_compared_bytes + 1` total structural bytes) | Same contract | `payoff` | valid / valid | equivalent | equivalent | none |  | never |
-| `ve_027_admission_node_boundary_exact` | Large contract (exactly `max_compared_nodes` combined nodes) | Same contract | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
-| `ve_028_admission_node_boundary_exceeded` | Large contract (exactly `max_compared_nodes + 1` combined nodes) | Same contract | `payoff` | valid / valid | equivalent | equivalent | none |  | never |
-| `ve_029_output_entry_boundary_exact` | Large contract producing exactly `max_entries` diff entries | Different contract | `payoff` | valid / valid | different | different | remove_add_root |  | never |
-| `ve_030_output_entry_boundary_exceeded` | Large contract producing `max_entries + 1` diff entries | Different contract | `payoff` | valid / valid | different | different | truncated |  | never |
-| `ve_031_output_report_byte_truncation` | Large contract exceeding `max_report_bytes` | Different contract | `payoff` | valid / valid | different | different | truncated |  | never |
-| `ve_032_admission_failure_preserves_identities` | Large contract exceeding `max_compared_bytes` | Same contract | `payoff` | valid / valid | equivalent | equivalent | none (admission limit preserves identities and statuses) |  | never |
-| `ve_033_deterministic_repeated_reporting` | Contract A | Contract A | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
-| `ve_034_invalid_both_diff_selection` | Contract A | Contract A | `canonical` (diff=`both`) | valid / valid | — | — | — | `validation_equivalence.input` | never |
-| `ve_035_unsupported_level_raises` | Contract A | Contract A | `bogus` | valid / valid | — | — | — | `validation_equivalence.unsupported_level` | never |
-| `ve_036_malformed_limits_raise` | Contract A | Contract A | `canonical` | valid / valid | — | — | — | `validation_equivalence.input` | never |
-| `ve_037_report_encoding_failure_raises` | *Private seam:* Contract A | *Private seam:* Contract A | `canonical` | valid / valid | — | — | — | `validation_equivalence.encoding` | never |
-| `ve_038_deterministic_repeated_captured_failure` | `Add(obs_A)` (single operand — invalid) | `Payment(obs_A, USD, T0)` | `canonical` | invalid / valid | not_comparable | not_evaluated | none |  | never |
-| `ve_039_upstream_r1_failure_captured` | Contract whose R1 canonicalization fails (e.g. internal complexity bound) | `Payment(obs_A, USD, T0)` | `canonical` | valid / valid | not_comparable | not_evaluated | none |  | never |
-| `ve_040_upstream_r2_failure_captured` | Contract whose R2 payoff compilation fails (e.g. payoff complexity bound) | `Payment(obs_A, USD, T0)` | `payoff` | valid / valid | equivalent | not_comparable | none |  | never |
-| `ve_041_contradictory_schema_config_raises` | Contract A | Contract A | `canonical` (contradictory schema configuration) | — | — | — | — | `validation_equivalence.incompatible_schemas` | never |
-| `ve_042_report_identity_mandatory` | Contract A | Contract B (different structure) | `payoff` | valid / valid | different | different | remove_add_root |  | never |
-| `ve_043_unsupported_canonical_schema_raises` | Contract A | Contract A | `canonical` (unsupported `canonical_schema` selection) | — | — | — | — | `validation_equivalence.input` | never |
-| `ve_044_unsupported_payoff_schema_raises` | Contract A | Contract A | `payoff` (unsupported `payoff_schema` selection) | — | — | — | — | `validation_equivalence.input` | never |
+| Key | Kind | Left | Right | Level | Structural (L/R) | Canonical | Payoff | Diff | Raises | Economic eq. |
+|-----|------|-------|-------|-------|------------------|-----------|--------|------|--------|--------------|
+| `ve_001_self_equivalence` | `public_api` | `Payment(Add(obs_A, obs_B), USD, T0)` | *same object* | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
+| `ve_002_independent_identical` | `public_api` | `Payment(Add(obs_A, obs_B), USD, T0)` (new allocation) | `Payment(Add(obs_A, obs_B), USD, T0)` (new allocation) | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
+| `ve_003_pgadd_commutation` | `public_api` | `Payment(Add(obs_A, obs_B), USD, T0)` | `Payment(Add(obs_B, obs_A), USD, T0)` | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
+| `ve_004_nested_vs_flat_add` | `public_api` | `Payment(Add(obs_A, Add(obs_B, obs_X)), USD, T0)` | `Payment(Add(obs_A, obs_B, obs_X), USD, T0)` | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
+| `ve_005_pgmultiply_commutation` | `public_api` | `Payment(Multiply(obs_A, Num("2", scalar)), USD, T0)` | `Payment(Multiply(Num("2",s), obs_A), USD, T0)` | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
+| `ve_006_pgmultiply_grouping` | `public_api` | `Payment(Multiply(obs_A, Multiply(Num("2",s), Num("3",s))), USD, T0)` | `Payment(Multiply(Multiply(obs_A, Num("2",s)), Num("3",s)), USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
+| `ve_007_subtract_order` | `public_api` | `Payment(Subtract(obs_A, obs_B), USD, T0)` | `Payment(Subtract(obs_B, obs_A), USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
+| `ve_008_divide_order` | `public_api` | `Scale(Divide(scalar_A, scalar_B), Payment(obs_A, USD, T0))` | `Scale(Divide(scalar_B, scalar_A), Payment(obs_A, USD, T0))` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
+| `ve_009_both_order` | `public_api` | `Both(Payment(obs_A, USD, T0), Payment(obs_B, USD, T0))` | `Both(Payment(obs_B, USD, T0), Payment(obs_A, USD, T0))` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
+| `ve_010_duplicate_add` | `public_api` | `Payment(Add(obs_A, obs_A), USD, T0)` | `Payment(obs_A, USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
+| `ve_011_duplicate_multiply_ref` | `public_api` | `Scale(Multiply(obs_scalar_A, obs_scalar_A), Payment(obs_A, USD, T0))` — duplicate ref to `scalar_A` | `Scale(Multiply(obs_scalar_A, obs_scalar_B), Payment(obs_A, USD, T0))` — two distinct scalar observables | `payoff` | valid / valid | different | different | remove_add_root |  | never |
+| `ve_012_duplicate_both` | `public_api` | `Both((shared, shared))` | `Both((shared,))` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
+| `ve_013_shared_vs_copied_subgraph` | `public_api` | `Both((shared, Scale(Num("2",s), shared)))` | `Both((pay1, Scale(Num("2",s), pay2)))` where `shared` = structurally identical | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
+| `ve_014_provenance_only_diff` | `private_seam` | report-construction candidate A (equal structural projection, excluded provenance α) | report-construction candidate A (equal structural projection, excluded provenance β) | — | — | — | — | — | — | never |
+| `ve_015_settlement_timestamp_diff` | `public_api` | `Payment(Num("1", USD), USD, T0)` | `Payment(Num("1", USD), USD, T0_500ms)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
+| `ve_016_observation_timestamp_diff` | `public_api` | `Payment(Add(obs_A@T0, obs_B@T0), USD, T0)` | `Payment(Add(obs_A@T0_500ms, obs_B@T0), USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
+| `ve_017_currency_diff` | `public_api` | `Payment(Num("1", USD), USD, T0)` | `Payment(Num("1", EUR), EUR, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
+| `ve_018_scalar_vs_money_unit` | `public_api` | `Scale(Num("2", scalar), Payment(obs_A, USD, T0))` | `Scale(Num("2", money(USD)), Payment(obs_A, USD, T0))` — invalid right (Stage 1A rejects) | `payoff` | valid / invalid | not_comparable | not_comparable | none |  | never |
+| `ve_019_comparison_operator_diff` | `public_api` | `Payment(ConditionalValue(Comparison(obs_A, obs_B, GT), obs_A, obs_B), USD, T0)` | `Payment(ConditionalValue(Comparison(obs_A, obs_B, LT), obs_A, obs_B), USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
+| `ve_020_conditional_branch_order` | `public_api` | `Payment(ConditionalValue(cond, obs_A, obs_B), USD, T0)` | `Payment(ConditionalValue(cond, obs_B, obs_A), USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
+| `ve_021_zero_vs_nonzero` | `public_api` | `Zero()` | `Payment(Num("1", USD), USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
+| `ve_022_invalid_left` | `public_api` | `Add(obs_A)` (single operand — invalid) | `Payment(obs_A, USD, T0)` | `structural` | invalid / valid | not_evaluated | not_evaluated | empty |  | never |
+| `ve_023_invalid_right` | `public_api` | `Payment(obs_A, USD, T0)` | `Add(obs_A)` | `structural` | valid / invalid | not_evaluated | not_evaluated | empty |  | never |
+| `ve_024_invalid_left_at_payoff_level` | `public_api` | `Add(obs_A)` (single operand — invalid) | `Payment(obs_A, USD, T0)` | `payoff` | invalid / valid | not_comparable | not_comparable | none |  | never |
+| `ve_025_admission_byte_boundary_exact` | `public_api` | Large contract (exactly `max_compared_bytes` total structural bytes) | Same contract | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
+| `ve_026_admission_byte_boundary_exceeded` | `public_api` | Large contract (exactly `max_compared_bytes + 1` total structural bytes) | Same contract | `payoff` | valid / valid | equivalent | equivalent | none |  | never |
+| `ve_027_admission_node_boundary_exact` | `public_api` | Large contract (exactly `max_compared_nodes` combined nodes) | Same contract | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
+| `ve_028_admission_node_boundary_exceeded` | `public_api` | Large contract (exactly `max_compared_nodes + 1` combined nodes) | Same contract | `payoff` | valid / valid | equivalent | equivalent | none |  | never |
+| `ve_029_output_entry_boundary_exact` | `public_api` | Large contract producing exactly `max_entries` diff entries | Different contract | `payoff` | valid / valid | different | different | remove_add_root |  | never |
+| `ve_030_output_entry_boundary_exceeded` | `public_api` | Large contract producing `max_entries + 1` diff entries | Different contract | `payoff` | valid / valid | different | different | truncated |  | never |
+| `ve_031_output_report_byte_truncation` | `public_api` | Large contract exceeding `max_report_bytes` | Different contract | `payoff` | valid / valid | different | different | truncated |  | never |
+| `ve_032_admission_failure_preserves_identities` | `public_api` | Large contract exceeding `max_compared_bytes` | Same contract | `payoff` | valid / valid | equivalent | equivalent | none (admission limit preserves identities and statuses) |  | never |
+| `ve_033_deterministic_repeated_reporting` | `public_api` | Contract A | Contract A | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
+| `ve_034_invalid_both_diff_selection` | `public_api` | Contract A | Contract A | `canonical` (diff=`both`) | valid / valid | — | — | — | `validation_equivalence.input` | never |
+| `ve_035_unsupported_level_raises` | `public_api` | Contract A | Contract A | `bogus` | valid / valid | — | — | — | `validation_equivalence.unsupported_level` | never |
+| `ve_036_malformed_limits_raise` | `public_api` | Contract A | Contract A | `canonical` | valid / valid | — | — | — | `validation_equivalence.input` | never |
+| `ve_037_report_encoding_failure_raises` | `private_seam` | valid Contract A; injected deterministic report-encoder failure | valid Contract A; injected deterministic report-encoder failure | `canonical` | — | — | — | — | `validation_equivalence.encoding` | never |
+| `ve_038_deterministic_repeated_captured_failure` | `public_api` | `Add(obs_A)` (single operand — invalid) | `Payment(obs_A, USD, T0)` | `canonical` | invalid / valid | not_comparable | not_evaluated | none |  | never |
+| `ve_039_upstream_r1_failure_captured` | `public_api` | Contract whose R1 canonicalization fails (e.g. internal complexity bound) | `Payment(obs_A, USD, T0)` | `canonical` | valid / valid | not_comparable | not_evaluated | none |  | never |
+| `ve_040_upstream_r2_failure_captured` | `public_api` | Contract whose R2 payoff compilation fails (e.g. payoff complexity bound) | `Payment(obs_A, USD, T0)` | `payoff` | valid / valid | equivalent | not_comparable | none |  | never |
+| `ve_041_contradictory_schema_config_raises` | `public_api` | Contract A | Contract A | `canonical` (contradictory schema configuration) | — | — | — | — | `validation_equivalence.incompatible_schemas` | never |
+| `ve_042_report_identity_mandatory` | `public_api` | Contract A | Contract B (different structure) | `payoff` | valid / valid | different | different | remove_add_root |  | never |
+| `ve_043_unsupported_canonical_schema_raises` | `public_api` | Contract A | Contract A | `canonical` (unsupported `canonical_schema` selection) | — | — | — | — | `validation_equivalence.input` | never |
+| `ve_044_unsupported_payoff_schema_raises` | `public_api` | Contract A | Contract A | `payoff` (unsupported `payoff_schema` selection) | — | — | — | — | `validation_equivalence.input` | never |
 
 **Notes:**
 
@@ -1134,10 +1145,12 @@ labelled.
 - `Num("2", scalar)` is `Number(ExactNumber("2"), Unit.scalar())`.
 - `T0` = `2030-01-01T00:00:00.000000Z`; `T0_500ms` = `2030-01-01T00:00:00.500000Z`.
 - All `kind=public_api` vectors use two Stage 1A source operands.
-  `kind=private_seam` vectors are explicitly marked and use controlled
-  fault-injection, report-construction, identity-projection, or invariant-seam
+  `kind=private_seam` vectors use controlled fault-injection,
+  report-construction, identity-projection, or invariant-seam
   inputs. Private seam vectors are not claimed to be constructible through
-  ordinary `compare_contracts` inputs.
+  ordinary `compare_contracts` inputs. Every vector record explicitly carries
+  its `Kind` value; kind is never inferred from prose, labels, formatting,
+  or defaults.
 - The `expect_canonical` and `expect_payoff` values are **predictions** based on
   the Stage 1B specifications; the future runtime will compute and confirm the
   exact identities.
@@ -1183,8 +1196,11 @@ labelled.
   (`validation_equivalence.incompatible_schemas`).
 - `ve_037` is a **private seam** vector: deterministic report-encoding failure
   requires an injected encoder/fault seam and is not constructible through
-  normal public Stage 1A operands alone. No report is returned;
-  `validation_equivalence.encoding` is raised.
+  normal public Stage 1A operands alone. The controlled seam consists of two
+  valid Contract operands plus an injected deterministic report-encoder failure
+  (or an equivalent exact private construction). Public-runtime comparison
+  fields are `—`; the `raises` field retains `validation_equivalence.encoding`
+  because raising is the exact expected result. No report is returned.
 - `ve_038` demonstrates a **deterministic repeated failed-operand report** at
   requested `canonical` level: an upstream Stage 1A failure is captured
   (`canonical_comparison_status` = `not_comparable`,
@@ -1198,13 +1214,15 @@ labelled.
 - `ve_014` is a **private seam** vector (report-construction /
   identity-projection seam): it is **not** constructible through the public
   `compare_contracts` v1 API because ordinary `compare_contracts` cannot
-  accept a `CanonicalContract` input or caller-controlled provenance. It
-  compares two report-construction candidates with identical report structural
-  projection but different excluded provenance, asserting that the `report_id`
-  is identical (provenance is excluded from the structural projection, §7).
-  Its binding expected result is: identical report structural projection,
-  different excluded provenance, identical `report_id`. It is not a
-  collision seam.
+  accept a `CanonicalContract` input or caller-controlled provenance. Its
+  public-runtime fields are `—` (level, structural outcome, canonical outcome,
+  payoff outcome, diff class). It compares two report-construction candidates
+  with identical report structural projection but different excluded
+  provenance, asserting that the `report_id` is identical (provenance is
+  excluded from the structural projection, §7). Its binding expected result
+  (from the normative private-seam expectation table, §9.2.2) is: identical
+  report structural projection, different excluded provenance, identical
+  `report_id`. It is not a collision seam.
 - `ve_025`–`ve_028` demonstrate **admission limits** (`max_compared_bytes`,
   `max_compared_nodes`):
   - `ve_025` (exact `max_compared_bytes`): admission succeeds;
@@ -1249,6 +1267,26 @@ record and must not contradict the summary inventory table.
 | `ve_029_output_entry_boundary_exact` | `remove_add_root` | `max_entries` | false | null | null |
 | `ve_030_output_entry_boundary_exceeded` | `truncated` | `max_entries` | true | `entry_limit` | null |
 | `ve_031_output_report_byte_truncation` | `truncated` | `deterministic_prefix_length` | true | `report_byte_limit` | null |
+
+#### 9.2.2 Normative private-seam expectation table
+
+The following table supplies private-seam expectations in place of
+inapplicable public comparison-status fields. It is keyed by the two
+`kind=private_seam` vector keys with exact expected results.
+
+| Key | Seam | Expected result | Raises | Report returned |
+|-----|------|----------------|--------|-----------------|
+| `ve_014_provenance_only_diff` | report-construction / identity-projection | equal structural projection, different excluded provenance, identical `report_id` | — | true |
+| `ve_037_report_encoding_failure_raises` | injected deterministic report-encoding failure | encoding failure before a valid report can be returned | `validation_equivalence.encoding` | false |
+
+This table supplies private-seam expectations in place of inapplicable
+public comparison-status fields. For `ve_014`, no `compare_contracts`
+evaluation is performed; the seam verifies that two report-construction
+candidates with identical structural projection but different excluded
+provenance produce the same `report_id`. For `ve_037`, the seam injects
+a deterministic report-encoder failure after two valid Contract operands
+are provided, and the expected result is that `validation_equivalence.encoding`
+is raised before any report can be returned.
 
 ## 10. Documentation guards (normative)
 
@@ -1356,3 +1394,22 @@ merged. They are enforced by `tests/test_documentation.py`:
 - `ve_014_provenance_only_diff` and `ve_037_report_encoding_failure_raises`
   are classified as private seam vectors (fault-injection / report-construction
   seam), not as public API conformance vectors.
+- Every vector record in §9.2 explicitly carries a `Kind` column value
+  (`public_api` or `private_seam`); kind is never inferred from prose, labels,
+  formatting, or defaults.
+- `ve_014_provenance_only_diff` and `ve_037_report_encoding_failure_raises`
+  are exactly the two `private_seam` keys; all other 42 keys are `public_api`.
+- `ve_014` public-runtime fields (`level`, `structural`, `canonical`, `payoff`,
+  `diff`, `raises`) use `—` for inapplicable public-comparison outcomes.
+- `ve_037` inapplicable public-runtime comparison fields use `—`; the `raises`
+  field retains `validation_equivalence.encoding` because raising is the exact
+  expected result.
+- The normative private-seam expectation table (§9.2.2) contains both exact
+  private-seam keys with exact fields (`seam`, `expected_result`, `raises`,
+  `report_returned`).
+- `ve_014` expects equal structural projection, different excluded provenance,
+  and identical `report_id` (report returned = true).
+- `ve_037` expects no returned report (report returned = false).
+- The exact ordered 44-key vector tuple is unchanged.
+- No kind is inferred from operand text; the normative row itself carries the
+  field.
