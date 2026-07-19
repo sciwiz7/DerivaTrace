@@ -1034,8 +1034,14 @@ can be formed.
 ## 9. Normative conformance vectors
 
 The following vectors are **planned** for Stage 1C-R1/R2 runtime implementation.
-Each vector specifies a stable key, left/right source constructions (using the
-public Stage 1A API), requested validation level, and expected outcomes. No
+Each vector specifies a stable key, a vector kind (`public_api` or
+`private_seam`), left/right source constructions appropriate to that kind,
+requested validation level, and expected outcomes. **Public API** vectors
+(`kind=public_api`) provide two Stage 1A `Contract` operands constructible
+through the public API; **private seam** vectors (`kind=private_seam`) provide
+explicitly labelled controlled fault-injection, report-construction,
+identity-projection, or invariant-seam inputs. Private seam vectors are not
+claimed to be constructible through ordinary `compare_contracts` inputs. No
 runtime identities are invented here; they will be populated by the future
 runtime.
 
@@ -1044,8 +1050,9 @@ runtime.
 | Field | Meaning |
 |-------|---------|
 | `key` | Stable vector identifier (e.g., `ve_001_self_equivalence`). |
-| `left` | Source contract expression (constructible via public Stage 1A API). |
-| `right` | Source contract expression. |
+| `kind` | Vector kind: `public_api` (two Stage 1A `Contract` operands constructible through the public API) or `private_seam` (controlled fault-injection, report-construction, identity-projection, or invariant-seam inputs). |
+| `left` | For `kind=public_api`: a concrete Stage 1A `Contract` source construction. For `kind=private_seam`: a precisely described controlled seam input. Fields inapplicable to a private seam use the `—` marker and are never assigned misleading public-runtime outcomes. |
+| `right` | Same policy as `left`. |
 | `level` | Requested `ValidationLevel`. |
 | `expect_structural` | `valid` / `invalid` for each side. |
 | `expect_canonical` | `equivalent` / `different` / `not_comparable` / `not_evaluated`. |
@@ -1088,7 +1095,7 @@ labelled.
 | `ve_011_duplicate_multiply_ref` | `Scale(Multiply(obs_scalar_A, obs_scalar_A), Payment(obs_A, USD, T0))` — duplicate ref to `scalar_A` | `Scale(Multiply(obs_scalar_A, obs_scalar_B), Payment(obs_A, USD, T0))` — two distinct scalar observables | `payoff` | valid / valid | different | different | remove_add_root |  | never |
 | `ve_012_duplicate_both` | `Both((shared, shared))` | `Both((shared,))` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
 | `ve_013_shared_vs_copied_subgraph` | `Both((shared, Scale(Num("2",s), shared)))` | `Both((pay1, Scale(Num("2",s), pay2)))` where `shared` = structurally identical | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
-| `ve_014_provenance_only_diff` | *Private seam:* CanonicalContract A (injected via report-construction seam) | *Private seam:* CanonicalContract A (same structure, different provenance only) | `canonical` | valid / valid | equivalent | not_evaluated | empty |  | never |
+| `ve_014_provenance_only_diff` | *Private seam:* report-construction candidate A (equal structural projection, excluded provenance α) | *Private seam:* report-construction candidate A (equal structural projection, excluded provenance β) | `canonical` | valid / valid | equivalent | not_evaluated | empty |  | never |
 | `ve_015_settlement_timestamp_diff` | `Payment(Num("1", USD), USD, T0)` | `Payment(Num("1", USD), USD, T0_500ms)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
 | `ve_016_observation_timestamp_diff` | `Payment(Add(obs_A@T0, obs_B@T0), USD, T0)` | `Payment(Add(obs_A@T0_500ms, obs_B@T0), USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
 | `ve_017_currency_diff` | `Payment(Num("1", USD), USD, T0)` | `Payment(Num("1", EUR), EUR, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
@@ -1126,9 +1133,11 @@ labelled.
 - `scalar_A`, `scalar_B` are `Observable(ObservableId("macro", "SCALARA|SCALARB", "level"), T0, Unit.scalar())`.
 - `Num("2", scalar)` is `Number(ExactNumber("2"), Unit.scalar())`.
 - `T0` = `2030-01-01T00:00:00.000000Z`; `T0_500ms` = `2030-01-01T00:00:00.500000Z`.
-- All public vectors use two Stage 1A source operands. Private seam vectors are
-  explicitly marked and use controlled fault-injection or report-construction
-  seams.
+- All `kind=public_api` vectors use two Stage 1A source operands.
+  `kind=private_seam` vectors are explicitly marked and use controlled
+  fault-injection, report-construction, identity-projection, or invariant-seam
+  inputs. Private seam vectors are not claimed to be constructible through
+  ordinary `compare_contracts` inputs.
 - The `expect_canonical` and `expect_payoff` values are **predictions** based on
   the Stage 1B specifications; the future runtime will compute and confirm the
   exact identities.
@@ -1190,8 +1199,11 @@ labelled.
   identity-projection seam): it is **not** constructible through the public
   `compare_contracts` v1 API because ordinary `compare_contracts` cannot
   accept a `CanonicalContract` input or caller-controlled provenance. It
-  verifies that provenance exclusion from the report identity preimage holds
-  (provenance is excluded from the structural projection, §7). It is not a
+  compares two report-construction candidates with identical report structural
+  projection but different excluded provenance, asserting that the `report_id`
+  is identical (provenance is excluded from the structural projection, §7).
+  Its binding expected result is: identical report structural projection,
+  different excluded provenance, identical `report_id`. It is not a
   collision seam.
 - `ve_025`–`ve_028` demonstrate **admission limits** (`max_compared_bytes`,
   `max_compared_nodes`):

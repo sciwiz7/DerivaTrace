@@ -2855,11 +2855,23 @@ def test_ve_014_private_not_collision_seam() -> None:
     assert (
         "provenance exclusion" in ve_014_text
         or "exclusion from the report identity" in ve_014_text
+        or "provenance is excluded" in ve_014_text
+        or "excluded from the structural projection" in ve_014_text
     ), "ve_014 must verify provenance exclusion from report identity preimage"
+    # ve_014 must describe report-construction candidates and assert identical
+    # report_id despite provenance variation.
+    assert "report-construction candidates" in ve_014_text, (
+        "ve_014 must describe two report-construction candidates"
+    )
+    assert "identical report structural projection" in ve_014_text, (
+        "ve_014 must assert identical report structural projection"
+    )
+    assert "different excluded provenance" in ve_014_text, (
+        "ve_014 must assert different excluded provenance"
+    )
     assert (
-        "provenance exclusion" in ve_014_text
-        or "exclusion from the report identity" in ve_014_text
-    ), "ve_014 must verify provenance exclusion from report identity preimage"
+        "identical `report_id`" in ve_014_text or "identical report_id" in ve_014_text
+    ), "ve_014 must assert identical report_id"
 
 
 def test_ve_037_explicitly_private() -> None:
@@ -2903,7 +2915,8 @@ def test_public_private_vectors_distinguished_normatively() -> None:
     """Public and private vectors are distinguished normatively."""
     spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
     assert "public vs. private classification" in spec
-    assert "all public vectors use two stage 1a source operands" in spec
+    assert "kind=public_api" in spec
+    assert "two stage 1a source operands" in spec
     assert "explicitly marked" in spec
     # The §10 documentation guards must mention both categories.
     guards = _section(spec, r"documentation guards")
@@ -2940,3 +2953,172 @@ def test_vector_keys_exact_ordered_tuple_44() -> None:
     assert len(inv_keys) == len(set(inv_keys)), (
         f"duplicate vector keys: {[k for k in inv_keys if inv_keys.count(k) > 1]}"
     )
+
+
+# ---- Vector-kind taxonomy and public/private schema guards (PR #9) ----
+
+
+def test_vector_schema_contains_kind_field() -> None:
+    """The vector schema defines a mandatory kind=public_api|private_seam field."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    schema_section = _section(spec, r"vector schema")
+    assert "kind" in schema_section, "vector schema must define a 'kind' field"
+    assert "public_api" in schema_section, "vector schema must list kind=public_api"
+    assert "private_seam" in schema_section, "vector schema must list kind=private_seam"
+
+
+def test_vector_schema_kind_two_values() -> None:
+    """The kind field has exactly two values: public_api and private_seam."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    schema_section = _section(spec, r"vector schema")
+    # The kind field must mention both values.
+    assert "public_api" in schema_section
+    assert "private_seam" in schema_section
+    # No third kind value must be defined.
+    for other in ("hybrid", "mixed", "internal", "test"):
+        assert f"kind={other}" not in schema_section, (
+            f"unexpected kind value '{other}' in vector schema"
+        )
+
+
+def test_public_left_right_require_concrete_stage_1a_operands() -> None:
+    """Public left/right fields require concrete Stage 1A Contract operands."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    schema_section = _section(spec, r"vector schema")
+    assert "kind=public_api" in schema_section
+    assert "concrete stage 1a" in schema_section or "concrete" in schema_section
+    assert "contract" in schema_section
+    assert "source construction" in schema_section
+
+
+def test_private_left_right_allow_controlled_seam_inputs() -> None:
+    """Private left/right fields allow controlled seam inputs."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    schema_section = _section(spec, r"vector schema")
+    assert "kind=private_seam" in schema_section
+    assert "controlled seam input" in schema_section
+    # Inapplicable fields must use the dash marker.
+    assert "\u2014" in schema_section or "—" in schema_section, (
+        "vector schema must use em-dash marker for inapplicable fields"
+    )
+
+
+def test_ve_014_explicitly_compares_report_construction_candidates() -> None:
+    """ve_014 explicitly compares report-construction candidates and asserts
+    identical report_id despite provenance variation."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    inv_section = _section(spec, r"vector inventory")
+    for line in inv_section.splitlines():
+        if "ve_014_provenance_only_diff" in line:
+            assert "report-construction candidate" in line.lower(), (
+                "ve_014 inventory row must describe report-construction candidates"
+            )
+            assert (
+                "excluded provenance" in line.lower() or "provenance" in line.lower()
+            ), "ve_014 inventory row must reference excluded provenance"
+            break
+    else:
+        pytest.fail("ve_014 not found in vector inventory table")
+
+
+def test_ve_037_remains_explicitly_private_seam() -> None:
+    """ve_037 remains explicitly a private seam vector."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    inv_section = _section(spec, r"vector inventory")
+    for line in inv_section.splitlines():
+        if "ve_037_report_encoding_failure_raises" in line:
+            assert "private seam" in line.lower(), (
+                "ve_037 must be classified as a private seam in the inventory"
+            )
+            break
+    else:
+        pytest.fail("ve_037 not found in vector inventory table")
+    # The notes must describe ve_037 as requiring an injected encoder/fault seam.
+    notes_start = spec.find("**notes:**")
+    assert notes_start != -1
+    notes_text = spec[notes_start:]
+    ve_037_start = notes_text.find("ve_037")
+    assert ve_037_start != -1
+    ve_037_para = notes_text[ve_037_start:]
+    end = ve_037_para.find("\n- `ve_0", 5)
+    if end == -1:
+        end = len(ve_037_para)
+    ve_037_text = ve_037_para[:end]
+    assert "private" in ve_037_text
+    assert "injected" in ve_037_text or "fault" in ve_037_text
+
+
+def test_exact_ordered_44_key_tuple_unchanged() -> None:
+    """The exact ordered 44-key vector tuple is unchanged."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    section = _section(spec, r"vector inventory")
+    rows = _table_rows(section)
+    inv_keys = tuple(r[0].strip("`") for r in rows if r[0].strip("`").startswith("ve_"))
+    expected = (
+        "ve_001_self_equivalence",
+        "ve_002_independent_identical",
+        "ve_003_pgadd_commutation",
+        "ve_004_nested_vs_flat_add",
+        "ve_005_pgmultiply_commutation",
+        "ve_006_pgmultiply_grouping",
+        "ve_007_subtract_order",
+        "ve_008_divide_order",
+        "ve_009_both_order",
+        "ve_010_duplicate_add",
+        "ve_011_duplicate_multiply_ref",
+        "ve_012_duplicate_both",
+        "ve_013_shared_vs_copied_subgraph",
+        "ve_014_provenance_only_diff",
+        "ve_015_settlement_timestamp_diff",
+        "ve_016_observation_timestamp_diff",
+        "ve_017_currency_diff",
+        "ve_018_scalar_vs_money_unit",
+        "ve_019_comparison_operator_diff",
+        "ve_020_conditional_branch_order",
+        "ve_021_zero_vs_nonzero",
+        "ve_022_invalid_left",
+        "ve_023_invalid_right",
+        "ve_024_invalid_left_at_payoff_level",
+        "ve_025_admission_byte_boundary_exact",
+        "ve_026_admission_byte_boundary_exceeded",
+        "ve_027_admission_node_boundary_exact",
+        "ve_028_admission_node_boundary_exceeded",
+        "ve_029_output_entry_boundary_exact",
+        "ve_030_output_entry_boundary_exceeded",
+        "ve_031_output_report_byte_truncation",
+        "ve_032_admission_failure_preserves_identities",
+        "ve_033_deterministic_repeated_reporting",
+        "ve_034_invalid_both_diff_selection",
+        "ve_035_unsupported_level_raises",
+        "ve_036_malformed_limits_raise",
+        "ve_037_report_encoding_failure_raises",
+        "ve_038_deterministic_repeated_captured_failure",
+        "ve_039_upstream_r1_failure_captured",
+        "ve_040_upstream_r2_failure_captured",
+        "ve_041_contradictory_schema_config_raises",
+        "ve_042_report_identity_mandatory",
+        "ve_043_unsupported_canonical_schema_raises",
+        "ve_044_unsupported_payoff_schema_raises",
+    )
+    assert inv_keys == expected, (
+        f"vector-key tuple mismatch: extra={set(inv_keys) - set(expected)!r}, "
+        f"missing={set(expected) - set(inv_keys)!r}"
+    )
+    assert len(inv_keys) == 44
+
+
+def test_stage_1c_runtime_unimplemented_final_guard() -> None:
+    """Stage 1C runtime remains unimplemented (final guard)."""
+    assert not (SRC_ROOT / "validationequivalence").exists()
+    assert not (SRC_ROOT / "validation_equivalence").exists()
+    assert not (SRC_ROOT / "stage1c").exists()
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "no stage 1c runtime module exists" in spec
+    assert "not yet implemented" in spec
+
+
+def test_no_economic_equivalence_claim_final_guard() -> None:
+    """No economic-equivalence claim exists (final guard)."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "must not" in spec
+    assert "economic equivalence" in spec
