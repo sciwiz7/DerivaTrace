@@ -21,8 +21,9 @@ evidence-carrying derivatives compiler and model-risk laboratory. DerivaTrace is
 - **Stage 1C architecture baseline is Established.** Graded validation levels,
   deterministic equivalence reporting, and structural diffing are specified in
   `validation-equivalence-spec.md` and [ADR 0008](./adr/0008-validation-levels-equivalence-and-structural-diffing.md).
-  Stage 1C-R1 (validation levels and equivalence reports) and Stage 1C-R2
-  (deterministic structural diffing) are planned runtime increments.
+  Stage 1C-R1 (private validation levels and equivalence reports) and Stage
+  1C-R2 (private diff engine; public API only after R2) are planned runtime
+  increments.
 - No pricing, valuation, Greeks, Monte Carlo, PDE, calibration, or hedging
   functionality exists yet.
 - The deterministic core and evidence-certificate design are specified here,
@@ -56,7 +57,7 @@ evidence-carrying derivatives compiler and model-risk laboratory. DerivaTrace is
 - [Validation-equivalence specification (Stage 1C)](./validation-equivalence-spec.md) —
   graded validation levels, deterministic equivalence report schema, structural
   diffing, versioning, limits, error taxonomy, and normative conformance vectors
-  (Stage 1C architecture baseline; runtimes planned for 1C-R1 and 1C-R2).
+  (Stage 1C architecture baseline; private runtimes planned for 1C-R1 and 1C-R2).
 - [Certificate specification](./certificate-spec.md) — versioned evidence
   envelope and hashing procedure.
 - [Threat model](./threat-model.md) — assets, actors, attack surfaces, and
@@ -71,6 +72,7 @@ evidence-carrying derivatives compiler and model-risk laboratory. DerivaTrace is
   - [ADR 0006: Stage 1 contract algebra and runtime type system](./adr/0006-stage-1-contract-algebra-and-runtime-type-system.md)
   - [ADR 0007: Canonical contract identity and payoff graph](./adr/0007-canonical-contract-identity-and-payoff-graph.md)
   - [ADR 0008: Validation levels, equivalence, and structural diffing](./adr/0008-validation-levels-equivalence-and-structural-diffing.md)
+  - [ADR 0009: Stage 1C runtime delivery seam](./adr/0009-stage-1c-runtime-delivery-seam.md)
 
 ## Related root documents
 

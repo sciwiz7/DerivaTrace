@@ -3327,3 +3327,798 @@ def test_ve_037_expectation_no_report_returned() -> None:
             break
     else:
         pytest.fail("ve_037 not found in private-seam expectation table")
+
+
+# ---- Stage 1C-R1 / R2 runtime-seam reconciliation guards ----
+
+
+def _frozen_defaults_spec() -> str:
+    return _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+
+
+def _frozen_defaults_adr8() -> str:
+    return _ADR_0008.read_text(encoding="utf-8").lower()
+
+
+def _frozen_defaults_adr9() -> str:
+    return (
+        (DOCS_DIR / "adr" / "0009-stage-1c-runtime-delivery-seam.md")
+        .read_text(encoding="utf-8")
+        .lower()
+    )
+
+
+def test_inherited_defaults_record_exact_upstream_values() -> None:
+    """Stage 1C records the actual frozen upstream runtime default objects."""
+    spec = _frozen_defaults_spec()
+    adr8 = _frozen_defaults_adr8()
+    adr9 = _frozen_defaults_adr9()
+    # ValidationLimits
+    assert "max_depth=64" in spec
+    assert "max_unique_nodes=4096" in spec
+    # CanonicalizationLimits
+    assert "max_canonical_nodes=16384" in spec
+    assert "max_canonical_bytes=8_000_000" in spec
+    # PayoffGraphLimits
+    assert "max_payoff_nodes=4096" in spec
+    assert "max_document_bytes=4_194_304" in spec
+    assert "max_structural_bytes=2_097_152" in spec
+    # DiffLimits
+    assert "max_compared_bytes=2_097_152" in spec
+    assert "max_compared_nodes=4096" in spec
+    assert "max_entries=1024" in spec
+    assert "max_report_bytes=8_388_608" in spec
+    assert "max_path_length=256" in spec
+    # ADR 0008 records the same frozen values.
+    assert "max_depth=64" in adr8
+    assert "max_unique_nodes=4096" in adr8
+    assert "max_canonical_nodes=16384" in adr8
+    assert "max_canonical_bytes=8_000_000" in adr8
+    assert "max_payoff_nodes=4096" in adr8
+    assert "max_document_bytes=4_194_304" in adr8
+    assert "max_structural_bytes=2_097_152" in adr8
+    assert "max_compared_bytes=2_097_152" in adr8
+    assert "max_compared_nodes=4096" in adr8
+    assert "max_entries=1024" in adr8
+    assert "max_report_bytes=8_388_608" in adr8
+    assert "max_path_length=256" in adr8
+    # ADR 0009 references the same inherited defaults and the spec/ADR 0008
+    # sections that define them.
+    assert "frozen" in adr9 and "upstream" in adr9
+    assert "validation-equivalence-spec.md" in adr9
+    assert "adr 0008" in adr9.lower()
+
+
+def test_obsolete_canonicalization_default_absent() -> None:
+    """The incorrect 4_194_304 canonicalization-byte default is absent."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    adr8 = _ADR_0008.read_text(encoding="utf-8")
+    # The correct canonicalization byte default is 8_000_000, never 4_194_304.
+    assert "max_canonical_bytes=8_000_000" in spec
+    # Any '4_194_304' in the spec must be the payoff document_bytes default,
+    # never a canonicalization-byte default. The prose must explicitly state the
+    # incorrect value is removed.
+    assert "incorrect" in spec.lower()
+    assert "4_194_304" in spec
+    assert "removed" in spec.lower()
+    assert "8_000_000" in spec
+    # The incorrect canonicalization-byte default must not be stated as a
+    # canonicalization default anywhere (only payoff document_bytes uses it).
+    assert "max_canonical_bytes=4_194_304" not in spec
+    assert "max_canonical_bytes = 4_194_304" not in spec
+    # ADR 0008 also states the incorrect value is removed.
+    assert "incorrect" in adr8.lower()
+    assert "4_194_304" in adr8
+    assert "removed" in adr8.lower()
+
+
+def test_r1_has_no_public_compare_contracts_export() -> None:
+    """Private R1 has no public compare_contracts export."""
+    spec = _frozen_defaults_spec()
+    adr8 = _frozen_defaults_adr8()
+    adr9 = _frozen_defaults_adr9()
+    for text in (spec, adr8, adr9):
+        assert "no public `compare_contracts` export" in text, (
+            "R1 must state: no public compare_contracts export"
+        )
+    # R1 does not export compare_contracts.
+    assert "r1 does not export `compare_contracts`" in adr8
+    # Public vectors are not claimed satisfied in R1.
+    assert "public vectors are **not** claimed satisfied" in spec
+    assert "not** claimed satisfied" in adr8
+
+
+def test_r1_uses_only_exact_no_diff_state() -> None:
+    """R1 uses only the exact no-diff report state and no temporary reason."""
+    spec = _frozen_defaults_spec()
+    adr8 = _frozen_defaults_adr8()
+    adr9 = _frozen_defaults_adr9()
+    for text in (spec, adr8, adr9):
+        assert 'diff_representation="none"' in text or 'diff="none"' in text
+        # Exact empty diff summary state.
+        assert '"entries": []' in text
+        assert '"truncated": false' in text
+        assert '"truncation_reason": null' in text
+        assert '"unavailable_reason": null' in text
+    # No temporary unavailable reason invented.
+    for text in (spec, adr8, adr9):
+        assert "no temporary unavailable reason" in text
+        assert "no temporary enum value" in text
+    # The specific forbidden temporary reason may only appear in a negation
+    # (e.g. "No temporary enum value ... such as `diff_not_implemented_r1`
+    # is invented"). It must never be presented as a defined value.
+    for m in re.finditer(r"diff_not_implemented_r1", spec):
+        before = spec[max(0, m.start() - 120) : m.start()].lower()
+        assert "invented" in before or "never " in before or "no " in before, (
+            "diff_not_implemented_r1 must only appear in a negation context"
+        )
+
+
+def test_r2_requires_both_canonical_and_payoff_diff() -> None:
+    """Public R2 requires both canonical and payoff diff."""
+    spec = _frozen_defaults_spec()
+    adr8 = _frozen_defaults_adr8()
+    adr9 = _frozen_defaults_adr9()
+    for text in (spec, adr8, adr9):
+        # Both diff modes implemented in R2.
+        assert "both" in text and 'diff="canonical"' in text
+        assert 'diff="payoff"' in text
+        assert "one generic content-addressed document-diff engine" in text
+    # R2 applied to both canonical and payoff structural documents.
+    assert "both** canonical structural documents and payoff structural" in adr8
+    assert 'both** `diff="canonical"` and `diff="payoff"`' in adr8
+    # Export only after R2.
+    assert "only then" in adr8 and "compare_contracts" in adr8
+
+
+def test_limits_used_has_exact_frozen_field_tree() -> None:
+    """limits_used has the exact frozen field tree."""
+    spec = _frozen_defaults_spec()
+    adr8 = _frozen_defaults_adr8()
+    for text in (spec, adr8):
+        assert '"limits_used":' in text
+        # validation subtree
+        assert '"validation":' in text
+        assert '"max_depth":' in text
+        assert '"max_unique_nodes":' in text
+        # canonicalization subtree
+        assert '"canonicalization":' in text
+        assert '"max_canonical_nodes":' in text
+        assert '"max_canonical_bytes":' in text
+        # payoff subtree
+        assert '"payoff":' in text
+        assert '"max_payoff_nodes":' in text
+        assert '"max_document_bytes":' in text
+        assert '"max_structural_bytes":' in text
+        # diff subtree
+        assert '"diff":' in text
+        assert '"max_compared_bytes":' in text
+        assert '"max_compared_nodes":' in text
+        assert '"max_entries":' in text
+        assert '"max_report_bytes":' in text
+        assert '"max_path_length":' in text
+
+
+def test_schema_metadata_has_exact_frozen_field_tree() -> None:
+    """schema_metadata has the exact frozen field tree."""
+    spec = _frozen_defaults_spec()
+    adr8 = _frozen_defaults_adr8()
+    for text in (spec, adr8):
+        assert '"schema_metadata":' in text
+        assert '"canonical":' in text
+        assert '"derivatrace.contract.canonical"' in text
+        assert '"derivatrace.canonical.node"' in text
+        assert '"derivatrace.canonical.contract"' in text
+        assert '"payoff":' in text
+        assert '"derivatrace.payoffgraph"' in text
+        assert '"derivatrace.payoffgraph.node"' in text
+        assert '"derivatrace.payoffgraph.graph"' in text
+        assert '"1.0.0"' in text
+
+
+def test_identity_participation_of_schema_metadata_and_limits_used() -> None:
+    """schema_metadata and limits_used participate in structural identity."""
+    spec = _frozen_defaults_spec()
+    adr8 = _frozen_defaults_adr8()
+    for text in (spec, adr8):
+        assert "participate in report identity" in text
+        assert "limits_used" in text and "schema_metadata" in text
+    # Explicit statement that these exact field names and values participate.
+    assert "these exact field names and integer values participate" in spec
+    assert "these exact field names and values participate" in spec
+
+
+def test_no_global_collision_registry_authorized() -> None:
+    """No global collision registry is authorized."""
+    spec = _frozen_defaults_spec()
+    adr8 = _frozen_defaults_adr8()
+    adr9 = _frozen_defaults_adr9()
+    for text in (spec, adr8):
+        assert "no process-global registry" in text
+        assert (
+            "no global collision registry" in text or "unbounded mutable state" in text
+        )
+    assert "no global collision registry is authorized" in spec
+    # ADR 0009 references the collision-defence policy.
+    assert "report collision defence without global state" in adr9
+
+
+def test_collision_behaviour_explicit_same_id_different_bytes() -> None:
+    """Collision behaviour for same-id/different-bytes is explicit."""
+    spec_raw = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    adr8_raw = _ADR_0008.read_text(encoding="utf-8")
+    for text in (spec_raw, adr8_raw):
+        assert "validation_equivalence_report_collision_error" in text or (
+            "ValidationEquivalenceReportCollisionError" in text
+        )
+        # Equality rules.
+        assert "same `report_id` and same structural bytes" in text
+        # The forced collision case (same report_id, different structural bytes)
+        # must be stated explicitly in each document (wording may differ).
+        assert (
+            "but different structural bytes" in text
+            or "with different structural bytes" in text
+        )
+        assert "different `report_id` values" in text
+        # Raises the collision error for the forced case.
+        assert "raises" in text and "collision" in text
+        # __hash__ based on report_id.
+        assert "__hash__" in text and "report_id" in text
+        # Private digest seam monkeypatchable.
+        assert "monkeypatched" in text or "monkeypatch" in text
+
+
+def test_double_canonicalization_consistency_rule_documented() -> None:
+    """The double-canonicalization consistency rule is documented."""
+    spec = _frozen_defaults_spec()
+    adr8 = _frozen_defaults_adr8()
+    adr9 = _frozen_defaults_adr9()
+    for text in (spec, adr8):
+        assert "double-canonicalization" in text
+        assert "source_contract_identity" in text
+        # First canonicalize, then compile_payoff_graph on the original contract.
+        assert "compile_payoff_graph" in text
+        # Mismatch is an internal consistency failure, not fabricated upstream.
+        assert "internal consistency failure" in text
+        # Never creates synthetic payoff_graph.upstream_failure.
+        assert "synthetic `payoff_graph.upstream_failure`" in text
+    # ADR 0009 references the double-canonicalization rule.
+    assert "double-canonicalization consistency rule" in adr9
+    # When canonicalization failed, payoff compilation is not attempted.
+    failed_section = _section(spec, r"double-canonicalization")
+    assert "not attempted" in failed_section.lower()
+
+
+def test_no_synthetic_payoff_graph_upstream_failure_code() -> None:
+    """No synthetic payoff_graph.upstream_failure code exists."""
+    spec = _frozen_defaults_spec()
+    adr8 = _frozen_defaults_adr8()
+    adr9 = _frozen_defaults_adr9()
+    for text in (spec, adr8):
+        assert "synthetic `payoff_graph.upstream_failure`" in text
+        assert "no synthetic `payoff_graph.upstream_failure` code exists" in text
+    # ADR 0009 also states the synthetic code is never created.
+    assert "no synthetic `payoff_graph.upstream_failure` code is ever created" in adr9
+    # The genuine payoff_graph.* namespace is retained.
+    assert "payoff_graph.*`" in spec
+
+
+def test_vector_kind_values_exactly_42_public_and_2_private() -> None:
+    """Vector Kind values remain exactly 42 public_api and 2 private_seam."""
+    table = _parse_inventory_table()
+    assert len(table) == 44, f"expected 44 inventory rows, got {len(table)}"
+    kinds = [r.get("Kind", "").strip("`") for r in table]
+    assert kinds.count("public_api") == 42, (
+        f"expected 42 public_api, got {kinds.count('public_api')}"
+    )
+    assert kinds.count("private_seam") == 2, (
+        f"expected 2 private_seam, got {kinds.count('private_seam')}"
+    )
+
+
+def test_ve_014_and_ve_037_remain_only_private_seams() -> None:
+    """ve_014 and ve_037 remain the only private seams."""
+    table = _parse_inventory_table()
+    private_keys = [
+        r["Key"] for r in table if r.get("Kind", "").strip("`") == "private_seam"
+    ]
+    assert private_keys == [
+        "ve_014_provenance_only_diff",
+        "ve_037_report_encoding_failure_raises",
+    ]
+    # No public_api vector relabelled as private_seam: 42 + 2 = 44.
+    assert len(table) == len(private_keys) + 42
+
+
+def test_vector_implementation_phase_buckets_sum_to_44() -> None:
+    """Implementation-phase bucket counts match the approved narrow mapping."""
+    spec = _frozen_defaults_spec()
+    adr8 = _frozen_defaults_adr8()
+    adr9 = _frozen_defaults_adr9()
+    # The spec must state both bucket sums.
+    assert "sum = 44" in spec
+    # Counts parsed from the §9.3 table.
+    rows = _table_rows(_section(spec, r"9.3 implementation-phase classification"))
+    counts: dict[str, int] = {}
+    for row in rows:
+        cells = [c.strip("`").strip() for c in row]
+        has_count = cells and not cells[0].startswith("`") and len(cells) >= 3
+        if has_count and cells[-1].isdigit():
+            counts[cells[0]] = int(cells[-1])
+    # The four buckets must be present.
+    assert "complete_public" in counts
+    assert "supporting_r1_private" in counts
+    assert "private_r1_seam" in counts
+    assert "fully_r2_dependent" in counts
+    assert sum(counts.values()) == 44, counts
+    assert counts["complete_public"] == 0
+    assert counts["supporting_r1_private"] == 34
+    assert counts["private_r1_seam"] == 2
+    assert counts["fully_r2_dependent"] == 8
+    for text in (adr8, adr9):
+        assert "sum" in text and "44" in text
+
+
+def _parse_phase_buckets() -> dict[str, list[str]]:
+    """Parse the documented phase-bucket key lists from the spec §9.3 table.
+
+    Returns a mapping from bucket name to its ordered list of vector keys.
+    Buckets with no keys (e.g. complete_public) are parsed from the table row's
+    vector cell carrying a dash/em-dash marker.
+    """
+    spec = _frozen_defaults_spec()
+    section = _section(spec, r"9.3 implementation-phase classification")
+    rows = _table_rows(section)
+    # Locate the header row (has Bucket / Description / Vectors / Count).
+    header: list[str] | None = None
+    for row in rows:
+        cells = [c.strip("`").strip() for c in row]
+        lowered = [c.lower() for c in cells]
+        if (
+            any("bucket" in c for c in lowered)
+            and any("description" in c for c in lowered)
+            and any("count" in c for c in lowered)
+        ):
+            header = cells
+            break
+    assert header is not None, "phase-bucket table header not found"
+    # Column indices: bucket name (0), description (1), vectors (2), count (3).
+    buckets: dict[str, list[str]] = {}
+    for row in rows:
+        cells = [c.strip("`").strip() for c in row]
+        if len(cells) < 4:
+            continue
+        name = cells[0]
+        if name not in (
+            "complete_public",
+            "supporting_r1_private",
+            "private_r1_seam",
+            "fully_r2_dependent",
+        ):
+            continue
+        vector_cell = cells[2]
+        keys: list[str] = []
+        # A dash/em-dash marker means the bucket has no keys.
+        if vector_cell not in ("—", "-", ""):
+            keys = [
+                k.strip().strip("`").strip()
+                for k in vector_cell.split(",")
+                if k.strip().strip("`").strip()
+            ]
+        buckets[name] = keys
+    return buckets
+
+
+def test_phase_bucket_exact_counts() -> None:
+    """The four phase buckets have exactly the approved counts."""
+    buckets = _parse_phase_buckets()
+    assert len(buckets["complete_public"]) == 0
+    assert len(buckets["supporting_r1_private"]) == 34
+    assert len(buckets["private_r1_seam"]) == 2
+    assert len(buckets["fully_r2_dependent"]) == 8
+    assert sum(len(v) for v in buckets.values()) == 44
+
+
+def test_phase_bucket_counts_sum_to_44() -> None:
+    """Phase-bucket key lists sum to exactly 44 normative keys."""
+    buckets = _parse_phase_buckets()
+    assert sum(len(v) for v in buckets.values()) == 44
+
+
+def test_fully_r2_dependent_exact_ordered_keys() -> None:
+    """fully_r2_dependent contains exactly ve_025 through ve_032 (approved order)."""
+    buckets = _parse_phase_buckets()
+    assert buckets["fully_r2_dependent"] == [
+        "ve_025_admission_byte_boundary_exact",
+        "ve_026_admission_byte_boundary_exceeded",
+        "ve_027_admission_node_boundary_exact",
+        "ve_028_admission_node_boundary_exceeded",
+        "ve_029_output_entry_boundary_exact",
+        "ve_030_output_entry_boundary_exceeded",
+        "ve_031_output_report_byte_truncation",
+        "ve_032_admission_failure_preserves_identities",
+    ]
+
+
+def test_supporting_r1_private_exact_ordered_keys() -> None:
+    """supporting_r1_private contains exactly the 34 approved keys (order preserved)."""
+    buckets = _parse_phase_buckets()
+    assert buckets["supporting_r1_private"] == [
+        "ve_001_self_equivalence",
+        "ve_002_independent_identical",
+        "ve_003_pgadd_commutation",
+        "ve_004_nested_vs_flat_add",
+        "ve_005_pgmultiply_commutation",
+        "ve_006_pgmultiply_grouping",
+        "ve_007_subtract_order",
+        "ve_008_divide_order",
+        "ve_009_both_order",
+        "ve_010_duplicate_add",
+        "ve_011_duplicate_multiply_ref",
+        "ve_012_duplicate_both",
+        "ve_013_shared_vs_copied_subgraph",
+        "ve_015_settlement_timestamp_diff",
+        "ve_016_observation_timestamp_diff",
+        "ve_017_currency_diff",
+        "ve_018_scalar_vs_money_unit",
+        "ve_019_comparison_operator_diff",
+        "ve_020_conditional_branch_order",
+        "ve_021_zero_vs_nonzero",
+        "ve_022_invalid_left",
+        "ve_023_invalid_right",
+        "ve_024_invalid_left_at_payoff_level",
+        "ve_033_deterministic_repeated_reporting",
+        "ve_034_invalid_both_diff_selection",
+        "ve_035_unsupported_level_raises",
+        "ve_036_malformed_limits_raise",
+        "ve_038_deterministic_repeated_captured_failure",
+        "ve_039_upstream_r1_failure_captured",
+        "ve_040_upstream_r2_failure_captured",
+        "ve_041_contradictory_schema_config_raises",
+        "ve_042_report_identity_mandatory",
+        "ve_043_unsupported_canonical_schema_raises",
+        "ve_044_unsupported_payoff_schema_raises",
+    ]
+
+
+def test_private_r1_seam_exact_keys() -> None:
+    """private_r1_seam contains exactly ve_014 and ve_037."""
+    buckets = _parse_phase_buckets()
+    assert buckets["private_r1_seam"] == [
+        "ve_014_provenance_only_diff",
+        "ve_037_report_encoding_failure_raises",
+    ]
+
+
+def test_complete_public_empty() -> None:
+    """complete_public is empty."""
+    buckets = _parse_phase_buckets()
+    assert buckets["complete_public"] == []
+
+
+def test_phase_buckets_pairwise_disjoint() -> None:
+    """Phase buckets are pairwise disjoint."""
+    buckets = _parse_phase_buckets()
+    names = list(buckets)
+    for i in range(len(names)):
+        for j in range(i + 1, len(names)):
+            overlap = set(buckets[names[i]]) & set(buckets[names[j]])
+            assert not overlap, (
+                f"phase buckets {names[i]} and {names[j]} overlap: {overlap!r}"
+            )
+
+
+def test_phase_buckets_cover_all_normative_keys() -> None:
+    """Phase buckets cover all 44 normative keys exactly once."""
+    buckets = _parse_phase_buckets()
+    covered = [k for v in buckets.values() for k in v]
+    assert len(covered) == 44
+    assert len(covered) == len(set(covered))
+    # Cross-check against the normative inventory key set.
+    inv = _parse_inventory_table()
+    inv_keys = [r["Key"] for r in inv]
+    assert set(covered) == set(inv_keys)
+    assert len(inv_keys) == 44
+
+
+def test_phase_buckets_preserve_normative_kind() -> None:
+    """Normative Kind remains exactly 42 public_api and 2 private_seam."""
+    table = _parse_inventory_table()
+    assert len(table) == 44, f"expected 44 inventory rows, got {len(table)}"
+    kinds = [r.get("Kind", "").strip("`") for r in table]
+    assert kinds.count("public_api") == 42
+    assert kinds.count("private_seam") == 2
+
+
+def test_no_public_api_relabelled_private_seam() -> None:
+    """No public_api vector is relabelled private_seam (phase bucket vs Kind)."""
+    buckets = _parse_phase_buckets()
+    table = _parse_inventory_table()
+    kind_of = {r["Key"]: r.get("Kind", "").strip("`") for r in table}
+    private_seam_keys = [k for k, v in kind_of.items() if v == "private_seam"]
+    assert private_seam_keys == [
+        "ve_014_provenance_only_diff",
+        "ve_037_report_encoding_failure_raises",
+    ]
+    # The private_r1_seam bucket must match the private_seam Kind exactly.
+    assert set(buckets["private_r1_seam"]) == set(private_seam_keys)
+
+
+def test_phase_buckets_preserve_exact_ordered_inventory() -> None:
+    """The exact ordered 44-key normative inventory remains unchanged."""
+    buckets = _parse_phase_buckets()
+    inv = _parse_inventory_table()
+    ordered_keys = [r["Key"] for r in inv]
+    # Reassemble the bucket keys in canonical bucket order and assert the
+    # inventory order is a permutation of their union (inventory order is the
+    # authoritative normative order).
+    union = (
+        buckets["complete_public"]
+        + buckets["supporting_r1_private"]
+        + buckets["private_r1_seam"]
+        + buckets["fully_r2_dependent"]
+    )
+    assert len(union) == 44
+    assert set(union) == set(ordered_keys)
+    expected_ordered = (
+        "ve_001_self_equivalence",
+        "ve_002_independent_identical",
+        "ve_003_pgadd_commutation",
+        "ve_004_nested_vs_flat_add",
+        "ve_005_pgmultiply_commutation",
+        "ve_006_pgmultiply_grouping",
+        "ve_007_subtract_order",
+        "ve_008_divide_order",
+        "ve_009_both_order",
+        "ve_010_duplicate_add",
+        "ve_011_duplicate_multiply_ref",
+        "ve_012_duplicate_both",
+        "ve_013_shared_vs_copied_subgraph",
+        "ve_014_provenance_only_diff",
+        "ve_015_settlement_timestamp_diff",
+        "ve_016_observation_timestamp_diff",
+        "ve_017_currency_diff",
+        "ve_018_scalar_vs_money_unit",
+        "ve_019_comparison_operator_diff",
+        "ve_020_conditional_branch_order",
+        "ve_021_zero_vs_nonzero",
+        "ve_022_invalid_left",
+        "ve_023_invalid_right",
+        "ve_024_invalid_left_at_payoff_level",
+        "ve_025_admission_byte_boundary_exact",
+        "ve_026_admission_byte_boundary_exceeded",
+        "ve_027_admission_node_boundary_exact",
+        "ve_028_admission_node_boundary_exceeded",
+        "ve_029_output_entry_boundary_exact",
+        "ve_030_output_entry_boundary_exceeded",
+        "ve_031_output_report_byte_truncation",
+        "ve_032_admission_failure_preserves_identities",
+        "ve_033_deterministic_repeated_reporting",
+        "ve_034_invalid_both_diff_selection",
+        "ve_035_unsupported_level_raises",
+        "ve_036_malformed_limits_raise",
+        "ve_037_report_encoding_failure_raises",
+        "ve_038_deterministic_repeated_captured_failure",
+        "ve_039_upstream_r1_failure_captured",
+        "ve_040_upstream_r2_failure_captured",
+        "ve_041_contradictory_schema_config_raises",
+        "ve_042_report_identity_mandatory",
+        "ve_043_unsupported_canonical_schema_raises",
+        "ve_044_unsupported_payoff_schema_raises",
+    )
+    assert tuple(ordered_keys) == expected_ordered
+
+
+def test_phase_buckets_stage_1c_runtime_unimplemented() -> None:
+    """Stage 1C runtime remains unimplemented (no runtime module exists)."""
+    assert not (SRC_ROOT / "validationequivalence").exists()
+    assert not (SRC_ROOT / "validation_equivalence").exists()
+    assert not (SRC_ROOT / "stage1c").exists()
+    spec = _frozen_defaults_spec()
+    adr9 = _frozen_defaults_adr9()
+    assert "no stage 1c runtime module exists" in spec
+    assert "unimplemented" in spec
+    assert "not yet implemented" in spec
+    # ADR 0009 defines the runtime delivery seam and states the public export
+    # gate occurs only after R2; the runtime is unimplemented until then.
+    assert "public export gate" in adr9
+
+
+def test_phase_buckets_no_stage_1c_runtime_source_module() -> None:
+    """No Stage 1C runtime source module exists."""
+    for candidate in (
+        SRC_ROOT / "validationequivalence",
+        SRC_ROOT / "validation_equivalence",
+        SRC_ROOT / "stage1c",
+    ):
+        assert not candidate.exists()
+    # The forbidden phase-bucket claims must no longer exist anywhere.
+    spec = _frozen_defaults_spec()
+    assert "supporting_r1_private = 42" not in spec
+    assert "fully_r2_dependent = 0" not in spec
+    assert "no vector is solely" not in spec
+    assert "no vector is solely R2-dependent" not in spec
+
+
+def test_all_runtime_status_guards_remain_accurate() -> None:
+    """All current runtime-status guards remain accurate."""
+    spec = _frozen_defaults_spec()
+    road = (REPO_ROOT / "ROADMAP.md").read_text(encoding="utf-8").lower()
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8").lower()
+    # Architecture baseline established.
+    assert "architecture baseline" in spec and "established" in spec
+    # Runtimes planned.
+    assert "planned" in road and "stage 1c" in road
+    # Public runtime unimplemented.
+    assert "unimplemented" in spec
+    assert "no stage 1c runtime module exists" in spec
+    assert "not yet implemented" in spec
+    # No new runtime module added.
+    spec_src = SRC_ROOT
+    assert not (spec_src / "validationequivalence").exists()
+    assert not (spec_src / "validation_equivalence").exists()
+    assert not (spec_src / "stage1c").exists()
+    # README must not claim Stage 1C runtime implemented.
+    assert "planned" in readme or "unimplemented" in readme
+    # Status ordering preserved.
+    assert _near(road, r"stage 1a\b", "complete")
+    assert _near(road, r"stage 1b\b", "in progress")
+    assert _near(road, r"stage 1c\b", "planned")
+
+
+# ---- Stage 1C section-numbering repair guards (PR #10) ----
+
+
+def _parse_h3_headings() -> list[str]:
+    """Return every level-3 (###) heading number from the Stage 1C spec."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    return [m.group(1) for m in re.finditer(r"^###\s+(3\.\d+)\b", spec, re.MULTILINE)]
+
+
+def _parse_h4_headings() -> list[str]:
+    """Return every level-4 (####) heading number from the Stage 1C spec."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    return [
+        m.group(1) for m in re.finditer(r"^####\s+(3\.\d+\.\d+)\b", spec, re.MULTILINE)
+    ]
+
+
+def test_no_duplicate_level3_headings() -> None:
+    """1. No duplicate numbered level-3 headings exist."""
+    headings = _parse_h3_headings()
+    dupes = [h for h in headings if headings.count(h) > 1]
+    assert not dupes, f"duplicate level-3 headings: {sorted(set(dupes))}"
+
+
+def test_level3_headings_3_10_through_3_22_each_once() -> None:
+    """2. Exact headings 3.10 through 3.22 occur once each."""
+    headings = _parse_h3_headings()
+    for n in range(10, 23):
+        num = f"3.{n}"
+        assert headings.count(num) == 1, (
+            f"heading {num!r} appears {headings.count(num)} times"
+        )
+
+
+def test_subheadings_3_14_and_3_19_occurs_once() -> None:
+    """3. Exact subheadings 3.14.1, 3.14.2, 3.14.3, 3.19.1, 3.19.2 occur once."""
+    subs = _parse_h4_headings()
+    for expected in ("3.14.1", "3.14.2", "3.14.3", "3.19.1", "3.19.2"):
+        assert subs.count(expected) == 1, (
+            f"subheading {expected!r} appears {subs.count(expected)} times"
+        )
+
+
+def test_hybrid_policy_is_exactly_3_14() -> None:
+    """4. 'Hybrid report-versus-exception policy' is exactly 3.14."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    for m in re.finditer(r"^###\s+(3\.\d+)\s+(.*)$", spec, re.MULTILINE):
+        if "hybrid report-versus-exception policy" in m.group(2).lower():
+            assert m.group(1) == "3.14", (
+                f"hybrid policy heading is {m.group(1)}, expected 3.14"
+            )
+            return
+    pytest.fail("hybrid report-versus-exception policy heading not found")
+
+
+def test_equality_semantics_is_exactly_3_13() -> None:
+    """5. 'Equality semantics' is exactly 3.13."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    for m in re.finditer(r"^###\s+(3\.\d+)\s+(.*)$", spec, re.MULTILINE):
+        if "equality semantics" in m.group(2).lower():
+            assert m.group(1) == "3.13", (
+                f"equality semantics heading is {m.group(1)}, expected 3.13"
+            )
+            return
+    pytest.fail("equality semantics heading not found")
+
+
+def test_captured_failure_references_point_to_3_14_2_or_3_14_3() -> None:
+    """6. Captured-failure references point to §3.14.2/§3.14.3."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    # The classification taxonomy reference (§3.13.3 -> §3.14.3)
+    assert "§3.14.3" in spec, "closed captured-failure taxonomy ref missing"
+    assert "§3.13.3" not in spec, "stale §3.13.3 reference remains"
+    # The captured-failure record reference (§3.13.2 -> §3.14.2)
+    assert "§3.14.2" in spec, "captured-failure record ref missing"
+    assert "§3.13.2" not in spec, "stale §3.13.2 reference remains"
+    # Verify the section heading is correct.
+    for m in re.finditer(r"^####\s+3\.14\.2\s+(.*)$", spec, re.MULTILINE):
+        assert "operand-owned outcomes" in m.group(1).lower()
+        break
+    else:
+        pytest.fail("3.14.2 heading not found")
+    for m in re.finditer(r"^####\s+3\.14\.3\s+(.*)$", spec, re.MULTILINE):
+        assert "closed captured-failure classification" in m.group(1).lower()
+        break
+    else:
+        pytest.fail("3.14.3 heading not found")
+
+
+def test_precondition_references_point_to_3_18() -> None:
+    """7. Precondition references point to §3.18."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    # The behaviour-when-preconditions-fail section is 3.18.
+    for m in re.finditer(r"^###\s+3\.18\s+(.*)$", spec, re.MULTILINE):
+        assert "behaviour when preconditions fail" in m.group(1).lower()
+        break
+    else:
+        pytest.fail("3.18 'Behaviour when preconditions fail' heading not found")
+    # Old §3.17 must not appear as a section reference for preconditions.
+    assert "§3.17" not in spec, "stale §3.17 reference remains"
+
+
+def test_private_r1_public_r2_seam_is_3_19() -> None:
+    """8. The private-R1/public-R2 seam is §3.19."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    for m in re.finditer(r"^###\s+3\.19\s+(.*)$", spec, re.MULTILINE):
+        assert (
+            "private-r1" in m.group(1).lower() or "delivery seam" in m.group(1).lower()
+        )
+        break
+    else:
+        pytest.fail("3.19 'Private-R1 / Public-R2 delivery seam' heading not found")
+    # Subsections 3.19.1 and 3.19.2 must exist.
+    assert re.search(r"^####\s+3\.19\.1\s", spec, re.MULTILINE), (
+        "3.19.1 heading missing"
+    )
+    assert re.search(r"^####\s+3\.19\.2\s", spec, re.MULTILINE), (
+        "3.19.2 heading missing"
+    )
+    # Old §3.18 section references for the delivery seam must be gone.
+    assert "§3.18" not in spec, "stale §3.18 reference remains"
+
+
+def test_no_old_duplicate_or_stale_affected_heading() -> None:
+    """9. No old duplicate or stale affected heading remains."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    # The old duplicate 3.13 must not appear as a heading for the hybrid policy.
+    headings = re.findall(r"^###\s+(3\.\d+)\s+(.*)$", spec, re.MULTILINE)
+    heading_texts = dict(headings)
+    # 3.13 must be Equality semantics, not Hybrid policy.
+    assert "equality semantics" in heading_texts.get("3.13", "").lower(), (
+        "3.13 is not 'Equality semantics'"
+    )
+    assert "hybrid" not in heading_texts.get("3.13", "").lower(), (
+        "old duplicate: 3.13 still carries 'Hybrid' policy"
+    )
+    # Old section numbers must not appear as headings.
+    for stale in ("3.18.1", "3.18.2"):
+        assert not re.search(rf"^####\s+{re.escape(stale)}\s", spec, re.MULTILINE), (
+            f"stale subheading {stale} still present"
+        )
+    # No second 3.13 heading.
+    h3_nums = _parse_h3_headings()
+    assert h3_nums.count("3.13") == 1, (
+        f"3.13 appears {h3_nums.count('3.13')} times (expected exactly 1)"
+    )
+
+
+def test_no_runtime_source_modified() -> None:
+    """10. No runtime source is modified."""
+    assert not (SRC_ROOT / "validationequivalence").exists()
+    assert not (SRC_ROOT / "validation_equivalence").exists()
+    assert not (SRC_ROOT / "stage1c").exists()
+    spec = _frozen_defaults_spec()
+    assert "no stage 1c runtime module exists" in spec
+    assert "not yet implemented" in spec
