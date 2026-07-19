@@ -7,7 +7,9 @@
   canonical runtime implemented** (byte-exact canonicalization and canonical
   contract identity). **Stage 1B-R2 payoff-graph runtime implemented** (CV-011:
   byte-exact payoff-graph identity, deterministic node graph, and provenance).
-  Stage 0 foundation complete.
+  **Stage 1C architecture baseline established** (graded validation levels,
+  equivalence reporting, structural diffing; runtimes planned for 1C-R1 and
+  1C-R2). Stage 0 foundation complete.
 - **Release stage:** Pre-Alpha. **Not published.** Not available on PyPI.
 - **License:** [MIT](LICENSE)
 
@@ -122,6 +124,17 @@ canonical contract identity. You can:
   contract identity; changing provenance alone never changes the payoff-graph
   identity.
 
+## What exists today (Stage 1C architecture baseline)
+
+Stage 1C defines the **validation-equivalence layer**: graded validation levels
+(`structural`, `canonical`, `payoff`), a deterministic equivalence report
+schema (`derivatrace.validation-equivalence.report`), and deterministic
+structural diffing over trusted Stage 1B representations. The specification is
+in `docs/validation-equivalence-spec.md` and the architectural decision is
+recorded in [ADR 0008](docs/adr/0008-validation-levels-equivalence-and-structural-diffing.md).
+No runtime implementation exists yet; Stage 1C-R1 (validation levels and
+reports) and Stage 1C-R2 (structural diffing) are planned increments.
+
 ## What does not exist today
 
 Explicitly unimplemented:
@@ -138,7 +151,9 @@ Explicitly unimplemented:
   implemented in Stage 1B-R2; see `docs/canonicalization-spec.md`,
   `docs/payoff-graph-spec.md`, `docs/canonical-test-vectors.md`, and
   [ADR 0007](docs/adr/0007-canonical-contract-identity-and-payoff-graph.md).)
-- Equivalence checks or validation levels beyond Stage 1A structural checks.
+- **Stage 1C validation levels, equivalence reports, or structural diffing
+  runtime** (architecture baseline established in `docs/validation-equivalence-spec.md`
+  and ADR 0008; runtimes planned for Stage 1C-R1 and 1C-R2).
 - An evidence certificate or reproducibility hash.
 - A published package or PyPI release.
 
@@ -222,9 +237,22 @@ aspirational and subject to change.
 - [Architecture](docs/architecture.md)
 - [Contract semantics](docs/contract-semantics.md)
 - [Contract API (Stage 1A)](docs/contract-api.md)
+- [Canonicalization specification (Stage 1B)](docs/canonicalization-spec.md)
+- [Payoff-graph specification (Stage 1B)](docs/payoff-graph-spec.md)
+- [Canonical test vectors (Stage 1B)](docs/canonical-test-vectors.md)
+- [Validation-equivalence specification (Stage 1C)](docs/validation-equivalence-spec.md)
 - [Certificate specification](docs/certificate-spec.md)
 - [Threat model](docs/threat-model.md)
 - [Glossary](docs/glossary.md)
+- [Architectural decision records](docs/adr/)
+  - [ADR 0001: Separation of contract, model, and engine](docs/adr/0001-separation-of-contract-model-engine.md)
+  - [ADR 0002: Deterministic canonicalization](docs/adr/0002-deterministic-canonicalization.md)
+  - [ADR 0003: Evidence-carrying results](docs/adr/0003-evidence-carrying-results.md)
+  - [ADR 0004: Exact contract terms and numerical boundaries](docs/adr/0004-exact-contract-terms-and-numerical-boundaries.md)
+  - [ADR 0005: No hidden model selection](docs/adr/0005-no-hidden-model-selection.md)
+  - [ADR 0006: Stage 1 contract algebra and runtime type system](docs/adr/0006-stage-1-contract-algebra-and-runtime-type-system.md)
+  - [ADR 0007: Canonical contract identity and payoff graph](docs/adr/0007-canonical-contract-identity-and-payoff-graph.md)
+  - [ADR 0008: Validation levels, equivalence, and structural diffing](docs/adr/0008-validation-levels-equivalence-and-structural-diffing.md)
 - [Roadmap](ROADMAP.md)
 - [Contributing](CONTRIBUTING.md)
 - [Code of conduct](CODE_OF_CONDUCT.md)

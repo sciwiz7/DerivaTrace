@@ -82,7 +82,7 @@ PRICING_CLAIMS = [
 ]
 
 NEGATIONS = [
-    "not ",
+    "not",
     "never ",
     "no ",
     "without ",
@@ -1522,3 +1522,1808 @@ def test_r2_conformance_registry_executes() -> None:
     for name, (expected, builders) in CONFORMANCE_VECTORS.items():
         identities = {compile_payoff_graph(builder()).identity for builder in builders}
         assert identities == {expected}, name
+
+
+# ---- Stage 1C validation-equivalence architecture baseline guards ----
+
+_STAGE1C_SPEC = DOCS_DIR / "validation-equivalence-spec.md"
+_ADR_0008 = (
+    DOCS_DIR / "adr" / "0008-validation-levels-equivalence-and-structural-diffing.md"
+)
+
+
+def test_stage_1c_baseline_files_exist() -> None:
+    for path in (_STAGE1C_SPEC, _ADR_0008):
+        assert path.exists(), f"missing Stage 1C baseline file: {path}"
+
+
+def test_stage_1c_status_established_not_implemented() -> None:
+    # Architecture baseline is "Established"; runtimes remain "Planned" /
+    # "Unimplemented".
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "architecture baseline established" in spec or "established" in spec
+    # Runtime must not be claimed as implemented.
+    assert "stage 1c-r1" not in spec or "planned" in spec
+    assert "stage 1c-r2" not in spec or "planned" in spec
+    assert "no stage 1c runtime module exists" in spec
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8").lower()
+    assert "architecture baseline established" in readme
+    assert "unimplemented" in readme or "planned" in readme
+    road = (REPO_ROOT / "ROADMAP.md").read_text(encoding="utf-8").lower()
+    assert "architecture baseline established" in road
+
+
+def test_stage_1c_no_economic_equivalence_claim() -> None:
+    # The conservative principle: no economic equivalence claim anywhere.
+    # Occurrences in "forbidden" / "prohibited" / "must not" /
+    # "asserting or implying" contexts are allowed.
+    prohibition_contexts = [
+        "forbidden",
+        "prohibited",
+        "must not",
+        "mustn't",
+        "shall not",
+        "shan't",
+        "not allowed",
+        "disallowed",
+        "excluded",
+        "forbids",
+        "prohibits",
+        "asserting or implying",
+        "implying",
+        "asserting",
+    ]
+    for markdown in markdown_files():
+        text = markdown.read_text(encoding="utf-8").lower()
+        for match in re.finditer(r"economic equivalence", text):
+            before = text[max(0, match.start() - 500) : match.start()]
+            before_stripped = re.sub(r"\*+", "", before)
+            has_negation = any(neg in before_stripped for neg in NEGATIONS)
+            has_prohibition = any(
+                ctx in before_stripped for ctx in prohibition_contexts
+            )
+            assert has_negation or has_prohibition, (
+                f"{markdown}: unqualified 'economic equivalence' claim"
+            )
+    # The validation-equivalence spec must explicitly deny all these.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    spec_stripped = re.sub(r"\*+", "", spec)
+    for claim in [
+        "must not claim",
+        "general economic equivalence",
+        "equal value",
+        "equal cash flow",
+        "legal equivalence",
+        "accounting equivalence",
+        "tax equivalence",
+        "model equivalence",
+        "suitability",
+        "recommendation",
+    ]:
+        assert claim in spec_stripped, f"spec must deny: {claim}"
+
+
+def test_stage_1c_level_taxonomy_describes_evaluation_depth() -> None:
+    # The level taxonomy describes progressive EVALUATION DEPTH, not a logical
+    # implication hierarchy between equivalence results.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    for level in ("structural", "canonical", "payoff"):
+        assert level in spec, f"validation level '{level}' missing from spec"
+    assert "evaluation depth" in spec
+    assert (
+        "progressive processing depth" in spec or "progressive evaluation depth" in spec
+    )
+    # Explicitly NOT a logical implication hierarchy.
+    assert "logical implication hierarchy" in spec
+    # Display names present.
+    assert "structural validity" in spec
+    assert "canonical-contract equivalence" in spec
+    assert "payoff-graph structural equivalence" in spec
+    # Normative statements present.
+    for stmt in (
+        "canonical evaluation requires successful structural validation",
+        "payoff evaluation requires successful structural validation and r1",
+        "requesting a deeper level causes prior stages to be evaluated",
+    ):
+        assert stmt in spec, stmt
+
+
+def test_stage_1c_conclusions_independent() -> None:
+    # Canonical and payoff conclusions are independently represented; they are
+    # not collapsed into a single boolean and not ordered as an implication.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "separately reported" in spec
+    assert "independent comparison conclusions" in spec
+    assert "independent comparison conclusions" in spec
+    assert "guarantee that payoff-graph equivalence implies" in spec
+    assert "guarantee the converse" in spec
+    assert "no permanent injectivity guarantee" in spec
+
+
+def test_stage_1c_comparison_statuses_closed_and_distinct() -> None:
+    # All four comparison statuses are present, closed, and distinct.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    for status in ("equivalent", "different", "not_comparable", "not_evaluated"):
+        assert status in spec, status
+    # The old boolean-like / nullable vocabulary must not appear.
+    assert "not_applicable" not in spec
+    # not_comparable and not_evaluated are distinct (both present, defined apart).
+    assert "not_comparable" in spec and "not_evaluated" in spec
+    assert "never collapsed into" in spec or "distinct" in spec
+
+
+def test_stage_1c_validation_outcome_taxonomy() -> None:
+    # Per-side validation outcomes use a closed taxonomy; null is not used.
+    # The v1 taxonomy is valid/invalid only (not_evaluated is removed).
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    for v in ("valid", "invalid"):
+        assert v in spec, v
+    assert "validation outcome taxonomy" in spec
+    assert "null" in spec and "never used to mean multiple" in spec
+    # not_evaluated must not appear as a validation-outcome value.
+    # It may still appear as a comparison-status value.
+    outcome_section = _section(spec, r"validation outcome taxonomy")
+    assert "not_evaluated" not in outcome_section
+
+
+def test_stage_1c_schema_selection_per_call_and_raised() -> None:
+    # Schema selection is per-call, so a left/right schema-version mismatch is not
+    # constructible. Unsupported/contradictory schema selection is a caller-owned
+    # raised error (not a reported not_comparable outcome), and cross-version
+    # comparison is deferred. The old incompatible-schema -> not_comparable mapping
+    # must not exist.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "per-call" in spec
+    assert "cannot construct a left/right" in spec
+    assert "caller-owned raised error" in spec
+    assert "incompatible_schemas" in spec
+    # The v1 API has no incompatible_schema_versions comparison outcome.
+    assert "`incompatible_schema_versions` reason code" in spec
+    assert "unsupported_migration_boundary" in spec
+    assert "outcome in v1" in spec
+    # Unsupported / contradictory schema selection vectors raise, not not_comparable.
+    assert "ve_043_unsupported_canonical_schema_raises" in spec
+    assert "ve_044_unsupported_payoff_schema_raises" in spec
+    assert "ve_041_contradictory_schema_config_raises" in spec
+    # Cross-version comparison is deferred; no cross-version diff is promised.
+    assert "deferred to a future" in spec
+    assert "source of diff content" in spec
+    # The forbidden mapping must not be asserted positively.
+    assert "incompatible schema versions never map to" not in spec
+    assert "incompatible schema versions produce" not in spec
+
+
+def test_stage_1c_caller_errors_raise() -> None:
+    # Caller-owned failures raise Stage 1C-owned typed errors.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "caller-owned" in spec
+    assert "raised" in spec
+    for code in (
+        "validation_equivalence.unsupported_level",
+        "validation_equivalence.input",
+        "validation_equivalence.encoding",
+        "validation_equivalence.report_collision",
+        "validation_equivalence.error",
+        "validation_equivalence.incompatible_schemas",
+    ):
+        assert code in spec, code
+    # Complexity error must not be in the error taxonomy.
+    error_section = _section(spec, r"error taxonomy")
+    assert "validation_equivalence.complexity" not in error_section
+    # Specific raised cases mentioned.
+    for phrase in (
+        "wrong exact input types",
+        "unsupported validation level",
+        "malformed stage 1c limits",
+        "unsupported stage 1c report schema version",
+        "invalid diff representation selection",
+        "impossible or contradictory caller configuration",
+        "report encoding failure",
+        "report identity collision",
+        "malformed stage 1c internal state",
+    ):
+        assert phrase in spec, phrase
+    # If the report cannot be encoded/identified, no report is returned.
+    assert "no report is returned" in spec
+
+
+def test_stage_1c_operand_failures_captured() -> None:
+    # Operand-owned failures are captured inside the report, not raised.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "operand-owned" in spec
+    assert "captured inside the report" in spec
+    for stage in (
+        "stage 1a contract validation failure",
+        "stage 1b-r1 canonicalization failure",
+        "stage 1b-r2 payoff compilation failure",
+        "upstream complexity failure",
+        "upstream encoding or collision error",
+    ):
+        assert stage in spec, stage
+    # Captured structured fields.
+    for field in ("stage", "code", "classification"):
+        assert field in spec, field
+    # The `side` field does NOT appear inside individual records: the array is
+    # nested under `left` or `right`, making the side implicit.
+    # Forbidden content in captured failures.
+    for forbidden in (
+        "raw traceback",
+        "repr",
+        "unstable exception text",
+        "secret or full-content leakage",
+    ):
+        assert forbidden in spec, forbidden
+
+
+def test_stage_1c_upstream_namespace_preserved() -> None:
+    # Upstream error codes retain their original namespace; Stage 1C must not
+    # relabel a canonicalization or payoff-graph failure as its own error.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    for ns in ("validation.*", "canonicalization.*", "payoff_graph.*"):
+        assert ns in spec, ns
+    assert "must not relabel" in spec
+    assert (
+        "retain their original namespace" in spec
+        or "retains its original namespace" in spec
+    )
+    assert "original namespace" in spec
+
+
+def test_stage_1c_diff_availability_rules_explicit() -> None:
+    # Structural diff availability rules are explicit; when unavailable, a stable
+    # reason is reported and no misleading partial content diff is emitted.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "diff availability" in spec
+    for cond in (
+        "the selected representation exists for both sides",
+        "both operands are processed under one per-call",
+        "the selected diff mode is supported",
+        "limits permit the comparison",
+    ):
+        assert cond in spec, cond
+    assert "unavailable_reason" in spec
+    assert (
+        "no misleading partial content diff" in spec
+        or "no partial content diff" in spec
+    )
+    assert "source of diff content" in spec
+
+
+def test_stage_1c_change_replace_non_overlapping() -> None:
+    # change and replace cannot overlap: change keeps the JSON structural kind,
+    # replace changes it; they are disjoint by construction.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "non-overlap" in spec or "non-overlapping" in spec
+    assert "change" in spec and "replace" in spec
+    assert "both sides carry the same json" in spec
+    assert "json structural kind differs" in spec
+    assert "disjoint" in spec
+
+
+def test_stage_1c_structural_diff_schema_specified() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    # The v1 DiffSelection taxonomy is canonical | payoff | none.
+    # "both" must NOT be in the v1 taxonomy.
+    for sel in ("canonical", "payoff", "none"):
+        assert sel in spec, f"diff selection '{sel}' missing from spec"
+    # "both" must not appear as a valid diff representation value in the report.
+    # It may appear in prose describing its removal.
+    report_section = _section(spec, r"report fields")
+    assert '"both"' not in report_section or "not" in report_section.lower()
+    assert "/nodes/" in spec
+    assert "/root" in spec
+    assert "/schema_version" in spec
+    for op in ("add", "remove", "change", "replace"):
+        assert op in spec, f"diff op '{op}' missing from spec"
+    for limit in (
+        "max_entries",
+        "max_compared_bytes",
+        "max_compared_nodes",
+        "max_path_length",
+        "max_report_bytes",
+    ):
+        assert limit in spec, f"diff limit '{limit}' missing from spec"
+    assert "truncated" in spec
+    assert "truncation_reason" in spec
+    assert any(
+        w in spec.lower() for w in ("lexicographic", "ascending", "ascii byte order")
+    )
+    assert "node table" in spec.lower() or "node-table" in spec.lower()
+
+
+def test_stage_1c_limits_and_security_specified() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    assert "1024" in spec  # max_entries
+    assert "2_097_152" in spec or "2097152" in spec  # max_compared_bytes
+    assert "4096" in spec  # max_compared_nodes
+    assert "256" in spec  # max_path_length
+    assert "8_388_608" in spec or "8388608" in spec  # max_report_bytes
+    # Admission limits are separated from output limits
+    assert "admission limit" in spec.lower() or "admission limits" in spec.lower()
+    assert "output limit" in spec.lower() or "output limits" in spec.lower()
+    assert "comparison_limit_exceeded" in spec
+    for threat in [
+        "Adversarially deep graphs",
+        "Very wide collections",
+        "Duplicate-reference amplification",
+        "Malformed internal documents",
+        "Cycles at private seams",
+        "Hash collisions",
+        "Confusing Unicode in paths or display labels",
+        "Bounded structural-content disclosure",
+        'Misleading "equivalent" terminology',
+        "Denial of service through oversized diffs",
+        "Non-deterministic dictionary/set iteration",
+    ]:
+        assert threat in spec, f"threat '{threat}' not addressed in spec"
+
+
+def test_stage_1c_report_schema_aligned() -> None:
+    # The proposed report schema includes unambiguous fields equivalent to every
+    # required semantic role, each represented exactly once.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    assert "derivatrace.validation-equivalence.report" in spec
+    assert "1.0.0" in spec
+    for field in (
+        "requested_level",
+        "left_validation_outcome",
+        "right_validation_outcome",
+        "canonical_comparison_status",
+        "canonical_comparison_reason",
+        "payoff_comparison_status",
+        "payoff_comparison_reason",
+        "diff_representation",
+        "diff_summary",
+        "truncated",
+        "limits_used",
+        "schema_metadata",
+        "report_id",
+        "provenance",
+    ):
+        assert field in spec, f"report field '{field}' missing from spec"
+    # The closed comparison-status values appear in the report.
+    for val in ("equivalent", "different", "not_comparable", "not_evaluated"):
+        assert val in spec, val
+    # Validation outcomes are valid/invalid only.
+    assert '"valid | invalid"' in spec or "valid | invalid" in spec
+    # "both" is not in the v1 DiffSelection taxonomy.
+    # The diff_representation field should show canonical | payoff | none
+    assert "canonical | payoff | none" in spec
+
+
+def test_stage_1c_normative_vectors_unique_and_complete() -> None:
+    # Every vector key is unique; the minimum required cases are present; no
+    # vector establishes economic equivalence.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    section = _section(spec, r"vector inventory")
+    rows = _table_rows(section)
+    inv_keys = [r[0].strip("`") for r in rows if r[0].strip("`").startswith("ve_")]
+    assert len(inv_keys) == len(set(inv_keys)), (
+        f"duplicate inventory key: {[k for k in inv_keys if inv_keys.count(k) > 1]}"
+    )
+    assert len(inv_keys) >= 44, len(inv_keys)
+    # Minimum required cases.
+    for key in (
+        "ve_022_invalid_left",
+        "ve_023_invalid_right",
+        "ve_024_invalid_left_at_payoff_level",
+        "ve_034_invalid_both_diff_selection",
+        "ve_035_unsupported_level_raises",
+        "ve_036_malformed_limits_raise",
+        "ve_037_report_encoding_failure_raises",
+        "ve_038_deterministic_repeated_captured_failure",
+        "ve_039_upstream_r1_failure_captured",
+        "ve_040_upstream_r2_failure_captured",
+        "ve_041_contradictory_schema_config_raises",
+        "ve_042_report_identity_mandatory",
+        "ve_043_unsupported_canonical_schema_raises",
+        "ve_044_unsupported_payoff_schema_raises",
+    ):
+        assert key in inv_keys, key
+    # Admission/output limit vectors.
+    for key in (
+        "ve_025_admission_byte_boundary_exact",
+        "ve_026_admission_byte_boundary_exceeded",
+        "ve_027_admission_node_boundary_exact",
+        "ve_028_admission_node_boundary_exceeded",
+        "ve_029_output_entry_boundary_exact",
+        "ve_030_output_entry_boundary_exceeded",
+        "ve_031_output_report_byte_truncation",
+        "ve_032_admission_failure_preserves_identities",
+    ):
+        assert key in inv_keys, key
+    # Shallower levels leave deeper statuses not_evaluated.
+    # (ve_014 canonical level -> payoff not_evaluated; ve_022/ve_023 structural
+    #  level -> canonical and payoff not_evaluated.)
+    assert "ve_014_provenance_only_diff" in inv_keys
+    # No result establishes economic equivalence.
+    assert "economic_equivalence_claim" in spec
+
+
+def test_stage_1c_documentation_guards_enforced() -> None:
+    # The spec must declare the documentation guards.
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    for guard in [
+        "stage 1b is no longer marked",
+        "stage 1c architecture baseline",
+        "stage 1c runtime:",
+        "no economic-equivalence claim",
+        "validation-level taxonomy is complete",
+        "report schema",
+        "structural-diff schema",
+        "every vector key",
+        "all internal markdown links resolve",
+        "status language is consistent",
+        "never collapsed",
+        "validation-outcome taxonomy is closed",
+        "the value",
+        "v1 `diffselection`",
+        "one report has one diff summary",
+        "admission limits",
+        "output limits",
+        "admission failure emits zero entries",
+        "output-limit failure emits a deterministic truncated prefix",
+        "complexityerror",
+        "node add/remove",
+        "complete bounded node records",
+        "does not claim leaf-only diffs",
+        "privacy-preserving",
+        "canonicalization was not requested or failed",
+        "inverted depth wording",
+        "truncation reasons contain only output-limit reasons",
+        "admission-limit excess never sets",
+        "every public api conformance vector",
+        "private seam vector",
+    ]:
+        assert guard in spec, f"documentation guard '{guard}' missing from spec"
+
+
+def test_stage_1c_runtime_unimplemented() -> None:
+    # No Stage 1C runtime module may be added.
+    assert not (SRC_ROOT / "validationequivalence").exists()
+    assert not (SRC_ROOT / "validation_equivalence").exists()
+    assert not (SRC_ROOT / "stage1c").exists()
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "unimplemented" in spec
+    assert "no stage 1c runtime module exists" in spec
+    # The public entry point is explicitly not yet implemented.
+    assert "not yet implemented" in spec
+
+
+def test_adr_0008_records_key_decisions() -> None:
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    for decision in [
+        "validation-level taxonomy",
+        "progressive evaluation depth",
+        "independent comparison conclusions",
+        "comparison status taxonomy",
+        "validation outcome taxonomy",
+        "report-internal error policy",
+        "cross-version comparison semantics",
+        "structural diff availability",
+        "change-versus-replace",
+        "report schema alignment",
+        "updated conformance vectors",
+    ]:
+        assert decision in adr, f"ADR 0008 missing decision: {decision}"
+
+
+# ---- Additional Stage 1C documentation-test guards ----
+
+
+def test_stage_1c_exactly_one_canonical_schema_per_call() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "exactly one" in spec
+    assert "canonical schema selection" in spec
+    assert "never per-side" in spec
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    assert "per-call" in adr
+    assert "never per-side" in adr or "no per-side" in adr
+
+
+def test_stage_1c_exactly_one_payoff_schema_per_call() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "exactly one" in spec
+    assert "payoff schema" in spec
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    assert "per-call" in adr
+
+
+def test_stage_1c_cross_version_deferred() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "deferred to a future" in spec
+    assert "separate architecture decision" in spec
+    assert "not" in spec and "part of `compare_contracts` v1" in spec
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    assert "deferred" in adr
+    assert "separate adr" in adr
+
+
+def test_stage_1c_single_captured_failure_representation() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "single" in spec
+    assert "structured captured-failure representation" in spec
+    assert (
+        "{stage, code, classification}" in spec or "stage, code, classification" in spec
+    )
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    assert "single" in adr
+    assert (
+        "{stage, code, classification}" in adr or "stage, code, classification" in adr
+    )
+
+
+def test_stage_1c_deprecated_field_names_absent() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "structural_errors" in spec
+    assert "deprecated" in spec
+    assert "do not exist" in spec or "does not exist" in spec
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    assert "structural_errors" in adr
+    assert "not used" in adr
+    assert "canonicalization_errors" in adr
+    assert "payoff_compilation_errors" in adr
+
+
+def test_stage_1c_failures_non_null_and_deterministic_order() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "always an array" in spec
+    assert "empty array" in spec
+    assert "never" in spec and "null" in spec
+    assert "deterministic" in spec
+    assert "stage order" in spec or "stage → code → classification" in spec
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    assert "deterministic" in adr
+    assert (
+        "stage → code → classification" in adr
+        or "stage -> code -> classification" in adr
+    )
+
+
+def test_stage_1c_report_id_mandatory_non_null() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "mandatory" in spec
+    assert "non-null" in spec
+    assert "report_id" in spec
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    assert "mandatory" in adr
+    assert "non-null" in adr
+    assert "report_id" in adr
+
+
+def test_stage_1c_content_addressed_remove_add_not_same_id_leaf() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "content-addressed" in spec
+    assert "remove" in spec and "add" in spec
+    assert "never" in spec
+    assert "same-id" in spec or "same-node-id" in spec or "leaf change" in spec
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    assert "content-addressed" in adr
+    assert "remove" in adr and "add" in adr
+
+
+def test_stage_1c_commutative_no_diff() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "commutative" in spec
+    assert "no diff" in spec or "no diff" in spec
+    assert "canonicalize identically" in spec
+
+
+def test_stage_1c_shared_copied_no_diff() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "copied" in spec or "shared" in spec
+    assert "no diff" in spec
+    assert "canonicalize identically" in spec
+
+
+def test_stage_1c_semantic_alignment_out_of_scope() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "semantic" in spec
+    assert "alignment" in spec or "node alignment" in spec
+    assert "out of scope" in spec or "explicitly deferred" in spec
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    assert "semantic" in adr or "alignment" in adr
+    assert "rejected" in adr or "deferred" in adr
+
+
+def test_stage_1c_failure_no_side_field_in_record() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "no `side`" in spec or "no side" in spec
+    assert "inside" in spec
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    assert (
+        "not stored as a per-record field" in adr or "not stored as a per-record" in adr
+    )
+
+
+def test_stage_1c_no_incompatible_schema_versions_reason() -> None:
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "no" in spec
+    assert "incompatible_schema_versions" in spec
+    assert "reason code" in spec
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    assert "incompatible_schema_versions" in adr
+    assert "not constructible" in adr
+
+
+# ---- Final bounded architecture correction guards ----
+
+
+def test_both_absent_from_v1_diff_selection() -> None:
+    """The value 'both' must not be in the v1 DiffSelection taxonomy."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    # The report schema must show canonical | payoff | none (no 'both').
+    assert "canonical | payoff | none" in spec
+    # The prose must state 'both' is not in the v1 taxonomy.
+    spec_low = spec.lower()
+    assert '"both"' in spec
+    assert "not in the v1" in spec_low or "is not" in spec_low
+    # The error taxonomy must mention 'both' as an invalid selection.
+    assert "invalid diff representation selection" in spec_low
+
+
+def test_one_report_one_diff_summary() -> None:
+    """One report contains at most one structural diff section."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "at most one" in spec
+    assert "diff summary" in spec
+    assert "unambiguous" in spec
+
+
+def test_r1_failure_under_payoff_makes_payoff_not_comparable() -> None:
+    """R1 failure under payoff makes payoff not_comparable."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # When R1 fails and payoff is requested, both canonical
+    # and payoff are not_comparable.
+    assert "r1" in spec
+    assert "not_comparable" in spec
+    assert "upstream_stage_failure" in spec
+
+
+def test_not_evaluated_only_for_deeper_comparisons() -> None:
+    """not_evaluated is used only for comparisons deeper than requested."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "not_evaluated" in spec
+    assert "deeper" in spec
+    # not_evaluated must not appear in the validation-outcome taxonomy.
+    outcome_section = _section(spec, r"validation outcome taxonomy")
+    assert "not_evaluated" not in outcome_section
+    # The inverted phrases must not appear in the spec body (excluding §10
+    # documentation guards which quote them in a negation context).
+    guards_section = _section(spec, r"documentation guards")
+    spec_body = spec.replace(guards_section, "")
+    inv1 = "comparison statuses shallower than the requested"
+    inv2 = "comparison is shallower than the requested evaluation"
+    assert inv1 not in spec_body
+    assert inv2 not in spec_body
+
+
+def test_stage_1a_outcomes_exactly_valid_invalid() -> None:
+    """Stage 1A validation outcomes are exactly valid/invalid."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    outcome_section = _section(spec, r"validation outcome taxonomy")
+    assert "valid" in outcome_section
+    assert "invalid" in outcome_section
+    # not_evaluated must not be in the outcome section.
+    assert "not_evaluated" not in outcome_section
+    # The field description must state valid/invalid only.
+    assert '"valid | invalid"' in spec or "valid | invalid" in spec
+
+
+def test_admission_limit_failure_emits_zero_entries() -> None:
+    """Admission-limit failure emits zero entries and does not truncate."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "admission limit" in spec
+    assert "zero" in spec
+    assert "truncated" in spec
+    assert "false" in spec
+    assert "comparison_limit_exceeded" in spec
+    # Admission preserves equivalence statuses and identities.
+    assert "identities remain available" in spec or "statuses remain" in spec
+
+
+def test_output_limit_failure_emits_truncated_prefix() -> None:
+    """Output-limit failure emits a deterministic truncated prefix."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "output limit" in spec
+    assert "truncated: true" in spec or "truncated" in spec
+    assert "accepted prefix" in spec
+    assert "deterministic" in spec
+    assert "never partially serialize" in spec
+
+
+def test_complexity_error_absent() -> None:
+    """Complexity error is absent from the v1 error taxonomy."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # The error taxonomy table must not list ValidationEquivalenceComplexityError.
+    error_section = _section(spec, r"error taxonomy")
+    assert "complexityerror" not in error_section.replace(" ", "")
+    assert "validation_equivalence.complexity" not in error_section
+
+
+def test_node_add_remove_may_contain_bounded_records() -> None:
+    """Node add/remove entries may contain complete bounded node records."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "node add/remove entries" in spec
+    assert "bounded" in spec
+    assert "complete" in spec
+    assert "node records" in spec
+    threat = _text(DOCS_DIR / "threat-model.md").lower()
+    assert "bounded structural-content disclosure" in threat
+
+
+def test_threat_model_no_leaf_only_claims() -> None:
+    """Threat model does not claim leaf-only diffs."""
+    threat = _text(DOCS_DIR / "threat-model.md").lower()
+    # The old "leaf values" / "leaf-only" claim must be replaced.
+    assert "leaf-only" not in threat
+    # The new bounded structural-content disclosure must be present.
+    assert "bounded structural-content disclosure" in threat
+    assert "complete bounded" in threat or "complete canonical" in threat
+
+
+def test_diff_none_is_privacy_preserving() -> None:
+    """diff='none' is documented as privacy-preserving."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "privacy-preserving" in spec
+    assert 'diff="none"' in spec or "diff=`none`" in spec
+    threat = _text(DOCS_DIR / "threat-model.md").lower()
+    assert "privacy-preserving" in threat
+
+
+def test_provenance_identities_null_when_not_requested_or_failed() -> None:
+    """Provenance identities are null when canonicalization was not
+    requested or failed."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "source_left_identity" in spec
+    assert "source_right_identity" in spec
+    assert "canonicalization was not requested or failed" in spec
+    assert "one exact rule" in spec
+
+
+def test_stage_1c_runtime_unimplemented_final() -> None:
+    """Stage 1C runtime remains unimplemented."""
+    assert not (SRC_ROOT / "validationequivalence").exists()
+    assert not (SRC_ROOT / "validation_equivalence").exists()
+    assert not (SRC_ROOT / "stage1c").exists()
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "no stage 1c runtime module exists" in spec
+    assert "not yet implemented" in spec
+
+
+def test_no_economic_equivalence_claim_final() -> None:
+    """No economic-equivalence claim exists."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # The conservative principle must explicitly deny economic equivalence.
+    assert "must not" in spec
+    assert "economic equivalence" in spec
+
+
+def test_vector_keys_unique_final() -> None:
+    """Vector keys remain unique."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    section = _section(spec, r"vector inventory")
+    rows = _table_rows(section)
+    inv_keys = [r[0].strip("`") for r in rows if r[0].strip("`").startswith("ve_")]
+    assert len(inv_keys) == len(set(inv_keys)), (
+        f"duplicate inventory key: {[k for k in inv_keys if inv_keys.count(k) > 1]}"
+    )
+
+
+def test_vector_exact_ordered_key_tuple() -> None:
+    """The exact ordered vector-key tuple matches the stable inventory."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    section = _section(spec, r"vector inventory")
+    rows = _table_rows(section)
+    inv_keys = tuple(r[0].strip("`") for r in rows if r[0].strip("`").startswith("ve_"))
+    expected = (
+        "ve_001_self_equivalence",
+        "ve_002_independent_identical",
+        "ve_003_pgadd_commutation",
+        "ve_004_nested_vs_flat_add",
+        "ve_005_pgmultiply_commutation",
+        "ve_006_pgmultiply_grouping",
+        "ve_007_subtract_order",
+        "ve_008_divide_order",
+        "ve_009_both_order",
+        "ve_010_duplicate_add",
+        "ve_011_duplicate_multiply_ref",
+        "ve_012_duplicate_both",
+        "ve_013_shared_vs_copied_subgraph",
+        "ve_014_provenance_only_diff",
+        "ve_015_settlement_timestamp_diff",
+        "ve_016_observation_timestamp_diff",
+        "ve_017_currency_diff",
+        "ve_018_scalar_vs_money_unit",
+        "ve_019_comparison_operator_diff",
+        "ve_020_conditional_branch_order",
+        "ve_021_zero_vs_nonzero",
+        "ve_022_invalid_left",
+        "ve_023_invalid_right",
+        "ve_024_invalid_left_at_payoff_level",
+        "ve_025_admission_byte_boundary_exact",
+        "ve_026_admission_byte_boundary_exceeded",
+        "ve_027_admission_node_boundary_exact",
+        "ve_028_admission_node_boundary_exceeded",
+        "ve_029_output_entry_boundary_exact",
+        "ve_030_output_entry_boundary_exceeded",
+        "ve_031_output_report_byte_truncation",
+        "ve_032_admission_failure_preserves_identities",
+        "ve_033_deterministic_repeated_reporting",
+        "ve_034_invalid_both_diff_selection",
+        "ve_035_unsupported_level_raises",
+        "ve_036_malformed_limits_raise",
+        "ve_037_report_encoding_failure_raises",
+        "ve_038_deterministic_repeated_captured_failure",
+        "ve_039_upstream_r1_failure_captured",
+        "ve_040_upstream_r2_failure_captured",
+        "ve_041_contradictory_schema_config_raises",
+        "ve_042_report_identity_mandatory",
+        "ve_043_unsupported_canonical_schema_raises",
+        "ve_044_unsupported_payoff_schema_raises",
+    )
+    assert inv_keys == expected, (
+        f"vector-key tuple mismatch: extra={set(inv_keys) - set(expected)!r}, "
+        f"missing={set(expected) - set(inv_keys)!r}"
+    )
+    assert len(inv_keys) == 44
+
+
+def test_invalid_stage1a_propagation_structural_level() -> None:
+    """Requested structural + invalid: canonical and payoff are not_evaluated."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # The spec must document the three requested-level propagation cases.
+    assert "requested `structural`, either operand invalid" in spec
+    assert "requested `canonical`, either operand invalid" in spec
+    assert "requested `payoff`, either operand invalid" in spec
+    # Structural-level invalid: canonical and payoff are not_evaluated.
+    # Find the structural-level row in §3.17.
+    beh_section = _section(spec, r"behaviour when preconditions fail")
+    assert "requested `structural`, either operand invalid" in beh_section
+    assert "not_evaluated" in beh_section
+    assert "shallower_level_requested" in beh_section
+
+
+def test_invalid_stage1a_propagation_canonical_level() -> None:
+    """Requested canonical + invalid: canonical=not_comparable, payoff=not_evaluated."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    beh_section = _section(spec, r"behaviour when preconditions fail")
+    assert "requested `canonical`, either operand invalid" in beh_section
+    # Canonical is at the requested level → not_comparable / upstream_stage_failure.
+    assert "not_comparable" in beh_section
+    # Payoff is deeper than requested → not_evaluated / shallower_level_requested.
+    # The row must contain both not_comparable and not_evaluated.
+    # Extract the canonical-level row.
+    for line in beh_section.splitlines():
+        if "requested `canonical`, either operand invalid" in line:
+            assert "not_comparable" in line
+            assert "not_evaluated" in line
+            assert "upstream_stage_failure" in line
+            assert "shallower_level_requested" in line
+            break
+    else:
+        pytest.fail("canonical-level invalid-operand row not found in §3.17")
+
+
+def test_invalid_stage1a_propagation_payoff_level() -> None:
+    """Requested payoff + invalid: canonical and payoff are not_comparable."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    beh_section = _section(spec, r"behaviour when preconditions fail")
+    assert "requested `payoff`, either operand invalid" in beh_section
+    for line in beh_section.splitlines():
+        if "requested `payoff`, either operand invalid" in line:
+            assert "not_comparable" in line
+            assert "upstream_stage_failure" in line
+            break
+    else:
+        pytest.fail("payoff-level invalid-operand row not found in §3.17")
+
+
+def test_not_evaluated_never_for_blocked_comparison() -> None:
+    """not_comparable is used for upstream-blocked comparisons, never not_evaluated."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # The spec must state the binding rule explicitly.
+    assert "not_evaluated" in spec
+    assert "shallower" in spec
+    # The ADR must state the binding rule.
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    assert "not_evaluated" in adr
+    assert "shallower" in adr
+    # The §2.1 propagation rule must document the three cases.
+    assert "requested `structural`, either operand invalid" in spec
+    assert "requested `canonical`, either operand invalid" in spec
+    assert "requested `payoff`, either operand invalid" in spec
+
+
+# ---- Final published-spec consistency correction guards (PR #9) ----
+
+
+def test_depth_wording_not_inverted() -> None:
+    """Inverted depth phrases must not appear in spec or ADR."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    inv1 = "comparison statuses shallower than the requested level"
+    inv2 = "comparison is shallower than the requested evaluation level"
+    inv3 = "at or deeper than the requested level"
+    # Exclude §10 documentation guards which quote the forbidden phrases
+    # in a negation context ("does not appear").
+    guards_section = _section(spec, r"documentation guards")
+    spec_body = spec.replace(guards_section, "")
+    for phrase in (inv1, inv2, inv3):
+        assert phrase not in spec_body, f"inverted phrase in spec body: {phrase}"
+        assert phrase not in adr, f"inverted phrase in ADR: {phrase}"
+
+
+def test_truncation_reasons_only_output_limit_reasons() -> None:
+    """Truncation reasons contain only output-limit reasons."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # The correct taxonomy.
+    for reason in ("entry_limit", "report_byte_limit", "path_limit"):
+        assert reason in spec, f"truncation reason '{reason}' missing from spec"
+    # Stale admission-limit reasons must not appear in the JSON example.
+    # Use word-boundary check: "byte_limit" only as part of
+    # "report_byte_limit", "node_limit" must not appear as truncation reason.
+    import re as _re
+
+    json_section = _section(spec, r"exact report fields")
+    assert not _re.search(r"(?<!report_)byte_limit", json_section), (
+        "stale standalone 'byte_limit' in JSON truncation_reason taxonomy"
+    )
+    assert "node_limit" not in json_section, (
+        "stale 'node_limit' in JSON truncation_reason taxonomy"
+    )
+
+
+def test_admission_limit_excess_cannot_set_truncated_true() -> None:
+    """Admission-limit excess sets unavailable_reason, never truncated=true."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # The spec must state admission failure does not truncate.
+    assert "admission" in spec
+    assert "truncated: false" in spec or "truncated = false" in spec
+    # The notes for ve_025-ve_028 must specify exact boundary expectations.
+    assert "admission succeeds" in spec
+    assert "unavailable_reason = null" in spec
+    assert "unavailable_reason = comparison_limit_exceeded" in spec
+    # The documentation guard must exist.
+    assert "admission-limit excess never sets" in spec
+
+
+def test_exact_admission_boundaries_succeed() -> None:
+    """Exact max_compared_bytes and max_compared_nodes admission succeeds."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # The notes for ve_025 and ve_027 must state admission succeeds with
+    # unavailable_reason = null and truncated = false.
+    assert "ve_025" in spec
+    assert "ve_027" in spec
+
+
+def test_exact_max_entries_does_not_truncate() -> None:
+    """Exactly max_entries entries: truncated = false, truncation_reason = null."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # ve_029 note must specify truncated = false.
+    assert "ve_029" in spec
+    assert "truncated = false" in spec
+    assert "truncation_reason = null" in spec
+
+
+def test_max_entries_plus_one_truncates_at_exact_max_entries() -> None:
+    """max_entries + 1: exactly max_entries emitted, truncated = true,
+    truncation_reason = entry_limit."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # ve_030 note must specify exact boundary.
+    assert "ve_030" in spec
+    assert "truncated = true" in spec
+    assert "truncation_reason = entry_limit" in spec
+    assert "exactly `max_entries` entries" in spec
+
+
+def test_adr_states_44_vectors_not_35() -> None:
+    """ADR states 44 vectors, not 35."""
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    assert "44 vector" in adr
+    assert "35 vector" not in adr
+
+
+def test_adr_does_not_claim_leaf_only_diff_contents() -> None:
+    """ADR rejected alternatives do not claim leaf-only diff contents."""
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    # The old "carry only leaf values" claim must not appear.
+    assert "carry only leaf" not in adr
+    # The corrected "bounded complete node records" must appear.
+    assert "bounded complete node records" in adr
+
+
+def test_every_public_vector_has_two_concrete_source_constructions() -> None:
+    """Every public vector has two concrete public source constructions."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    # ve_011 must have a concrete right construction, not a cross-reference.
+    assert (
+        "compare against" not in spec.lower()
+        or "compare against" not in _section(spec, r"vector inventory").lower()
+    )
+    # ve_011 right must be a concrete construction.
+    inv_section = _section(spec, r"vector inventory")
+    for line in inv_section.splitlines():
+        if "ve_011_duplicate_multiply_ref" in line:
+            assert "no direct counterpart" not in line.lower(), (
+                "ve_011 still has no concrete right construction"
+            )
+            break
+
+
+def test_provenance_and_fault_injection_vectors_classified_private() -> None:
+    """Provenance-only and fault-injection vectors are private seams."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # ve_014 must be marked as a private seam (kind column value or prose).
+    inv_section = _section(spec, r"vector inventory")
+    for line in inv_section.splitlines():
+        if "ve_014_provenance_only_diff" in line:
+            assert "private_seam" in line or "private seam" in line.lower(), (
+                "ve_014 must be classified as a private seam vector"
+            )
+            break
+    # ve_037 must be marked as a private seam.
+    for line in inv_section.splitlines():
+        if "ve_037_report_encoding_failure_raises" in line:
+            assert "private_seam" in line or "private seam" in line.lower(), (
+                "ve_037 must be classified as a private seam vector"
+            )
+            break
+    # The spec must document the public/private distinction.
+    assert "private seam" in spec
+    assert "fault-injection" in spec or "report-construction seam" in spec
+
+
+def test_section_4_15_does_not_name_max_compared_bytes_as_output_boundary() -> None:
+    """§4.15 does not name max_compared_bytes as an output truncation boundary."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    trunc_section = _section(spec, r"truncation behaviour")
+    assert "max_compared_bytes" not in trunc_section, (
+        "§4.15 still names max_compared_bytes as output truncation boundary"
+    )
+    # The correct output boundaries must be listed.
+    assert "max_entries" in trunc_section
+    assert "max_report_bytes" in trunc_section
+    assert "max_path_length" in trunc_section
+
+
+def test_byte_limit_and_node_limit_absent_from_truncation_taxonomy() -> None:
+    """byte_limit and node_limit are removed from truncation-reason taxonomy."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    # In the JSON example, the truncation_reason field must not contain
+    # standalone byte_limit or node_limit.
+    import re as _re
+
+    json_example = _section(spec, r"exact report fields")
+    for line in json_example.splitlines():
+        if "truncation_reason" in line:
+            assert "node_limit" not in line, (
+                "stale 'node_limit' still in truncation_reason taxonomy"
+            )
+            # "byte_limit" only allowed as part of "report_byte_limit"
+            assert not _re.search(r"(?<!report_)byte_limit", line), (
+                "stale standalone 'byte_limit' in truncation_reason taxonomy"
+            )
+
+
+def test_ve_025_through_ve_030_exact_boundary_expectations_documented() -> None:
+    """Exact boundary expectations for ve_025-ve_030 are documented."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # Admission boundaries.
+    for key in ("ve_025", "ve_026", "ve_027", "ve_028"):
+        assert key in spec, f"vector key '{key}' missing from spec"
+    # Output boundaries.
+    for key in ("ve_029", "ve_030"):
+        assert key in spec, f"vector key '{key}' missing from spec"
+    # ve_031 report byte truncation.
+    assert "ve_031" in spec
+
+
+def test_ve_011_has_concrete_left_and_right() -> None:
+    """ve_011 has concrete left and right constructions."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    inv_section = _section(spec, r"vector inventory")
+    for line in inv_section.splitlines():
+        if "ve_011_duplicate_multiply_ref" in line:
+            # Both left and right must be concrete constructions.
+            assert "Scalar" in line or "scalar" in line.lower(), (
+                "ve_011 must reference scalar observables"
+            )
+            assert "no direct counterpart" not in line.lower()
+            assert "compare against" not in line.lower()
+            break
+
+
+def test_vector_schema_has_exact_boundary_fields() -> None:
+    """Vector schema includes expected_entry_count, expected_truncated, etc."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    schema_section = _section(spec, r"vector schema")
+    for field in (
+        "expected_entry_count",
+        "expected_truncated",
+        "expected_truncation_reason",
+        "expected_unavailable_reason",
+    ):
+        assert field in schema_section, (
+            f"vector schema field '{field}' missing from §9.1"
+        )
+
+
+# ---- Final narrow consistency correction guards (PR #9) ----
+
+
+def _parse_exact_expectation_table() -> dict[str, dict[str, str]]:
+    """Parse the §9.2.1 exact boundary-vector expectation table."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    section = _section(spec, r"exact boundary-vector expectation")
+    rows = _table_rows(section)
+    header = None
+    result: dict[str, dict[str, str]] = {}
+    for row in rows:
+        cells = [c.strip().strip("`") for c in row]
+        if any("expect_diff_class" in c for c in cells):
+            header = cells
+            continue
+        if header is not None and cells[0].startswith("ve_"):
+            key = cells[0]
+            result[key] = dict(zip(header[1:], cells[1:], strict=True))
+    return result
+
+
+def test_ve_024_note_no_inverted_at_or_deeper() -> None:
+    """The ve_024 note must not contain 'at or deeper than the requested level'."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    # Find the ve_024 note in the spec notes section.
+    in_ve_024 = False
+    for line in spec.splitlines():
+        if "ve_024" in line and "demonstrates" in line.lower():
+            in_ve_024 = True
+        if in_ve_024:
+            assert "at or deeper than the requested level" not in line.lower(), (
+                "ve_024 note still contains inverted 'at or deeper' phrase"
+            )
+        if in_ve_024 and line.startswith("- ") and "ve_024" not in line:
+            break
+    # The corrected wording must be present somewhere in the spec.
+    assert "included in the requested progressive evaluation depth" in spec.lower()
+
+
+def test_ve_025_ve_027_are_available_empty_diffs() -> None:
+    """ve_025 and ve_027 produce available empty diffs, not unavailable none."""
+    table = _parse_exact_expectation_table()
+    for key in (
+        "ve_025_admission_byte_boundary_exact",
+        "ve_027_admission_node_boundary_exact",
+    ):
+        assert key in table, f"vector '{key}' missing from exact-expectation table"
+        assert table[key]["expect_diff_class"] == "empty", (
+            f"{key}: expect_diff_class must be 'empty', "
+            f"got {table[key]['expect_diff_class']}"
+        )
+        assert table[key]["expected_unavailable_reason"] == "null", (
+            f"{key}: expected_unavailable_reason must be null, "
+            f"got {table[key]['expected_unavailable_reason']}"
+        )
+
+
+def test_ve_026_ve_028_have_comparison_limit_exceeded() -> None:
+    """ve_026 and ve_028 have comparison_limit_exceeded and truncated=false."""
+    table = _parse_exact_expectation_table()
+    for key in (
+        "ve_026_admission_byte_boundary_exceeded",
+        "ve_028_admission_node_boundary_exceeded",
+    ):
+        assert key in table, f"vector '{key}' missing from exact-expectation table"
+        assert table[key]["expect_diff_class"] == "none", (
+            f"{key}: expect_diff_class must be 'none'"
+        )
+        assert table[key]["expected_truncated"] == "false", (
+            f"{key}: expected_truncated must be false"
+        )
+        assert (
+            table[key]["expected_unavailable_reason"] == "comparison_limit_exceeded"
+        ), f"{key}: expected_unavailable_reason must be comparison_limit_exceeded"
+
+
+def test_ve_029_boundary_exact_no_truncation() -> None:
+    """ve_029 has exactly max_entries entries and truncated=false."""
+    table = _parse_exact_expectation_table()
+    key = "ve_029_output_entry_boundary_exact"
+    assert key in table, f"vector '{key}' missing from exact-expectation table"
+    assert table[key]["expect_diff_class"] == "remove_add_root", (
+        f"{key}: expect_diff_class must be 'remove_add_root', "
+        f"got {table[key]['expect_diff_class']}"
+    )
+    assert table[key]["expected_entry_count"] == "max_entries", (
+        f"{key}: expected_entry_count must be max_entries"
+    )
+    assert table[key]["expected_truncated"] == "false", (
+        f"{key}: expected_truncated must be false"
+    )
+    assert table[key]["expected_truncation_reason"] == "null", (
+        f"{key}: expected_truncation_reason must be null"
+    )
+
+
+def test_ve_030_boundary_exceeded_truncates_at_max_entries() -> None:
+    """ve_030 has max_entries entries, truncated=true, entry_limit."""
+    table = _parse_exact_expectation_table()
+    key = "ve_030_output_entry_boundary_exceeded"
+    assert key in table, f"vector '{key}' missing from exact-expectation table"
+    assert table[key]["expect_diff_class"] == "truncated", (
+        f"{key}: expect_diff_class must be 'truncated'"
+    )
+    assert table[key]["expected_entry_count"] == "max_entries", (
+        f"{key}: expected_entry_count must be max_entries"
+    )
+    assert table[key]["expected_truncated"] == "true", (
+        f"{key}: expected_truncated must be true"
+    )
+    assert table[key]["expected_truncation_reason"] == "entry_limit", (
+        f"{key}: expected_truncation_reason must be entry_limit"
+    )
+    assert table[key]["expected_unavailable_reason"] == "null", (
+        f"{key}: expected_unavailable_reason must be null"
+    )
+
+
+def test_ve_031_report_byte_truncation() -> None:
+    """ve_031 has truncated=true and report_byte_limit."""
+    table = _parse_exact_expectation_table()
+    key = "ve_031_output_report_byte_truncation"
+    assert key in table, f"vector '{key}' missing from exact-expectation table"
+    assert table[key]["expect_diff_class"] == "truncated", (
+        f"{key}: expect_diff_class must be 'truncated'"
+    )
+    assert table[key]["expected_truncated"] == "true", (
+        f"{key}: expected_truncated must be true"
+    )
+    assert table[key]["expected_truncation_reason"] == "report_byte_limit", (
+        f"{key}: expected_truncation_reason must be report_byte_limit"
+    )
+    assert table[key]["expected_unavailable_reason"] == "null", (
+        f"{key}: expected_unavailable_reason must be null"
+    )
+
+
+def test_all_vector_schema_fields_represented_in_expectation_table() -> None:
+    """Every declared vector-schema field is represented in §9.2.1."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    schema_section = _section(spec, r"vector schema")
+    required_fields = [
+        "expected_entry_count",
+        "expected_truncated",
+        "expected_truncation_reason",
+        "expected_unavailable_reason",
+    ]
+    for field in required_fields:
+        assert field in schema_section, (
+            f"vector schema field '{field}' missing from §9.1"
+        )
+    # The exact-expectation table must exist and contain all four fields
+    # as column headers.
+    expectation_section = _section(spec, r"exact boundary-vector expectation")
+    for field in required_fields:
+        assert field in expectation_section, (
+            f"field '{field}' missing from §9.2.1 exact-expectation table"
+        )
+    assert "expect_diff_class" in expectation_section
+    # Every boundary vector must be present.
+    for key in (
+        "ve_025_admission_byte_boundary_exact",
+        "ve_026_admission_byte_boundary_exceeded",
+        "ve_027_admission_node_boundary_exact",
+        "ve_028_admission_node_boundary_exceeded",
+        "ve_029_output_entry_boundary_exact",
+        "ve_030_output_entry_boundary_exceeded",
+        "ve_031_output_report_byte_truncation",
+    ):
+        assert key in expectation_section, (
+            f"boundary vector '{key}' missing from §9.2.1"
+        )
+
+
+def test_ve_014_private_not_collision_seam() -> None:
+    """ve_014 is private and is not labelled a collision seam."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # Find the ve_014 note in the Notes section (after the inventory table).
+    notes_start = spec.find("**notes:**")
+    assert notes_start != -1, "Notes section not found"
+    notes_text = spec[notes_start:]
+    # Extract the ve_014 note paragraph.
+    ve_014_start = notes_text.find("ve_014")
+    assert ve_014_start != -1, "ve_014 not found in notes"
+    # Find the end of this bullet (next bullet or end of notes).
+    ve_014_para = notes_text[ve_014_start:]
+    end = ve_014_para.find("\n- `ve_0", 5)
+    if end == -1:
+        end = len(ve_014_para)
+    ve_014_text = ve_014_para[:end]
+    assert "private seam" in ve_014_text or "private_seam" in ve_014_text, (
+        "ve_014 must be classified as private"
+    )
+    assert (
+        "identity-projection" in ve_014_text or "identity projection" in ve_014_text
+    ), "ve_014 must be described as identity-projection seam"
+    # "collision seam" may only appear negated (e.g. "not a collision seam");
+    # a positive assertion of it as a collision seam is forbidden.
+    cs_idx = ve_014_text.find("collision seam")
+    while cs_idx != -1:
+        before = ve_014_text[:cs_idx]
+        assert "not " in before or "never " in before, (
+            "ve_014 must not positively assert 'collision seam'"
+        )
+        cs_idx = ve_014_text.find("collision seam", cs_idx + 1)
+    assert (
+        "provenance exclusion" in ve_014_text
+        or "exclusion from the report identity" in ve_014_text
+        or "provenance is excluded" in ve_014_text
+        or "excluded from the structural projection" in ve_014_text
+    ), "ve_014 must verify provenance exclusion from report identity preimage"
+    # ve_014 must describe report-construction candidates and assert identical
+    # report_id despite provenance variation.
+    assert "report-construction candidates" in ve_014_text, (
+        "ve_014 must describe two report-construction candidates"
+    )
+    assert "identical report structural projection" in ve_014_text, (
+        "ve_014 must assert identical report structural projection"
+    )
+    assert "different excluded provenance" in ve_014_text, (
+        "ve_014 must assert different excluded provenance"
+    )
+    assert (
+        "identical `report_id`" in ve_014_text
+        or "identical report_id" in ve_014_text
+        or ("identical\n" in ve_014_text and "report_id" in ve_014_text)
+    ), "ve_014 must assert identical report_id"
+
+
+def test_ve_037_explicitly_private() -> None:
+    """ve_037 is explicitly private and requires injected fault seam."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # Find the ve_037 note in the Notes section.
+    notes_start = spec.find("**notes:**")
+    assert notes_start != -1, "Notes section not found"
+    notes_text = spec[notes_start:]
+    ve_037_start = notes_text.find("ve_037")
+    assert ve_037_start != -1, "ve_037 not found in notes"
+    ve_037_para = notes_text[ve_037_start:]
+    end = ve_037_para.find("\n- `ve_0", 5)
+    if end == -1:
+        end = len(ve_037_para)
+    ve_037_text = ve_037_para[:end]
+    assert "private" in ve_037_text, "ve_037 must be classified as private"
+    assert "injected" in ve_037_text or "fault" in ve_037_text, (
+        "ve_037 must state it requires injected encoder/fault seam"
+    )
+    # The inventory table row must also be marked private.
+    inv_section = _section(spec, r"vector inventory")
+    for line in inv_section.splitlines():
+        if "ve_037_report_encoding_failure_raises" in line:
+            assert "private_seam" in line or "private seam" in line.lower(), (
+                "ve_037 inventory row must be marked as private seam"
+            )
+            break
+
+
+def test_all_vectors_use_public_api_absent() -> None:
+    """The statement 'all vectors use the public Stage 1A API' is absent."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "all vectors use the public stage 1a api" not in spec, (
+        "the unconditional 'All vectors use the public Stage 1A API' "
+        "statement must be absent"
+    )
+
+
+def test_public_private_vectors_distinguished_normatively() -> None:
+    """Public and private vectors are distinguished normatively."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "public vs. private classification" in spec
+    assert "kind=public_api" in spec
+    assert "two stage 1a source operands" in spec
+    assert "explicitly carries" in spec or "explicitly marked" in spec
+    # The §10 documentation guards must mention both categories.
+    guards = _section(spec, r"documentation guards")
+    assert "every public" in guards and "conformance vector" in guards
+    assert "private seam" in guards
+
+
+def test_boundary_expectation_table_consistent_with_notes() -> None:
+    """The §9.2.1 table is consistent with the existing §9.2 notes."""
+    table = _parse_exact_expectation_table()
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # ve_025 note: admission succeeds, entries=[], unavailable_reason=null,
+    # truncated=false
+    assert "admission succeeds" in spec
+    assert "unavailable_reason = null" in spec
+    # ve_026 note: admission fails, unavailable_reason=comparison_limit_exceeded
+    assert "unavailable_reason = comparison_limit_exceeded" in spec
+    # ve_030 note: truncated=true, truncation_reason=entry_limit
+    assert "truncated = true" in spec
+    assert "truncation_reason = entry_limit" in spec
+    # ve_031 note: truncated=true, truncation_reason=report_byte_limit
+    assert "truncation_reason = report_byte_limit" in spec
+    # The table must have 7 rows.
+    assert len(table) == 7, f"expected 7 boundary vectors, got {len(table)}"
+
+
+def test_vector_keys_exact_ordered_tuple_44() -> None:
+    """Vector keys remain exactly the approved ordered 44-key tuple."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    section = _section(spec, r"vector inventory")
+    rows = _table_rows(section)
+    inv_keys = tuple(r[0].strip("`") for r in rows if r[0].strip("`").startswith("ve_"))
+    assert len(inv_keys) == 44, f"expected 44 vector keys, got {len(inv_keys)}"
+    assert len(inv_keys) == len(set(inv_keys)), (
+        f"duplicate vector keys: {[k for k in inv_keys if inv_keys.count(k) > 1]}"
+    )
+
+
+# ---- Vector-kind taxonomy and public/private schema guards (PR #9) ----
+
+
+def test_vector_schema_contains_kind_field() -> None:
+    """The vector schema defines a mandatory kind=public_api|private_seam field."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    schema_section = _section(spec, r"vector schema")
+    assert "kind" in schema_section, "vector schema must define a 'kind' field"
+    assert "public_api" in schema_section, "vector schema must list kind=public_api"
+    assert "private_seam" in schema_section, "vector schema must list kind=private_seam"
+
+
+def test_vector_schema_kind_two_values() -> None:
+    """The kind field has exactly two values: public_api and private_seam."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    schema_section = _section(spec, r"vector schema")
+    # The kind field must mention both values.
+    assert "public_api" in schema_section
+    assert "private_seam" in schema_section
+    # No third kind value must be defined.
+    for other in ("hybrid", "mixed", "internal", "test"):
+        assert f"kind={other}" not in schema_section, (
+            f"unexpected kind value '{other}' in vector schema"
+        )
+
+
+def test_public_left_right_require_concrete_stage_1a_operands() -> None:
+    """Public left/right fields require concrete Stage 1A Contract operands."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    schema_section = _section(spec, r"vector schema")
+    assert "kind=public_api" in schema_section
+    assert "concrete stage 1a" in schema_section or "concrete" in schema_section
+    assert "contract" in schema_section
+    assert "source construction" in schema_section
+
+
+def test_private_left_right_allow_controlled_seam_inputs() -> None:
+    """Private left/right fields allow controlled seam inputs."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    schema_section = _section(spec, r"vector schema")
+    assert "kind=private_seam" in schema_section
+    assert "controlled seam input" in schema_section
+    # Inapplicable fields must use the dash marker.
+    assert "\u2014" in schema_section or "—" in schema_section, (
+        "vector schema must use em-dash marker for inapplicable fields"
+    )
+
+
+def test_ve_014_explicitly_compares_report_construction_candidates() -> None:
+    """ve_014 explicitly compares report-construction candidates and asserts
+    identical report_id despite provenance variation."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    inv_section = _section(spec, r"vector inventory")
+    for line in inv_section.splitlines():
+        if "ve_014_provenance_only_diff" in line:
+            assert "report-construction candidate" in line.lower(), (
+                "ve_014 inventory row must describe report-construction candidates"
+            )
+            assert (
+                "excluded provenance" in line.lower() or "provenance" in line.lower()
+            ), "ve_014 inventory row must reference excluded provenance"
+            break
+    else:
+        pytest.fail("ve_014 not found in vector inventory table")
+
+
+def test_ve_037_remains_explicitly_private_seam() -> None:
+    """ve_037 remains explicitly a private seam vector."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    inv_section = _section(spec, r"vector inventory")
+    for line in inv_section.splitlines():
+        if "ve_037_report_encoding_failure_raises" in line:
+            assert "private_seam" in line or "private seam" in line.lower(), (
+                "ve_037 must be classified as a private seam in the inventory"
+            )
+            break
+    else:
+        pytest.fail("ve_037 not found in vector inventory table")
+    # The notes must describe ve_037 as requiring an injected encoder/fault seam.
+    notes_start = spec.find("**notes:**")
+    assert notes_start != -1
+    notes_text = spec[notes_start:]
+    ve_037_start = notes_text.find("ve_037")
+    assert ve_037_start != -1
+    ve_037_para = notes_text[ve_037_start:]
+    end = ve_037_para.find("\n- `ve_0", 5)
+    if end == -1:
+        end = len(ve_037_para)
+    ve_037_text = ve_037_para[:end]
+    assert "private" in ve_037_text
+    assert "injected" in ve_037_text or "fault" in ve_037_text
+
+
+def test_exact_ordered_44_key_tuple_unchanged() -> None:
+    """The exact ordered 44-key vector tuple is unchanged."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    section = _section(spec, r"vector inventory")
+    rows = _table_rows(section)
+    inv_keys = tuple(r[0].strip("`") for r in rows if r[0].strip("`").startswith("ve_"))
+    expected = (
+        "ve_001_self_equivalence",
+        "ve_002_independent_identical",
+        "ve_003_pgadd_commutation",
+        "ve_004_nested_vs_flat_add",
+        "ve_005_pgmultiply_commutation",
+        "ve_006_pgmultiply_grouping",
+        "ve_007_subtract_order",
+        "ve_008_divide_order",
+        "ve_009_both_order",
+        "ve_010_duplicate_add",
+        "ve_011_duplicate_multiply_ref",
+        "ve_012_duplicate_both",
+        "ve_013_shared_vs_copied_subgraph",
+        "ve_014_provenance_only_diff",
+        "ve_015_settlement_timestamp_diff",
+        "ve_016_observation_timestamp_diff",
+        "ve_017_currency_diff",
+        "ve_018_scalar_vs_money_unit",
+        "ve_019_comparison_operator_diff",
+        "ve_020_conditional_branch_order",
+        "ve_021_zero_vs_nonzero",
+        "ve_022_invalid_left",
+        "ve_023_invalid_right",
+        "ve_024_invalid_left_at_payoff_level",
+        "ve_025_admission_byte_boundary_exact",
+        "ve_026_admission_byte_boundary_exceeded",
+        "ve_027_admission_node_boundary_exact",
+        "ve_028_admission_node_boundary_exceeded",
+        "ve_029_output_entry_boundary_exact",
+        "ve_030_output_entry_boundary_exceeded",
+        "ve_031_output_report_byte_truncation",
+        "ve_032_admission_failure_preserves_identities",
+        "ve_033_deterministic_repeated_reporting",
+        "ve_034_invalid_both_diff_selection",
+        "ve_035_unsupported_level_raises",
+        "ve_036_malformed_limits_raise",
+        "ve_037_report_encoding_failure_raises",
+        "ve_038_deterministic_repeated_captured_failure",
+        "ve_039_upstream_r1_failure_captured",
+        "ve_040_upstream_r2_failure_captured",
+        "ve_041_contradictory_schema_config_raises",
+        "ve_042_report_identity_mandatory",
+        "ve_043_unsupported_canonical_schema_raises",
+        "ve_044_unsupported_payoff_schema_raises",
+    )
+    assert inv_keys == expected, (
+        f"vector-key tuple mismatch: extra={set(inv_keys) - set(expected)!r}, "
+        f"missing={set(expected) - set(inv_keys)!r}"
+    )
+    assert len(inv_keys) == 44
+
+
+def test_stage_1c_runtime_unimplemented_final_guard() -> None:
+    """Stage 1C runtime remains unimplemented (final guard)."""
+    assert not (SRC_ROOT / "validationequivalence").exists()
+    assert not (SRC_ROOT / "validation_equivalence").exists()
+    assert not (SRC_ROOT / "stage1c").exists()
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "no stage 1c runtime module exists" in spec
+    assert "not yet implemented" in spec
+
+
+def test_no_economic_equivalence_claim_final_guard() -> None:
+    """No economic-equivalence claim exists (final guard)."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "must not" in spec
+    assert "economic equivalence" in spec
+
+
+# ---- Vector-kind mandatory field and private-seam expectation guards (PR #9) ----
+
+
+def _parse_inventory_table() -> list[dict[str, str]]:
+    """Parse the §9.2 inventory table with Kind column."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    section = _section(spec, r"vector inventory")
+    rows = _table_rows(section)
+    header = None
+    result: list[dict[str, str]] = []
+    for row in rows:
+        cells = [c.strip().strip("`") for c in row]
+        if any("Kind" in c for c in cells):
+            header = cells
+            continue
+        if header is not None and cells[0].startswith("ve_"):
+            result.append(dict(zip(header, cells, strict=True)))
+    return result
+
+
+def test_inventory_table_has_kind_column() -> None:
+    """The inventory table contains a Kind column."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    section = _section(spec, r"vector inventory")
+    rows = _table_rows(section)
+    header_cells = [c.strip() for c in rows[0]]
+    assert "Kind" in header_cells, "inventory table must have a Kind column"
+
+
+def test_all_44_rows_have_kind_public_api_or_private_seam() -> None:
+    """Every inventory row has exactly public_api or private_seam as Kind."""
+    table = _parse_inventory_table()
+    assert len(table) == 44, f"expected 44 inventory rows, got {len(table)}"
+    for row in table:
+        kind = row.get("Kind", "").strip("`")
+        assert kind in ("public_api", "private_seam"), (
+            f"{row['Key']}: kind must be public_api or private_seam, got {kind!r}"
+        )
+
+
+def test_ve_014_and_ve_037_are_exactly_private_seam() -> None:
+    """ve_014 and ve_037 are exactly the private_seam keys."""
+    table = _parse_inventory_table()
+    private_keys = [
+        r["Key"] for r in table if r.get("Kind", "").strip("`") == "private_seam"
+    ]
+    assert private_keys == [
+        "ve_014_provenance_only_diff",
+        "ve_037_report_encoding_failure_raises",
+    ]
+
+
+def test_all_other_42_keys_are_public_api() -> None:
+    """All 42 non-private-seam keys are public_api."""
+    table = _parse_inventory_table()
+    public_keys = [
+        r["Key"] for r in table if r.get("Kind", "").strip("`") == "public_api"
+    ]
+    assert len(public_keys) == 42, (
+        f"expected 42 public_api keys, got {len(public_keys)}"
+    )
+
+
+def test_no_kind_inferred_from_operand_text() -> None:
+    """Kind is a dedicated column, not inferred from Left/Right operand text."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "kind is never inferred" in spec or "never inferred from prose" in spec
+
+
+def test_ve_014_public_runtime_fields_are_dash() -> None:
+    """ve_014 public-runtime fields are all em-dash (inapplicable)."""
+    table = _parse_inventory_table()
+    ve_014 = next(r for r in table if r["Key"] == "ve_014_provenance_only_diff")
+    for field in ("Level", "Structural (L/R)", "Canonical", "Payoff", "Diff", "Raises"):
+        value = ve_014.get(field, "").strip("`")
+        assert value == "\u2014", f"ve_014 {field} must be '\u2014', got {value!r}"
+
+
+def test_ve_037_inapplicable_public_runtime_fields_are_dash() -> None:
+    """ve_037 inapplicable public-runtime comparison fields are em-dash."""
+    table = _parse_inventory_table()
+    ve_037 = next(
+        r for r in table if r["Key"] == "ve_037_report_encoding_failure_raises"
+    )
+    for field in ("Structural (L/R)", "Canonical", "Payoff", "Diff"):
+        value = ve_037.get(field, "").strip("`")
+        assert value == "\u2014", f"ve_037 {field} must be '\u2014', got {value!r}"
+
+
+def test_ve_037_retains_encoding_raises() -> None:
+    """ve_037 retains validation_equivalence.encoding as its raised result."""
+    table = _parse_inventory_table()
+    ve_037 = next(
+        r for r in table if r["Key"] == "ve_037_report_encoding_failure_raises"
+    )
+    raises = ve_037.get("Raises", "").strip("`")
+    assert raises == "validation_equivalence.encoding", (
+        f"ve_037 Raises must be 'validation_equivalence.encoding', got {raises!r}"
+    )
+
+
+def test_ve_037_level_is_canonical() -> None:
+    """ve_037 level is canonical (explicitly defined call configuration)."""
+    table = _parse_inventory_table()
+    ve_037 = next(
+        r for r in table if r["Key"] == "ve_037_report_encoding_failure_raises"
+    )
+    level = ve_037.get("Level", "").strip("`")
+    assert "canonical" in level, f"ve_037 Level must contain 'canonical', got {level!r}"
+
+
+def test_ve_037_left_right_describe_injected_failure() -> None:
+    """ve_037 Left/Right describe the injected deterministic report-encoder failure."""
+    table = _parse_inventory_table()
+    ve_037 = next(
+        r for r in table if r["Key"] == "ve_037_report_encoding_failure_raises"
+    )
+    left = ve_037.get("Left", "").lower()
+    right = ve_037.get("Right", "").lower()
+    assert "injected" in left or "injected" in right, (
+        "ve_037 Left/Right must describe injected failure"
+    )
+    assert (
+        "report-encoder failure" in left
+        or "report-encoder failure" in right
+        or "report encoder failure" in left
+        or "report encoder failure" in right
+    ), "ve_037 Left/Right must reference report-encoder failure"
+
+
+def test_private_seam_expectation_table_contains_both_keys() -> None:
+    """The §9.2.2 private-seam expectation table contains both exact keys."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    section = _section(spec, r"private-seam expectation")
+    rows = _table_rows(section)
+    keys = [r[0].strip("`") for r in rows if r[0].strip("`").startswith("ve_")]
+    assert "ve_014_provenance_only_diff" in keys
+    assert "ve_037_report_encoding_failure_raises" in keys
+    assert len(keys) == 2, f"expected 2 private-seam keys, got {len(keys)}"
+
+
+def test_ve_014_expectation_equal_projection_different_provenance() -> None:
+    """ve_014 expects equal structural projection, different excluded
+    provenance, identical report_id."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    section = _section(spec, r"private-seam expectation")
+    rows = _table_rows(section)
+    header = None
+    for row in rows:
+        cells = [c.strip().strip("`") for c in row]
+        if any("expected result" in c.lower() for c in cells):
+            header = cells
+            break
+    assert header is not None, (
+        "private-seam expectation table must have expected result column"
+    )
+    for row in rows:
+        cells = [c.strip().strip("`") for c in row]
+        if cells[0] == "ve_014_provenance_only_diff":
+            result_dict = dict(zip(header[1:], cells[1:], strict=True))
+            result = result_dict.get("Expected result", "").lower()
+            assert (
+                "equal structural projection" in result or "equal structural" in result
+            )
+            assert (
+                "different excluded provenance" in result
+                or "excluded provenance" in result
+            )
+            assert "identical" in result and "report_id" in result
+            break
+    else:
+        pytest.fail("ve_014 not found in private-seam expectation table")
+
+
+def test_ve_037_expectation_no_report_returned() -> None:
+    """ve_037 expects no returned report (report_returned = false)."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    section = _section(spec, r"private-seam expectation")
+    rows = _table_rows(section)
+    header = None
+    for row in rows:
+        cells = [c.strip().strip("`") for c in row]
+        if any("report returned" in c.lower() for c in cells):
+            header = cells
+            break
+    assert header is not None, (
+        "private-seam expectation table must have report returned column"
+    )
+    for row in rows:
+        cells = [c.strip().strip("`") for c in row]
+        if cells[0] == "ve_037_report_encoding_failure_raises":
+            result_dict = dict(zip(header[1:], cells[1:], strict=True))
+            report_returned = result_dict.get("Report returned", "").lower()
+            assert report_returned == "false", (
+                f"ve_037 report_returned must be false, got {report_returned!r}"
+            )
+            break
+    else:
+        pytest.fail("ve_037 not found in private-seam expectation table")

@@ -217,6 +217,80 @@ These mitigations are recorded in the Stage 1B specification and enforced by the
 Stage 1B-R1 canonical runtime and its tests; the payoff-graph runtime mitigations
 land with Stage 1B-R2.
 
+## Validation-equivalence (Stage 1C baseline) threats
+
+Stage 1C introduces graded validation levels, deterministic equivalence reporting,
+and structural diffing over trusted Stage 1B representations. The architecture
+baseline is established in `validation-equivalence-spec.md` and ADR 0008;
+runtimes are planned for Stage 1C-R1 (validation levels and reports) and
+Stage 1C-R2 (deterministic structural diffing). The following threats are
+specific to that design and are mitigated by the specification's rules.
+
+- **Misleading "equivalent" terminology** — a report uses the unqualified word
+  "equivalent" implying economic/legal/accounting/tax/model/suitability
+  equivalence. Mitigated by the report schema: results use the precise enum
+  values `equivalent`, `different`, `not_comparable`, `not_evaluated` at each
+  validation level (`structural`, `canonical`, `payoff`); the display names are
+  distinct from economic claims; the conservative principle (§1 of
+  `validation-equivalence-spec.md`) is binding.
+- **Cross-version equivalence confusion** — a caller assumes cross-version
+  comparison is silently mediated. Mitigated by per-call schema selection: a
+  single `canonical_schema` and a single `payoff_schema` apply to both operands,
+  so a left/right schema-version mismatch is not constructible; an unsupported or
+  contradictory selection raises a caller-owned error rather than returning a
+  misleading report; cross-version representation comparison is explicitly
+  **deferred** to a future separately-specified adapter (separate ADR), never
+  silently mediated.
+- **Unbounded structural diff** — an adversarial pair of large, deeply nested
+  contracts produces an excessively large diff, exhausting memory or CPU.
+  Mitigated by `DiffLimits` admission limits (`max_compared_bytes=2 MiB`,
+  `max_compared_nodes=4096`) evaluated before diffing begins, and output
+  limits (`max_entries=1024`, `max_report_bytes=8 MiB`, `max_path_length=256`)
+  evaluated after successful admission; admission failure returns the report
+  with zero diff entries; deterministic truncation in lexicographic path order
+  with a `truncated` flag and `truncation_reason`.
+- **Non-deterministic diff output** — dictionary or set iteration order varies
+  across runs or Python versions. Mitigated by explicit sort orders: node-table
+  keys by ascending node id; object keys by sorted ASCII byte order; array
+  indices numerically; diff paths in lexicographic order. No `dict`/`set`
+  iteration order is ever relied upon.
+- **Bounded structural-content disclosure in diff** — node add/remove entries
+  contain bounded complete canonical or payoff node records; `/root` and
+  metadata changes contain scalar values. The report never embeds the complete
+  canonical/payoff document as one field, but a sufficiently large non-truncated
+  diff may reveal substantial bounded structural contract content.
+  `diff="none"` is the privacy-preserving option when structural content should
+  not be disclosed. Report consumers must treat diff entries as potentially
+  sensitive contract structure. Captured failures still contain no object repr,
+  traceback, exception text, or malformed object content.
+- **DAG-sharing amplification in diff** — a shared subgraph referenced from
+  many parents appears multiplied in a tree-based diff. Mitigated by diffing
+  the **node table** (one entry per node id), not a tree expansion; a change
+  in a shared node appears once in the node-table diff.
+- **Report identity collision** — two distinct reports hash to the same
+  `validation-equivalence:sha256:` identity. Mitigated by SHA-256 collision
+  resistance assumption; explicit `validation_equivalence.report_collision`
+  error code if same id maps to different structural bytes (mirrors R1/R2
+  collision rule).
+- **Upstream error suppression** — canonicalization or payoff compilation
+  failures are hidden instead of reported per-side. Mitigated by the
+  report-internal error policy: upstream errors are captured in the per-side
+  `failures` array as `{stage, code, classification}` records with the original
+  upstream error code retained; the function returns a complete report and does
+  not raise (caller-owned errors, e.g. unsupported schema selection, raise
+  instead).
+- **Schema version confusion in reports** — a report claims an unknown or
+  unsupported schema version. Mitigated by the report schema version
+  participating in the report identity preimage; consumers reject unknown major
+  versions; the `schema_version` field is echoed in `limits_used`.
+- **Diff path injection** — user-controlled strings appear in diff paths,
+  enabling confusion or injection. Mitigated by path syntax using only ASCII
+  node ids (bare 64-hex) and field names from the trusted schema; no
+  user-supplied strings appear in paths.
+
+These mitigations are recorded in the Stage 1C specification and will be
+enforced by the Stage 1C-R1 and 1C-R2 runtimes and their tests.
+
 ## Supply-chain threats
 
 - Compromised or typosquatted dependencies.
