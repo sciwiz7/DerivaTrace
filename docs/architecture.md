@@ -11,13 +11,15 @@ Implemented** in `derivatrace.payoffgraph` (byte-exact payoff-graph identity,
 deterministic node graph, and provenance). The Stage 1C architecture baseline
 is Established; the validation-equivalence bounded context is specified in
 `validation-equivalence-spec.md` and ADR 0008, with runtimes planned for
-Stage 1C-R1 and 1C-R2. The specifications are in
+Stage 1C-R1 (private validation levels and equivalence reports) and Stage 1C-R2
+(private diff engine; public API only after R2). The specifications are in
 [canonicalization-spec.md](./canonicalization-spec.md),
 [payoff-graph-spec.md](./payoff-graph-spec.md),
 [canonical-test-vectors.md](./canonical-test-vectors.md),
 [validation-equivalence-spec.md](./validation-equivalence-spec.md), and
 [ADR 0007](./adr/0007-canonical-contract-identity-and-payoff-graph.md),
-[ADR 0008](./adr/0008-validation-levels-equivalence-and-structural-diffing.md).
+[ADR 0008](./adr/0008-validation-levels-equivalence-and-structural-diffing.md),
+[ADR 0009](./adr/0009-stage-1c-runtime-delivery-seam.md).
 
 ## Architectural principle
 
@@ -42,8 +44,9 @@ clear responsibility and must not silently absorb another's duty.
 7. **Evidence certificate** — records what was calculated and how.
 8. **Validation-equivalence** — defines graded validation levels, deterministic
    equivalence reporting, and structural diffing over trusted Stage 1B
-   representations. Architecture baseline Established in Stage 1C; runtimes
-   planned for Stage 1C-R1 (reports) and Stage 1C-R2 (diffing).
+   representations. Architecture baseline Established in Stage 1C; private
+   runtimes planned for Stage 1C-R1 (reports) and Stage 1C-R2 (diff engine;
+   public API only after R2).
 
 ## Dependency direction
 

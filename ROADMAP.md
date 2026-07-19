@@ -93,19 +93,25 @@ Stages are marked as:
 ### Stage 1C — Validation levels and equivalence reporting
 
 - **Status:** Architecture baseline Established; Runtimes Planned (Stage 1C-R1:
-  validation levels and equivalence reports; Stage 1C-R2: deterministic
-  structural diffing).
+  private validation levels and equivalence reports; Stage 1C-R2: private
+  diff engine; public API only after R2).
 - **Objective:** Define graded validation levels, deterministic equivalence
   reporting, and structural diffing on top of the canonical form.
 - **Main deliverables:**
   - **Architecture baseline (this increment):** Validation-level taxonomy,
     equivalence report schema, structural-diff specification, versioning and
     compatibility policy, limits and security model, error taxonomy, normative
-    conformance vectors, ADR 0008.
-  - **Stage 1C-R1 (planned):** `compare_contracts` runtime, `ValidationLevel`
-    enum, `ValidationEquivalenceReport` type, `DiffLimits`, error classes.
-  - **Stage 1C-R2 (planned):** Iterative diff algorithm with JSON-Pointer-style
-    paths, operation taxonomy, bounded truncation, deterministic ordering.
+    conformance vectors, ADR 0008, ADR 0009.
+  - **Stage 1C-R1 (planned, private):** `ValidationLevel` enum,
+    `ValidationEquivalenceReport` type, `DiffLimits`, error classes, exact empty
+    diff summary (`diff="none"`), report identity, collision defence, frozen
+    `limits_used` and `schema_metadata` shapes, double-canonicalization
+    consistency rule. No public `compare_contracts` export.
+  - **Stage 1C-R2 (planned, private):** Generic content-addressed document-diff
+    engine applied to both canonical and payoff representations; both
+    `diff="canonical"` and `diff="payoff"`; admission limits, output limits,
+    ordering, paths, truncation. Only then is `compare_contracts` publicly
+    exported with its exact permanent signature and canonical default.
 - **Acceptance criteria:** Validation levels are documented, complete, and
   reproducible; report schema is fully specified; diff representation is
   deterministic and bounded; all vectors have unique keys; no economic-equivalence

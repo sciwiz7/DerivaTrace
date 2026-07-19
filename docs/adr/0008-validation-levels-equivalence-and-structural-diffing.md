@@ -22,6 +22,23 @@ contract representation with byte-exact identity (`canonical:sha256:`). Stage
 (`payoffgraph:sha256:`). Both runtimes are deterministic, bounded, and
 implemented.
 
+**Frozen upstream runtime defaults (Stage 1C inherits and records these exact
+values):**
+
+- `ValidationLimits` (Stage 1A): `max_depth=64`, `max_unique_nodes=4096`.
+- `CanonicalizationLimits` (Stage 1B-R1): reuses `ValidationLimits`; adds
+  `max_canonical_nodes=16384`, `max_canonical_bytes=8_000_000`.
+- `PayoffGraphLimits` (Stage 1B-R2): `max_payoff_nodes=4096`,
+  `max_document_bytes=4_194_304`, `max_structural_bytes=2_097_152`.
+- `DiffLimits` (Stage 1C): admission limits `max_compared_bytes=2_097_152`,
+  `max_compared_nodes=4096`; output limits `max_entries=1024`,
+  `max_report_bytes=8_388_608`, `max_path_length=256`.
+
+Stage 1C uses and records the actual selected upstream runtime limit objects.
+A caller-supplied `None` resolves to the corresponding frozen runtime default.
+Stage 1C does not silently replace Stage 1B defaults. The incorrect
+`4_194_304` canonicalization-byte default is removed.
+
 Stage 1C must now define **graded validation levels** and **equivalence
 reporting** on top of these foundations, plus **deterministic structural
 diffing** over the trusted Stage 1B representations. The goal is to give
@@ -389,6 +406,178 @@ object repr, traceback, exception text, or malformed object content.
 requested evaluation level. A requested comparison blocked by an upstream
 failure is `not_comparable`, never `not_evaluated`.
 
+### 15. Private-R1 / Public-R2 delivery seam
+
+Stage 1C is delivered in two private increments (R1, R2) before the public API
+is exported. The seam between them is specified exactly:
+
+**R1 (private implementation increment):**
+
+- Internal module/package implementation is permitted.
+- **No public `compare_contracts` export.**
+- **No public Stage 1C API claim** in documentation or packaging.
+- Final report schema may be exercised internally.
+- Private report construction uses **only** `diff_representation="none"`.
+- Exact empty diff summary state:
+  ```json
+  {
+    "entries": [],
+    "truncated": false,
+    "truncation_reason": null,
+    "unavailable_reason": null
+  }
+  ```
+- **No temporary unavailable reason** and **no temporary enum value** (such as
+  `diff_not_implemented_r1`) is invented.
+- Public vectors are **not** claimed satisfied.
+- `ve_014_provenance_only_diff` and `ve_037_report_encoding_failure_raises`
+  remain the **exact private-seam vectors**.
+
+**R2 (public implementation increment):**
+
+- Implements **one generic content-addressed document-diff engine**.
+- Applies it to **both** canonical structural documents and payoff structural
+  documents.
+- Implements **both** `diff="canonical"` and `diff="payoff"`.
+- Implements admission limits, output limits, ordering, paths, and truncation.
+- **Only then** exports `compare_contracts` with its exact permanent signature
+  and canonical default `diff: DiffSelection = "canonical"`.
+
+### 16. Frozen limits_used shape
+
+The report echoes the exact limit objects in this exact frozen shape. These
+exact field names and integer values participate in report identity:
+
+```json
+"limits_used": {
+  "validation": {
+    "max_depth": "<exact int>",
+    "max_unique_nodes": "<exact int>"
+  },
+  "canonicalization": {
+    "max_canonical_nodes": "<exact int>",
+    "max_canonical_bytes": "<exact int>"
+  },
+  "payoff": {
+    "max_payoff_nodes": "<exact int>",
+    "max_document_bytes": "<exact int>",
+    "max_structural_bytes": "<exact int>"
+  },
+  "diff": {
+    "max_compared_bytes": "<exact int>",
+    "max_compared_nodes": "<exact int>",
+    "max_entries": "<exact int>",
+    "max_report_bytes": "<exact int>",
+    "max_path_length": "<exact int>"
+  }
+}
+```
+
+### 17. Frozen schema_metadata shape
+
+The report records the exact frozen shape of `schema_metadata`. These exact
+field names and values participate in report identity:
+
+```json
+"schema_metadata": {
+  "canonical": {
+    "schema_name": "derivatrace.contract.canonical",
+    "schema_version": "1.0.0",
+    "node_identity_domain": "derivatrace.canonical.node",
+    "representation_identity_domain": "derivatrace.canonical.contract"
+  },
+  "payoff": {
+    "schema_name": "derivatrace.payoffgraph",
+    "schema_version": "1.0.0",
+    "node_identity_domain": "derivatrace.payoffgraph.node",
+    "representation_identity_domain": "derivatrace.payoffgraph.graph"
+  }
+}
+```
+
+Compiler/runtime tags remain in provenance, not in `schema_metadata`.
+
+### 18. Report collision defence without global state
+
+Report construction computes `structural_bytes` from the complete structural
+projection and computes `report_id` from those bytes. The immutable report
+retains the exact structural bytes privately for integrity and collision checks.
+
+Constructor/factory validation recomputes the identity from structural bytes.
+**No process-global registry, persistent cache, or unbounded mutable state
+exists.**
+
+Collision behaviour:
+
+- If two report objects carry the same `report_id` but different structural
+  bytes, the collision-check seam raises
+  `ValidationEquivalenceReportCollisionError`.
+- Equality returns `False` for different `report_id` values.
+- Equality returns `True` for the same `report_id` and same structural bytes.
+- Equality **raises** `ValidationEquivalenceReportCollisionError` for the same
+  `report_id` with different structural bytes (the forced collision case).
+- `__hash__` remains based on `report_id`.
+- The private digest seam may be monkeypatched in tests to force a collision.
+
+### 19. Double-canonicalization consistency rule
+
+`compile_payoff_graph` accepts a Stage 1A `Contract` and internally canonicalizes
+it. Stage 1C payoff-level processing therefore:
+
+1. First canonicalizes the operand for the canonical comparison.
+2. Then calls `compile_payoff_graph` on the **original** `Contract` using
+   **exactly the same** canonical schema, canonicalization limits, and validation
+   limits.
+3. Verifies `PayoffGraph.source_contract_identity` equals the already-produced
+   `CanonicalContract.identity`.
+4. Treats mismatch or contradictory second-pass canonicalization behaviour as a
+   **Stage 1C internal consistency failure**, not as a fabricated upstream
+   failure.
+5. Captures genuine `payoff_graph.*` operand-owned failures at `stage=payoff`.
+6. **Never** creates a synthetic `payoff_graph.upstream_failure` code.
+7. When canonicalization failed, payoff compilation is **not attempted** and the
+   original canonical failure is recorded once.
+
+### 20. Preserved failure capture rule
+
+Captured failures use the **original upstream error code in its original
+namespace** (`canonicalization.*` or `payoff_graph.*`). Stage 1C must not
+relabel an upstream failure as a Stage 1C error merely because it appears inside
+a Stage 1C report. No synthetic `payoff_graph.upstream_failure` code exists.
+
+### 21. Implementation-phase classification buckets
+
+The following implementation-phase classification distinguishes vector buckets
+without changing any normative `Kind` value:
+
+| Bucket | Description | Count |
+|--------|-------------|-------|
+| `complete_public` | Complete public vector satisfied (public API) | 0 |
+| `supporting_r1_private` | Supporting R1 facts testable privately, but complete public vector unsatisfied | 34 |
+| `private_r1_seam` | Private R1 seam (`ve_014`, `ve_037`) | 2 |
+| `fully_r2_dependent` | Fully R2-dependent (diff engine) | 8 |
+
+The exact private R1 seams are:
+
+- `ve_014_provenance_only_diff`
+- `ve_037_report_encoding_failure_raises`
+
+The exact fully R2-dependent vectors (defining normative behaviour requires the
+R2 diff engine) are:
+
+- `ve_025_admission_byte_boundary_exact`
+- `ve_026_admission_byte_boundary_exceeded`
+- `ve_027_admission_node_boundary_exact`
+- `ve_028_admission_node_boundary_exceeded`
+- `ve_029_output_entry_boundary_exact`
+- `ve_030_output_entry_boundary_exceeded`
+- `ve_031_output_report_byte_truncation`
+- `ve_032_admission_failure_preserves_identities`
+
+No `public_api` vector may be relabelled `private_seam`. The normative `Kind`
+values remain exactly 42 `public_api` and 2 `private_seam`. Bucket counts sum
+to 44.
+
 ---
 
 ## Rejected alternatives
@@ -450,17 +639,28 @@ failure is `not_comparable`, never `not_evaluated`.
   per-level outcomes and a bounded structural diff.
 - No economic-equivalence claim is possible from the report schema or
   vocabulary.
-- Stage 1C-R1 implements `compare_contracts`, `ValidationLevel` enum,
-  `ValidationEquivalenceReport`, `DiffLimits`, and the error taxonomy.
-- Stage 1C-R2 implements the iterative diff algorithm with the specified path
-  syntax and operation taxonomy.
+- Stage 1C-R1 implements `ValidationLevel` enum, `ValidationEquivalenceReport`,
+  `DiffLimits`, and the error taxonomy. **R1 does not export `compare_contracts`.**
+- Stage 1C-R2 implements the generic content-addressed document-diff engine for
+  both canonical and payoff representations, implements both `diff="canonical"`
+  and `diff="payoff"`, implements admission limits, output limits, ordering,
+  paths, and truncation. **Only then** is `compare_contracts` exported with its
+  exact permanent signature and canonical default.
 - Documentation guards in `tests/test_documentation.py` enforce: no
   economic-equivalence language, taxonomy completeness, report/diff schema
   presence, vector key uniqueness, link resolution, consistent status language,
   independent comparison conclusions, closed comparison status taxonomy, single
   captured-failure representation, mandatory `report_id`, content-addressed
   diff model, per-call schema selection (no left/right incompatibility outcome),
-  and cross-version comparison deferral.
+  cross-version comparison deferral, exact frozen upstream defaults, absent
+  incorrect canonicalization default, R1 private seam (no public export, exact
+  no-diff state, no temporary unavailable reason), R2 requires both canonical
+  and payoff diff, frozen `limits_used` shape, frozen `schema_metadata` shape,
+  identity participation of `schema_metadata` and `limits_used`, no global
+  collision registry, explicit collision behaviour, double-canonicalization
+  consistency rule, no synthetic `payoff_graph.upstream_failure` code, 42
+  `public_api` and 2 `private_seam` vectors with exact keys `ve_014` and
+  `ve_037`, all runtime-status guards accurate.
 
 ## Future migration implications
 
