@@ -83,10 +83,10 @@ A level never returns a comparison result for a deeper level than requested:
 requesting `structural` leaves `canonical`/`payoff` statuses `not_evaluated`;
 requesting `canonical` leaves the `payoff` status `not_evaluated`.
 
-When either operand fails Stage 1A validation, all comparison statuses **at or
-deeper than the requested level** are `not_comparable` (reason
-`upstream_stage_failure`); comparison statuses **shallower than the requested
-level** remain `not_evaluated` (reason `shallower_level_requested`):
+When either operand fails Stage 1A validation, all comparison statuses **included
+in the requested progressive evaluation depth** are `not_comparable` (reason
+`upstream_stage_failure`); comparison statuses **strictly deeper than the
+requested level** remain `not_evaluated` (reason `shallower_level_requested`):
 
 - Requested `structural`, either operand invalid: `canonical` =
   `not_evaluated` (shallower_level_requested); `payoff` = `not_evaluated`
@@ -228,7 +228,7 @@ Consequences, binding for Stage 1C v1:
       }
     ],
     "truncated": false,
-    "truncation_reason": "entry_limit | byte_limit | node_limit | path_limit | null",
+    "truncation_reason": "entry_limit | report_byte_limit | path_limit | null",
     "unavailable_reason": "<stable-code> | null"
   },
   "limits_used": {
@@ -781,7 +781,8 @@ Truncation is **deterministic**: entries are produced in the order of §4.14, an
 when a limit is reached iteration stops immediately with `truncated: true` and
 `truncation_reason` set to the limiting factor. Entries already collected are
 retained. Truncation must respect **exact entry and byte boundaries** — the
-entry that would cross `max_entries` or `max_compared_bytes` is not partially
+entry that would cross `max_entries`, `max_report_bytes`, or `max_path_length`
+is not partially
 emitted.
 
 ### 4.16 Bounded entry values
@@ -1050,6 +1051,10 @@ runtime.
 | `expect_canonical` | `equivalent` / `different` / `not_comparable` / `not_evaluated`. |
 | `expect_payoff` | `equivalent` / `different` / `not_comparable` / `not_evaluated`. |
 | `expect_diff_class` | `empty` (no diff) / `remove_add_root` (content-addressed node removals/additions and `/root` change, §4.5) / `truncated` / `none` (diff not requested/unavailable). |
+| `expected_entry_count` | Expected number of diff entries emitted (exact integer or boundary expression). |
+| `expected_truncated` | Expected `truncated` field value in `diff_summary` (`true` / `false`). |
+| `expected_truncation_reason` | Expected `truncation_reason` value (`entry_limit` / `report_byte_limit` / `path_limit` / `null`). |
+| `expected_unavailable_reason` | Expected `unavailable_reason` value (`comparison_limit_exceeded` / `null`). |
 | `raises` | `""` (no raise) or a Stage 1C error code (caller-owned raised case). |
 | `economic_equivalence_claim` | `"never"` (normative: no vector may be described as economically equivalent). |
 
@@ -1059,6 +1064,14 @@ a node-table `remove` of the left id and an `add` of the right id, plus a
 same-node-id leaf `change` entries.
 
 ### 9.2 Vector inventory
+
+**Public vs. private classification.** Every vector in the table below (except
+those explicitly marked *Private seam*) supplies **two** concrete left/right
+source constructions through the public `compare_contracts` Stage 1A API. A
+*Private seam* vector is a fault-injection or report-construction vector
+that cannot be constructed solely from public `compare_contracts` inputs; it
+is included in the same inventory for stable key alignment but is clearly
+labelled.
 
 | Key | Left | Right | Level | Structural (L/R) | Canonical | Payoff | Diff | Raises | Economic eq. |
 |-----|------|-------|-------|------------------|-----------|--------|------|--------|--------------|
@@ -1072,10 +1085,10 @@ same-node-id leaf `change` entries.
 | `ve_008_divide_order` | `Scale(Divide(scalar_A, scalar_B), Payment(obs_A, USD, T0))` | `Scale(Divide(scalar_B, scalar_A), Payment(obs_A, USD, T0))` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
 | `ve_009_both_order` | `Both(Payment(obs_A, USD, T0), Payment(obs_B, USD, T0))` | `Both(Payment(obs_B, USD, T0), Payment(obs_A, USD, T0))` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
 | `ve_010_duplicate_add` | `Payment(Add(obs_A, obs_A), USD, T0)` | `Payment(obs_A, USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
-| `ve_011_duplicate_multiply_ref` | `Scale(Multiply(shared, shared), Payment(obs_A, USD, T0))` where `shared = Observable(scalar_A)` | (no direct counterpart; compare against `ve_005`) | `payoff` | valid / valid | different | different | remove_add_root |  | never |
+| `ve_011_duplicate_multiply_ref` | `Scale(Multiply(obs_scalar_A, obs_scalar_A), Payment(obs_A, USD, T0))` — duplicate ref to `scalar_A` | `Scale(Multiply(obs_scalar_A, obs_scalar_B), Payment(obs_A, USD, T0))` — two distinct scalar observables | `payoff` | valid / valid | different | different | remove_add_root |  | never |
 | `ve_012_duplicate_both` | `Both((shared, shared))` | `Both((shared,))` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
 | `ve_013_shared_vs_copied_subgraph` | `Both((shared, Scale(Num("2",s), shared)))` | `Both((pay1, Scale(Num("2",s), pay2)))` where `shared` = structurally identical | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
-| `ve_014_provenance_only_diff` | Canonical contract A | Canonical contract A (same structure, different provenance only) | `canonical` | valid / valid | equivalent | not_evaluated | empty |  | never |
+| `ve_014_provenance_only_diff` | *Private seam:* CanonicalContract A (injected via report-construction seam) | *Private seam:* CanonicalContract A (same structure, different provenance only) | `canonical` | valid / valid | equivalent | not_evaluated | empty |  | never |
 | `ve_015_settlement_timestamp_diff` | `Payment(Num("1", USD), USD, T0)` | `Payment(Num("1", USD), USD, T0_500ms)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
 | `ve_016_observation_timestamp_diff` | `Payment(Add(obs_A@T0, obs_B@T0), USD, T0)` | `Payment(Add(obs_A@T0_500ms, obs_B@T0), USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
 | `ve_017_currency_diff` | `Payment(Num("1", USD), USD, T0)` | `Payment(Num("1", EUR), EUR, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
@@ -1086,19 +1099,19 @@ same-node-id leaf `change` entries.
 | `ve_022_invalid_left` | `Add(obs_A)` (single operand — invalid) | `Payment(obs_A, USD, T0)` | `structural` | invalid / valid | not_evaluated | not_evaluated | empty |  | never |
 | `ve_023_invalid_right` | `Payment(obs_A, USD, T0)` | `Add(obs_A)` | `structural` | valid / invalid | not_evaluated | not_evaluated | empty |  | never |
 | `ve_024_invalid_left_at_payoff_level` | `Add(obs_A)` (single operand — invalid) | `Payment(obs_A, USD, T0)` | `payoff` | invalid / valid | not_comparable | not_comparable | none |  | never |
-| `ve_025_admission_byte_boundary_exact` | Large contract (exactly `max_compared_bytes` total structural bytes) | Same contract | `payoff` | valid / valid | equivalent | equivalent | none (admission limit reached, zero entries) |  | never |
-| `ve_026_admission_byte_boundary_exceeded` | Large contract (exactly `max_compared_bytes + 1` total structural bytes) | Same contract | `payoff` | valid / valid | equivalent | equivalent | none (admission limit reached, zero entries) |  | never |
-| `ve_027_admission_node_boundary_exact` | Large contract (exactly `max_compared_nodes` combined nodes) | Same contract | `payoff` | valid / valid | equivalent | equivalent | none (admission limit reached, zero entries) |  | never |
-| `ve_028_admission_node_boundary_exceeded` | Large contract (exactly `max_compared_nodes + 1` combined nodes) | Same contract | `payoff` | valid / valid | equivalent | equivalent | none (admission limit reached, zero entries) |  | never |
-| `ve_029_output_entry_boundary_exact` | Large contract producing exactly `max_entries` diff entries | Different contract | `payoff` | valid / valid | different | different | truncated (exact entry boundary) |  | never |
-| `ve_030_output_entry_boundary_exceeded` | Large contract producing `max_entries + 1` diff entries | Different contract | `payoff` | valid / valid | different | different | truncated (one beyond entry boundary) |  | never |
-| `ve_031_output_report_byte_truncation` | Large contract exceeding `max_report_bytes` | Different contract | `payoff` | valid / valid | different | different | truncated (report byte limit) |  | never |
+| `ve_025_admission_byte_boundary_exact` | Large contract (exactly `max_compared_bytes` total structural bytes) | Same contract | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
+| `ve_026_admission_byte_boundary_exceeded` | Large contract (exactly `max_compared_bytes + 1` total structural bytes) | Same contract | `payoff` | valid / valid | equivalent | equivalent | none |  | never |
+| `ve_027_admission_node_boundary_exact` | Large contract (exactly `max_compared_nodes` combined nodes) | Same contract | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
+| `ve_028_admission_node_boundary_exceeded` | Large contract (exactly `max_compared_nodes + 1` combined nodes) | Same contract | `payoff` | valid / valid | equivalent | equivalent | none |  | never |
+| `ve_029_output_entry_boundary_exact` | Large contract producing exactly `max_entries` diff entries | Different contract | `payoff` | valid / valid | different | different | remove_add_root |  | never |
+| `ve_030_output_entry_boundary_exceeded` | Large contract producing `max_entries + 1` diff entries | Different contract | `payoff` | valid / valid | different | different | truncated |  | never |
+| `ve_031_output_report_byte_truncation` | Large contract exceeding `max_report_bytes` | Different contract | `payoff` | valid / valid | different | different | truncated |  | never |
 | `ve_032_admission_failure_preserves_identities` | Large contract exceeding `max_compared_bytes` | Same contract | `payoff` | valid / valid | equivalent | equivalent | none (admission limit preserves identities and statuses) |  | never |
 | `ve_033_deterministic_repeated_reporting` | Contract A | Contract A | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
 | `ve_034_invalid_both_diff_selection` | Contract A | Contract A | `canonical` (diff=`both`) | valid / valid | — | — | — | `validation_equivalence.input` | never |
 | `ve_035_unsupported_level_raises` | Contract A | Contract A | `bogus` | valid / valid | — | — | — | `validation_equivalence.unsupported_level` | never |
 | `ve_036_malformed_limits_raise` | Contract A | Contract A | `canonical` | valid / valid | — | — | — | `validation_equivalence.input` | never |
-| `ve_037_report_encoding_failure_raises` | Contract A | Contract A | `canonical` | valid / valid | — | — | — | `validation_equivalence.encoding` | never |
+| `ve_037_report_encoding_failure_raises` | *Private seam:* Contract A | *Private seam:* Contract A | `canonical` | valid / valid | — | — | — | `validation_equivalence.encoding` | never |
 | `ve_038_deterministic_repeated_captured_failure` | `Add(obs_A)` (single operand — invalid) | `Payment(obs_A, USD, T0)` | `canonical` | invalid / valid | not_comparable | not_evaluated | none |  | never |
 | `ve_039_upstream_r1_failure_captured` | Contract whose R1 canonicalization fails (e.g. internal complexity bound) | `Payment(obs_A, USD, T0)` | `canonical` | valid / valid | not_comparable | not_evaluated | none |  | never |
 | `ve_040_upstream_r2_failure_captured` | Contract whose R2 payoff compilation fails (e.g. payoff complexity bound) | `Payment(obs_A, USD, T0)` | `payoff` | valid / valid | equivalent | not_comparable | none |  | never |
@@ -1113,8 +1126,9 @@ same-node-id leaf `change` entries.
 - `scalar_A`, `scalar_B` are `Observable(ObservableId("macro", "SCALARA|SCALARB", "level"), T0, Unit.scalar())`.
 - `Num("2", scalar)` is `Number(ExactNumber("2"), Unit.scalar())`.
 - `T0` = `2030-01-01T00:00:00.000000Z`; `T0_500ms` = `2030-01-01T00:00:00.500000Z`.
-- All vectors use the public Stage 1A API; `validate_contract` succeeds on every
-  valid source.
+- All public vectors use two Stage 1A source operands. Private seam vectors are
+  explicitly marked and use controlled fault-injection or report-construction
+  seams.
 - The `expect_canonical` and `expect_payoff` values are **predictions** based on
   the Stage 1B specifications; the future runtime will compute and confirm the
   exact identities.
@@ -1142,8 +1156,11 @@ same-node-id leaf `change` entries.
   level**: `left_validation_outcome` = `invalid`, `failures` populated
   (`stage: structural`), `canonical_comparison_status` = `not_comparable`
   (upstream_stage_failure), `payoff_comparison_status` = `not_comparable`
-  (upstream_stage_failure). `not_evaluated` is never used for a comparison at
-  or deeper than the requested level.
+  (upstream_stage_failure). `not_evaluated` is never used for a comparison
+  included in the requested progressive evaluation depth. Binding vocabulary:
+  comparisons included in the requested progressive evaluation depth and
+  blocked by an upstream failure are `not_comparable`; comparisons strictly
+  deeper than the requested level are `not_evaluated`.
 - `ve_043` and `ve_044` demonstrate that an **unsupported** canonical or payoff
   schema selection is a caller-owned **raised** error
   (`validation_equivalence.input`); no report is returned. Because
@@ -1151,10 +1168,14 @@ same-node-id leaf `change` entries.
   schema-version mismatch cannot be constructed.
 - `ve_034` demonstrates that `"both"` is **not** in the v1 `DiffSelection`
   taxonomy; selecting it raises `validation_equivalence.input`.
-- `ve_035`, `ve_036`, `ve_037`, and `ve_041` are **caller-owned raised-error**
-  cases: no report is returned; the listed Stage 1C error code is raised.
-  `ve_041` is a contradictory schema configuration
+- `ve_035`, `ve_036`, and `ve_041` are **caller-owned raised-error** cases:
+  no report is returned; the listed Stage 1C error code is raised. `ve_041`
+  is a contradictory schema configuration
   (`validation_equivalence.incompatible_schemas`).
+- `ve_037` is a **private seam** vector: deterministic report-encoding failure
+  requires an injected encoder/fault seam and is not constructible through
+  normal public Stage 1A operands alone. No report is returned;
+  `validation_equivalence.encoding` is raised.
 - `ve_038` demonstrates a **deterministic repeated failed-operand report** at
   requested `canonical` level: an upstream Stage 1A failure is captured
   (`canonical_comparison_status` = `not_comparable`,
@@ -1165,19 +1186,57 @@ same-node-id leaf `change` entries.
   (`canonicalization.*` / `payoff_graph.*`); no Stage 1C error is raised.
 - `ve_033` and `ve_042` demonstrate that `report_id` is **mandatory,
   non-null, and deterministic** on every successfully returned report.
-- `ve_014` demonstrates that provenance-only variation does **not** affect
-  `report_id` (provenance is excluded from the structural projection, §7).
+- `ve_014` is a **private seam** vector (report-construction /
+  identity-projection seam): it is **not** constructible through the public
+  `compare_contracts` v1 API because ordinary `compare_contracts` cannot
+  accept a `CanonicalContract` input or caller-controlled provenance. It
+  verifies that provenance exclusion from the report identity preimage holds
+  (provenance is excluded from the structural projection, §7). It is not a
+  collision seam.
 - `ve_025`–`ve_028` demonstrate **admission limits** (`max_compared_bytes`,
-  `max_compared_nodes`): when exceeded, the report is returned with zero diff
-  entries, `truncated: false`, and `unavailable_reason: comparison_limit_exceeded`;
-  equivalence statuses and identities remain available.
+  `max_compared_nodes`):
+  - `ve_025` (exact `max_compared_bytes`): admission succeeds;
+    `entries = []`; `unavailable_reason = null`; `truncated = false`.
+  - `ve_026` (`max_compared_bytes + 1`): admission fails;
+    `entries = []`; `unavailable_reason = comparison_limit_exceeded`;
+    `truncated = false`.
+  - `ve_027` (exact `max_compared_nodes`): admission succeeds;
+    `entries = []`; `unavailable_reason = null`; `truncated = false`.
+  - `ve_028` (`max_compared_nodes + 1`): admission fails;
+    `entries = []`; `unavailable_reason = comparison_limit_exceeded`;
+    `truncated = false`.
+  In all four cases equivalence statuses and identities remain available.
 - `ve_029`–`ve_031` demonstrate **output limits** (`max_entries`,
-  `max_report_bytes`): when exceeded, the report retains the deterministic
-  accepted prefix and sets `truncated: true` with the precise reason.
+  `max_report_bytes`, `max_path_length`):
+  - `ve_029` (exactly `max_entries` entries): all `max_entries` entries
+    emitted; `truncated = false`; `truncation_reason = null`.
+  - `ve_030` (`max_entries + 1` entries): exactly `max_entries` entries
+    emitted; `truncated = true`; `truncation_reason = entry_limit`.
+  - `ve_031` (exceeds `max_report_bytes`): `truncated = true`;
+    `truncation_reason = report_byte_limit`.
+  Truncation reasons contain only output-limit reasons: `entry_limit`,
+  `report_byte_limit`, `path_limit`. Admission-limit excess never sets
+  `truncated = true`.
 - `ve_032` demonstrates that an admission-limit failure preserves comparison
   identities and statuses.
 - Every vector explicitly states `economic_equivalence_claim: "never"`.
 - No vector establishes economic equivalence.
+
+#### 9.2.1 Exact boundary-vector expectations
+
+The following table specifies normative expectations for the boundary
+vectors `ve_025` through `ve_031`. These fields are part of each vector
+record and must not contradict the summary inventory table.
+
+| Key | expect_diff_class | expected_entry_count | expected_truncated | expected_truncation_reason | expected_unavailable_reason |
+|-----|-------------------|---------------------|--------------------|---------------------------|----------------------------|
+| `ve_025_admission_byte_boundary_exact` | `empty` | 0 | false | null | null |
+| `ve_026_admission_byte_boundary_exceeded` | `none` | 0 | false | null | `comparison_limit_exceeded` |
+| `ve_027_admission_node_boundary_exact` | `empty` | 0 | false | null | null |
+| `ve_028_admission_node_boundary_exceeded` | `none` | 0 | false | null | `comparison_limit_exceeded` |
+| `ve_029_output_entry_boundary_exact` | `remove_add_root` | `max_entries` | false | null | null |
+| `ve_030_output_entry_boundary_exceeded` | `truncated` | `max_entries` | true | `entry_limit` | null |
+| `ve_031_output_report_byte_truncation` | `truncated` | `deterministic_prefix_length` | true | `report_byte_limit` | null |
 
 ## 10. Documentation guards (normative)
 
@@ -1252,7 +1311,7 @@ merged. They are enforced by `tests/test_documentation.py`:
   `payoff` = `not_evaluated` (shallower_level_requested); requested `payoff`
   → `canonical` = `not_comparable` (upstream_stage_failure), `payoff` =
   `not_comparable` (upstream_stage_failure). `not_evaluated` is used only for
-  comparisons shallower than the requested level.
+  comparisons strictly deeper than the requested level.
 - Cross-version representation comparison is **deferred** to a future
   separately-specified adapter described in a separate ADR; no Stage 1C
   cross-version report or adapter exists.
@@ -1268,3 +1327,20 @@ merged. They are enforced by `tests/test_documentation.py`:
 - The wording "payoff equivalence subsumes canonical equivalence", "payoff
   equivalence proves canonical equivalence", and "the R1-to-R2 mapping is
   permanently injective" does not appear.
+- The inverted depth wording "comparison statuses shallower than the requested
+  level remain not_evaluated" and "not_evaluated is used only when the
+  comparison is shallower than the requested evaluation level" does not appear.
+- The inverted depth wording "not_evaluated is never used for a comparison at
+  or deeper than the requested level" does not appear.
+- Truncation reasons contain only output-limit reasons (`entry_limit`,
+  `report_byte_limit`, `path_limit`); `byte_limit` and `node_limit` do not
+  appear in the truncation-reason taxonomy.
+- Admission-limit excess never sets `truncated = true`; admission-limit
+  excess sets `unavailable_reason: comparison_limit_exceeded` with
+  `truncated: false`.
+- `§4.15` does not name `max_compared_bytes` as an output truncation boundary.
+- Every public API conformance vector supplies two concrete left/right source
+  constructions through the public `compare_contracts` Stage 1A API.
+- `ve_014_provenance_only_diff` and `ve_037_report_encoding_failure_raises`
+  are classified as private seam vectors (fault-injection / report-construction
+  seam), not as public API conformance vectors.

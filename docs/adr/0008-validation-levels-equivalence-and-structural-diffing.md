@@ -286,7 +286,7 @@ Use another exact distinction only if it is demonstrably non-overlapping.
 
 ### 10. Updated conformance vectors
 
-Retain the existing 35 vector keys (§9.2 of the spec) unless a split requires
+Retain the existing 44 vector keys (§9.2 of the spec) unless a split requires
 additional vectors. At minimum update or add cases for:
 
 - `structural` level produces canonical/payoff status `not_evaluated`.
@@ -385,7 +385,7 @@ object repr, traceback, exception text, or malformed object content.
   result when both R1 representations exist; payoff = `not_comparable` /
   `upstream_stage_failure`
 
-`not_evaluated` is used only when the comparison is shallower than the
+`not_evaluated` is used only when the comparison is strictly deeper than the
 requested evaluation level. A requested comparison blocked by an upstream
 failure is `not_comparable`, never `not_evaluated`.
 
@@ -411,8 +411,11 @@ failure is `not_comparable`, never `not_evaluated`.
    call stack. Iterative with explicit stack is required.
 
 5. **Unbounded full-content reports** — Rejected. DoS vector. Diff entries
-   carry only leaf values; `DiffLimits` bounds entries, bytes, nodes, path
-   length. Truncation is deterministic.
+   carry bounded complete node records for node add/remove entries, and scalar
+   values for root and metadata changes; the full structural document is not
+   embedded as one field; `diff="none"` is the privacy-preserving option.
+   `DiffLimits` bounds entries, bytes, nodes, path length. Truncation is
+   deterministic.
 
 6. **Ignoring schema-version differences** — Rejected. Schema version
    participates in identity (ADR 0007). Cross-version comparison is deferred to

@@ -1969,6 +1969,11 @@ def test_stage_1c_documentation_guards_enforced() -> None:
         "does not claim leaf-only diffs",
         "privacy-preserving",
         "canonicalization was not requested or failed",
+        "inverted depth wording",
+        "truncation reasons contain only output-limit reasons",
+        "admission-limit excess never sets",
+        "every public api conformance vector",
+        "private seam vector",
     ]:
         assert guard in spec, f"documentation guard '{guard}' missing from spec"
 
@@ -2175,14 +2180,22 @@ def test_r1_failure_under_payoff_makes_payoff_not_comparable() -> None:
     assert "upstream_stage_failure" in spec
 
 
-def test_not_evaluated_only_for_shallower_depth() -> None:
-    """not_evaluated is used only for shallower requested depth."""
+def test_not_evaluated_only_for_deeper_comparisons() -> None:
+    """not_evaluated is used only for comparisons deeper than requested."""
     spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
     assert "not_evaluated" in spec
-    assert "shallower" in spec
+    assert "deeper" in spec
     # not_evaluated must not appear in the validation-outcome taxonomy.
     outcome_section = _section(spec, r"validation outcome taxonomy")
     assert "not_evaluated" not in outcome_section
+    # The inverted phrases must not appear in the spec body (excluding §10
+    # documentation guards which quote them in a negation context).
+    guards_section = _section(spec, r"documentation guards")
+    spec_body = spec.replace(guards_section, "")
+    inv1 = "comparison statuses shallower than the requested"
+    inv2 = "comparison is shallower than the requested evaluation"
+    assert inv1 not in spec_body
+    assert inv2 not in spec_body
 
 
 def test_stage_1a_outcomes_exactly_valid_invalid() -> None:
@@ -2378,7 +2391,7 @@ def test_invalid_stage1a_propagation_canonical_level() -> None:
     assert "requested `canonical`, either operand invalid" in beh_section
     # Canonical is at the requested level → not_comparable / upstream_stage_failure.
     assert "not_comparable" in beh_section
-    # Payoff is shallower than requested → not_evaluated / shallower_level_requested.
+    # Payoff is deeper than requested → not_evaluated / shallower_level_requested.
     # The row must contain both not_comparable and not_evaluated.
     # Extract the canonical-level row.
     for line in beh_section.splitlines():
@@ -2420,3 +2433,510 @@ def test_not_evaluated_never_for_blocked_comparison() -> None:
     assert "requested `structural`, either operand invalid" in spec
     assert "requested `canonical`, either operand invalid" in spec
     assert "requested `payoff`, either operand invalid" in spec
+
+
+# ---- Final published-spec consistency correction guards (PR #9) ----
+
+
+def test_depth_wording_not_inverted() -> None:
+    """Inverted depth phrases must not appear in spec or ADR."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    inv1 = "comparison statuses shallower than the requested level"
+    inv2 = "comparison is shallower than the requested evaluation level"
+    inv3 = "at or deeper than the requested level"
+    # Exclude §10 documentation guards which quote the forbidden phrases
+    # in a negation context ("does not appear").
+    guards_section = _section(spec, r"documentation guards")
+    spec_body = spec.replace(guards_section, "")
+    for phrase in (inv1, inv2, inv3):
+        assert phrase not in spec_body, f"inverted phrase in spec body: {phrase}"
+        assert phrase not in adr, f"inverted phrase in ADR: {phrase}"
+
+
+def test_truncation_reasons_only_output_limit_reasons() -> None:
+    """Truncation reasons contain only output-limit reasons."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # The correct taxonomy.
+    for reason in ("entry_limit", "report_byte_limit", "path_limit"):
+        assert reason in spec, f"truncation reason '{reason}' missing from spec"
+    # Stale admission-limit reasons must not appear in the JSON example.
+    # Use word-boundary check: "byte_limit" only as part of
+    # "report_byte_limit", "node_limit" must not appear as truncation reason.
+    import re as _re
+
+    json_section = _section(spec, r"exact report fields")
+    assert not _re.search(r"(?<!report_)byte_limit", json_section), (
+        "stale standalone 'byte_limit' in JSON truncation_reason taxonomy"
+    )
+    assert "node_limit" not in json_section, (
+        "stale 'node_limit' in JSON truncation_reason taxonomy"
+    )
+
+
+def test_admission_limit_excess_cannot_set_truncated_true() -> None:
+    """Admission-limit excess sets unavailable_reason, never truncated=true."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # The spec must state admission failure does not truncate.
+    assert "admission" in spec
+    assert "truncated: false" in spec or "truncated = false" in spec
+    # The notes for ve_025-ve_028 must specify exact boundary expectations.
+    assert "admission succeeds" in spec
+    assert "unavailable_reason = null" in spec
+    assert "unavailable_reason = comparison_limit_exceeded" in spec
+    # The documentation guard must exist.
+    assert "admission-limit excess never sets" in spec
+
+
+def test_exact_admission_boundaries_succeed() -> None:
+    """Exact max_compared_bytes and max_compared_nodes admission succeeds."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # The notes for ve_025 and ve_027 must state admission succeeds with
+    # unavailable_reason = null and truncated = false.
+    assert "ve_025" in spec
+    assert "ve_027" in spec
+
+
+def test_exact_max_entries_does_not_truncate() -> None:
+    """Exactly max_entries entries: truncated = false, truncation_reason = null."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # ve_029 note must specify truncated = false.
+    assert "ve_029" in spec
+    assert "truncated = false" in spec
+    assert "truncation_reason = null" in spec
+
+
+def test_max_entries_plus_one_truncates_at_exact_max_entries() -> None:
+    """max_entries + 1: exactly max_entries emitted, truncated = true,
+    truncation_reason = entry_limit."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # ve_030 note must specify exact boundary.
+    assert "ve_030" in spec
+    assert "truncated = true" in spec
+    assert "truncation_reason = entry_limit" in spec
+    assert "exactly `max_entries` entries" in spec
+
+
+def test_adr_states_44_vectors_not_35() -> None:
+    """ADR states 44 vectors, not 35."""
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    assert "44 vector" in adr
+    assert "35 vector" not in adr
+
+
+def test_adr_does_not_claim_leaf_only_diff_contents() -> None:
+    """ADR rejected alternatives do not claim leaf-only diff contents."""
+    adr = _ADR_0008.read_text(encoding="utf-8").lower()
+    # The old "carry only leaf values" claim must not appear.
+    assert "carry only leaf" not in adr
+    # The corrected "bounded complete node records" must appear.
+    assert "bounded complete node records" in adr
+
+
+def test_every_public_vector_has_two_concrete_source_constructions() -> None:
+    """Every public vector has two concrete public source constructions."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    # ve_011 must have a concrete right construction, not a cross-reference.
+    assert (
+        "compare against" not in spec.lower()
+        or "compare against" not in _section(spec, r"vector inventory").lower()
+    )
+    # ve_011 right must be a concrete construction.
+    inv_section = _section(spec, r"vector inventory")
+    for line in inv_section.splitlines():
+        if "ve_011_duplicate_multiply_ref" in line:
+            assert "no direct counterpart" not in line.lower(), (
+                "ve_011 still has no concrete right construction"
+            )
+            break
+
+
+def test_provenance_and_fault_injection_vectors_classified_private() -> None:
+    """Provenance-only and fault-injection vectors are private seams."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # ve_014 must be marked as a private seam.
+    inv_section = _section(spec, r"vector inventory")
+    for line in inv_section.splitlines():
+        if "ve_014_provenance_only_diff" in line:
+            assert "private seam" in line.lower(), (
+                "ve_014 must be classified as a private seam vector"
+            )
+            break
+    # ve_037 must be marked as a private seam.
+    for line in inv_section.splitlines():
+        if "ve_037_report_encoding_failure_raises" in line:
+            assert "private seam" in line.lower(), (
+                "ve_037 must be classified as a private seam vector"
+            )
+            break
+    # The spec must document the public/private distinction.
+    assert "private seam" in spec
+    assert "fault-injection" in spec or "report-construction seam" in spec
+
+
+def test_section_4_15_does_not_name_max_compared_bytes_as_output_boundary() -> None:
+    """§4.15 does not name max_compared_bytes as an output truncation boundary."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    trunc_section = _section(spec, r"truncation behaviour")
+    assert "max_compared_bytes" not in trunc_section, (
+        "§4.15 still names max_compared_bytes as output truncation boundary"
+    )
+    # The correct output boundaries must be listed.
+    assert "max_entries" in trunc_section
+    assert "max_report_bytes" in trunc_section
+    assert "max_path_length" in trunc_section
+
+
+def test_byte_limit_and_node_limit_absent_from_truncation_taxonomy() -> None:
+    """byte_limit and node_limit are removed from truncation-reason taxonomy."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    # In the JSON example, the truncation_reason field must not contain
+    # standalone byte_limit or node_limit.
+    import re as _re
+
+    json_example = _section(spec, r"exact report fields")
+    for line in json_example.splitlines():
+        if "truncation_reason" in line:
+            assert "node_limit" not in line, (
+                "stale 'node_limit' still in truncation_reason taxonomy"
+            )
+            # "byte_limit" only allowed as part of "report_byte_limit"
+            assert not _re.search(r"(?<!report_)byte_limit", line), (
+                "stale standalone 'byte_limit' in truncation_reason taxonomy"
+            )
+
+
+def test_ve_025_through_ve_030_exact_boundary_expectations_documented() -> None:
+    """Exact boundary expectations for ve_025-ve_030 are documented."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # Admission boundaries.
+    for key in ("ve_025", "ve_026", "ve_027", "ve_028"):
+        assert key in spec, f"vector key '{key}' missing from spec"
+    # Output boundaries.
+    for key in ("ve_029", "ve_030"):
+        assert key in spec, f"vector key '{key}' missing from spec"
+    # ve_031 report byte truncation.
+    assert "ve_031" in spec
+
+
+def test_ve_011_has_concrete_left_and_right() -> None:
+    """ve_011 has concrete left and right constructions."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    inv_section = _section(spec, r"vector inventory")
+    for line in inv_section.splitlines():
+        if "ve_011_duplicate_multiply_ref" in line:
+            # Both left and right must be concrete constructions.
+            assert "Scalar" in line or "scalar" in line.lower(), (
+                "ve_011 must reference scalar observables"
+            )
+            assert "no direct counterpart" not in line.lower()
+            assert "compare against" not in line.lower()
+            break
+
+
+def test_vector_schema_has_exact_boundary_fields() -> None:
+    """Vector schema includes expected_entry_count, expected_truncated, etc."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    schema_section = _section(spec, r"vector schema")
+    for field in (
+        "expected_entry_count",
+        "expected_truncated",
+        "expected_truncation_reason",
+        "expected_unavailable_reason",
+    ):
+        assert field in schema_section, (
+            f"vector schema field '{field}' missing from §9.1"
+        )
+
+
+# ---- Final narrow consistency correction guards (PR #9) ----
+
+
+def _parse_exact_expectation_table() -> dict[str, dict[str, str]]:
+    """Parse the §9.2.1 exact boundary-vector expectation table."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    section = _section(spec, r"exact boundary-vector expectation")
+    rows = _table_rows(section)
+    header = None
+    result: dict[str, dict[str, str]] = {}
+    for row in rows:
+        cells = [c.strip().strip("`") for c in row]
+        if any("expect_diff_class" in c for c in cells):
+            header = cells
+            continue
+        if header is not None and cells[0].startswith("ve_"):
+            key = cells[0]
+            result[key] = dict(zip(header[1:], cells[1:], strict=True))
+    return result
+
+
+def test_ve_024_note_no_inverted_at_or_deeper() -> None:
+    """The ve_024 note must not contain 'at or deeper than the requested level'."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    # Find the ve_024 note in the spec notes section.
+    in_ve_024 = False
+    for line in spec.splitlines():
+        if "ve_024" in line and "demonstrates" in line.lower():
+            in_ve_024 = True
+        if in_ve_024:
+            assert "at or deeper than the requested level" not in line.lower(), (
+                "ve_024 note still contains inverted 'at or deeper' phrase"
+            )
+        if in_ve_024 and line.startswith("- ") and "ve_024" not in line:
+            break
+    # The corrected wording must be present somewhere in the spec.
+    assert "included in the requested progressive evaluation depth" in spec.lower()
+
+
+def test_ve_025_ve_027_are_available_empty_diffs() -> None:
+    """ve_025 and ve_027 produce available empty diffs, not unavailable none."""
+    table = _parse_exact_expectation_table()
+    for key in (
+        "ve_025_admission_byte_boundary_exact",
+        "ve_027_admission_node_boundary_exact",
+    ):
+        assert key in table, f"vector '{key}' missing from exact-expectation table"
+        assert table[key]["expect_diff_class"] == "empty", (
+            f"{key}: expect_diff_class must be 'empty', "
+            f"got {table[key]['expect_diff_class']}"
+        )
+        assert table[key]["expected_unavailable_reason"] == "null", (
+            f"{key}: expected_unavailable_reason must be null, "
+            f"got {table[key]['expected_unavailable_reason']}"
+        )
+
+
+def test_ve_026_ve_028_have_comparison_limit_exceeded() -> None:
+    """ve_026 and ve_028 have comparison_limit_exceeded and truncated=false."""
+    table = _parse_exact_expectation_table()
+    for key in (
+        "ve_026_admission_byte_boundary_exceeded",
+        "ve_028_admission_node_boundary_exceeded",
+    ):
+        assert key in table, f"vector '{key}' missing from exact-expectation table"
+        assert table[key]["expect_diff_class"] == "none", (
+            f"{key}: expect_diff_class must be 'none'"
+        )
+        assert table[key]["expected_truncated"] == "false", (
+            f"{key}: expected_truncated must be false"
+        )
+        assert (
+            table[key]["expected_unavailable_reason"] == "comparison_limit_exceeded"
+        ), f"{key}: expected_unavailable_reason must be comparison_limit_exceeded"
+
+
+def test_ve_029_boundary_exact_no_truncation() -> None:
+    """ve_029 has exactly max_entries entries and truncated=false."""
+    table = _parse_exact_expectation_table()
+    key = "ve_029_output_entry_boundary_exact"
+    assert key in table, f"vector '{key}' missing from exact-expectation table"
+    assert table[key]["expect_diff_class"] == "remove_add_root", (
+        f"{key}: expect_diff_class must be 'remove_add_root', "
+        f"got {table[key]['expect_diff_class']}"
+    )
+    assert table[key]["expected_entry_count"] == "max_entries", (
+        f"{key}: expected_entry_count must be max_entries"
+    )
+    assert table[key]["expected_truncated"] == "false", (
+        f"{key}: expected_truncated must be false"
+    )
+    assert table[key]["expected_truncation_reason"] == "null", (
+        f"{key}: expected_truncation_reason must be null"
+    )
+
+
+def test_ve_030_boundary_exceeded_truncates_at_max_entries() -> None:
+    """ve_030 has max_entries entries, truncated=true, entry_limit."""
+    table = _parse_exact_expectation_table()
+    key = "ve_030_output_entry_boundary_exceeded"
+    assert key in table, f"vector '{key}' missing from exact-expectation table"
+    assert table[key]["expect_diff_class"] == "truncated", (
+        f"{key}: expect_diff_class must be 'truncated'"
+    )
+    assert table[key]["expected_entry_count"] == "max_entries", (
+        f"{key}: expected_entry_count must be max_entries"
+    )
+    assert table[key]["expected_truncated"] == "true", (
+        f"{key}: expected_truncated must be true"
+    )
+    assert table[key]["expected_truncation_reason"] == "entry_limit", (
+        f"{key}: expected_truncation_reason must be entry_limit"
+    )
+    assert table[key]["expected_unavailable_reason"] == "null", (
+        f"{key}: expected_unavailable_reason must be null"
+    )
+
+
+def test_ve_031_report_byte_truncation() -> None:
+    """ve_031 has truncated=true and report_byte_limit."""
+    table = _parse_exact_expectation_table()
+    key = "ve_031_output_report_byte_truncation"
+    assert key in table, f"vector '{key}' missing from exact-expectation table"
+    assert table[key]["expect_diff_class"] == "truncated", (
+        f"{key}: expect_diff_class must be 'truncated'"
+    )
+    assert table[key]["expected_truncated"] == "true", (
+        f"{key}: expected_truncated must be true"
+    )
+    assert table[key]["expected_truncation_reason"] == "report_byte_limit", (
+        f"{key}: expected_truncation_reason must be report_byte_limit"
+    )
+    assert table[key]["expected_unavailable_reason"] == "null", (
+        f"{key}: expected_unavailable_reason must be null"
+    )
+
+
+def test_all_vector_schema_fields_represented_in_expectation_table() -> None:
+    """Every declared vector-schema field is represented in §9.2.1."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    schema_section = _section(spec, r"vector schema")
+    required_fields = [
+        "expected_entry_count",
+        "expected_truncated",
+        "expected_truncation_reason",
+        "expected_unavailable_reason",
+    ]
+    for field in required_fields:
+        assert field in schema_section, (
+            f"vector schema field '{field}' missing from §9.1"
+        )
+    # The exact-expectation table must exist and contain all four fields
+    # as column headers.
+    expectation_section = _section(spec, r"exact boundary-vector expectation")
+    for field in required_fields:
+        assert field in expectation_section, (
+            f"field '{field}' missing from §9.2.1 exact-expectation table"
+        )
+    assert "expect_diff_class" in expectation_section
+    # Every boundary vector must be present.
+    for key in (
+        "ve_025_admission_byte_boundary_exact",
+        "ve_026_admission_byte_boundary_exceeded",
+        "ve_027_admission_node_boundary_exact",
+        "ve_028_admission_node_boundary_exceeded",
+        "ve_029_output_entry_boundary_exact",
+        "ve_030_output_entry_boundary_exceeded",
+        "ve_031_output_report_byte_truncation",
+    ):
+        assert key in expectation_section, (
+            f"boundary vector '{key}' missing from §9.2.1"
+        )
+
+
+def test_ve_014_private_not_collision_seam() -> None:
+    """ve_014 is private and is not labelled a collision seam."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # Find the ve_014 note in the Notes section (after the inventory table).
+    notes_start = spec.find("**notes:**")
+    assert notes_start != -1, "Notes section not found"
+    notes_text = spec[notes_start:]
+    # Extract the ve_014 note paragraph.
+    ve_014_start = notes_text.find("ve_014")
+    assert ve_014_start != -1, "ve_014 not found in notes"
+    # Find the end of this bullet (next bullet or end of notes).
+    ve_014_para = notes_text[ve_014_start:]
+    end = ve_014_para.find("\n- `ve_0", 5)
+    if end == -1:
+        end = len(ve_014_para)
+    ve_014_text = ve_014_para[:end]
+    assert "private seam" in ve_014_text, "ve_014 must be classified as private"
+    assert (
+        "identity-projection" in ve_014_text or "identity projection" in ve_014_text
+    ), "ve_014 must be described as identity-projection seam"
+    # "collision seam" may only appear negated (e.g. "not a collision seam");
+    # a positive assertion of it as a collision seam is forbidden.
+    cs_idx = ve_014_text.find("collision seam")
+    while cs_idx != -1:
+        before = ve_014_text[:cs_idx]
+        assert "not " in before or "never " in before, (
+            "ve_014 must not positively assert 'collision seam'"
+        )
+        cs_idx = ve_014_text.find("collision seam", cs_idx + 1)
+    assert (
+        "provenance exclusion" in ve_014_text
+        or "exclusion from the report identity" in ve_014_text
+    ), "ve_014 must verify provenance exclusion from report identity preimage"
+    assert (
+        "provenance exclusion" in ve_014_text
+        or "exclusion from the report identity" in ve_014_text
+    ), "ve_014 must verify provenance exclusion from report identity preimage"
+
+
+def test_ve_037_explicitly_private() -> None:
+    """ve_037 is explicitly private and requires injected fault seam."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # Find the ve_037 note in the Notes section.
+    notes_start = spec.find("**notes:**")
+    assert notes_start != -1, "Notes section not found"
+    notes_text = spec[notes_start:]
+    ve_037_start = notes_text.find("ve_037")
+    assert ve_037_start != -1, "ve_037 not found in notes"
+    ve_037_para = notes_text[ve_037_start:]
+    end = ve_037_para.find("\n- `ve_0", 5)
+    if end == -1:
+        end = len(ve_037_para)
+    ve_037_text = ve_037_para[:end]
+    assert "private" in ve_037_text, "ve_037 must be classified as private"
+    assert "injected" in ve_037_text or "fault" in ve_037_text, (
+        "ve_037 must state it requires injected encoder/fault seam"
+    )
+    # The inventory table row must also be marked private.
+    inv_section = _section(spec, r"vector inventory")
+    for line in inv_section.splitlines():
+        if "ve_037_report_encoding_failure_raises" in line:
+            assert "private seam" in line.lower(), (
+                "ve_037 inventory row must be marked as private seam"
+            )
+            break
+
+
+def test_all_vectors_use_public_api_absent() -> None:
+    """The statement 'all vectors use the public Stage 1A API' is absent."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "all vectors use the public stage 1a api" not in spec, (
+        "the unconditional 'All vectors use the public Stage 1A API' "
+        "statement must be absent"
+    )
+
+
+def test_public_private_vectors_distinguished_normatively() -> None:
+    """Public and private vectors are distinguished normatively."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "public vs. private classification" in spec
+    assert "all public vectors use two stage 1a source operands" in spec
+    assert "explicitly marked" in spec
+    # The §10 documentation guards must mention both categories.
+    guards = _section(spec, r"documentation guards")
+    assert "every public" in guards and "conformance vector" in guards
+    assert "private seam" in guards
+
+
+def test_boundary_expectation_table_consistent_with_notes() -> None:
+    """The §9.2.1 table is consistent with the existing §9.2 notes."""
+    table = _parse_exact_expectation_table()
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    # ve_025 note: admission succeeds, entries=[], unavailable_reason=null,
+    # truncated=false
+    assert "admission succeeds" in spec
+    assert "unavailable_reason = null" in spec
+    # ve_026 note: admission fails, unavailable_reason=comparison_limit_exceeded
+    assert "unavailable_reason = comparison_limit_exceeded" in spec
+    # ve_030 note: truncated=true, truncation_reason=entry_limit
+    assert "truncated = true" in spec
+    assert "truncation_reason = entry_limit" in spec
+    # ve_031 note: truncated=true, truncation_reason=report_byte_limit
+    assert "truncation_reason = report_byte_limit" in spec
+    # The table must have 7 rows.
+    assert len(table) == 7, f"expected 7 boundary vectors, got {len(table)}"
+
+
+def test_vector_keys_exact_ordered_tuple_44() -> None:
+    """Vector keys remain exactly the approved ordered 44-key tuple."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    section = _section(spec, r"vector inventory")
+    rows = _table_rows(section)
+    inv_keys = tuple(r[0].strip("`") for r in rows if r[0].strip("`").startswith("ve_"))
+    assert len(inv_keys) == 44, f"expected 44 vector keys, got {len(inv_keys)}"
+    assert len(inv_keys) == len(set(inv_keys)), (
+        f"duplicate vector keys: {[k for k in inv_keys if inv_keys.count(k) > 1]}"
+    )
