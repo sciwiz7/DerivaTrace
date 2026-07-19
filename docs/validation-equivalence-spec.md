@@ -151,7 +151,7 @@ Consequences, binding for Stage 1C v1:
   mismatch, because there is no per-side schema input.
 - An unsupported `canonical_schema` selection, an unsupported `payoff_schema`
   selection, and a contradictory schema configuration are **caller-owned raised
-  Stage 1C errors** (§3.13.1, §8), never captured comparison outcomes.
+  Stage 1C errors** (§3.14.1, §8), never captured comparison outcomes.
 - No Stage 1C v1 report claims `not_comparable` merely because two sides used
   different schema versions, because the public API cannot construct that state.
 - Cross-version comparison of previously generated representations is **outside**
@@ -285,7 +285,7 @@ Field-by-field rules:
   `derivatrace.validation-equivalence.report`, schema version `1.0.0`
   participating in the preimage (§7). Report construction includes encoding and
   identity generation; if the report cannot be encoded or its identity cannot be
-  produced, **no report is returned** and a Stage 1C error is raised (§3.13.1,
+  produced, **no report is returned** and a Stage 1C error is raised (§3.14.1,
   §8). The serialized and in-memory forms carry the same exact non-null
   `report_id`; there is no nullable in-memory identity (§7).
 - `requested_level` — the enum value the caller requested (`structural`,
@@ -305,7 +305,7 @@ Field-by-field rules:
   `not_comparable` or `not_evaluated`; `null` for `equivalent`/`different`.
 - `payoff_comparison_status` / `payoff_comparison_reason` — same as above for the
   payoff representation.
-- `left` / `right` — per-side structured capture (see §3.13):
+- `left` / `right` — per-side structured capture (see §3.14):
   - `contract_identity` — present if structural validation passed and
     canonicalization succeeded; otherwise `null`.
   - `payoff_graph_identity` — present if canonicalization and payoff compilation
@@ -313,7 +313,7 @@ Field-by-field rules:
   - `failures` — the **single** structured captured-failure representation for
     this side. It is **always an array** (an **empty array** on success, never
     `null`), so there is no null-versus-empty ambiguity. Each record is
-    `{stage, code, classification}` (§3.13.2). There is no `side` key inside a
+    `{stage, code, classification}` (§3.14.2). There is no `side` key inside a
     record because the array is already nested under `left` or `right`. The
     deprecated fields `structural_errors`, `canonicalization_errors`, and
     `payoff_compilation_errors` do **not** exist; the same failure is never
@@ -517,12 +517,12 @@ Equality rules:
   seam). This case is only constructible through the private digest seam
   monkeypatched in tests.
 
-### 3.13 Hybrid report-versus-exception policy
+### 3.14 Hybrid report-versus-exception policy
 
 Stage 1C separates **caller-owned failures** from **operand-owned evaluation
 outcomes**.
 
-#### 3.13.1 Caller-owned failures are RAISED (Stage 1C-owned typed errors)
+#### 3.14.1 Caller-owned failures are RAISED (Stage 1C-owned typed errors)
 
 Stage 1C raises a typed error in its own `validation_equivalence` namespace for:
 
@@ -540,7 +540,7 @@ Stage 1C raises a typed error in its own `validation_equivalence` namespace for:
 If the report itself cannot be encoded or its identity cannot be produced, **no
 report is returned**; the Stage 1C error is raised.
 
-#### 3.13.2 Operand-owned outcomes are CAPTURED inside the report
+#### 3.14.2 Operand-owned outcomes are CAPTURED inside the report
 
 For either left or right operand, the report captures (rather than raises)
 operand-owned failures into the **single** per-side `failures` array (§3.4):
@@ -570,7 +570,7 @@ Required rules for the captured-failure record:
 - `stage` — the failing stage, one of `structural`, `canonical`, `payoff`.
 - `code` — the existing upstream error code **in its original namespace**
   (`validation.*`, `canonicalization.*`, `payoff_graph.*`); never relabelled.
-- `classification` — a value drawn from a **closed documented taxonomy** (§3.13.3).
+- `classification` — a value drawn from a **closed documented taxonomy** (§3.14.3).
 - No `side` field appears **inside** a record: the array is already nested under
   `left` or `right`, so the side is unambiguous and is never repeated.
 - Order is **deterministic** by stage order (`structural`, then `canonical`,
@@ -593,7 +593,7 @@ Upstream error codes retain their original namespace. Stage 1C must **not**
 relabel a canonicalization or payoff-graph failure as a Stage 1C error merely
 because it appears inside a Stage 1C report.
 
-#### 3.13.3 Closed captured-failure classification taxonomy
+#### 3.14.3 Closed captured-failure classification taxonomy
 
 `classification` is drawn from a closed, documented taxonomy:
 
@@ -609,7 +609,7 @@ because it appears inside a Stage 1C report.
 The taxonomy is closed and additive-only (new classifications are a MINOR report
 schema change; renames/removals are MAJOR, §5.7).
 
-### 3.14 Use-time exact-type validation
+### 3.15 Use-time exact-type validation
 
 All limit objects, schema-version enums, the `ValidationLevel` enum, and the
 `DiffSelection` enum are validated at call time using the same hardened boundary
@@ -618,19 +618,19 @@ Unknown schema versions are rejected with `validation_equivalence.input`.
 Unsupported report schema versions are rejected with
 `validation_equivalence.input`.
 
-### 3.15 Provenance policy
+### 3.16 Provenance policy
 
 Provenance is recorded in the report (compiler tag, exclusion policy, source
 canonical identities) but **excluded** from the report identity preimage.
 Changing provenance alone does not change `report_id`.
 
-### 3.16 Deterministic provenance policy field
+### 3.17 Deterministic provenance policy field
 
 The report carries an explicit `provenance.policy` value
 (`excluded_from_identity`) so consumers can verify that provenance does not
 participate in identity.
 
-### 3.17 Behaviour when preconditions fail
+### 3.18 Behaviour when preconditions fail
 
 | Situation | Report outcome |
 |-----------|----------------|
@@ -651,12 +651,12 @@ participate in identity.
 | Report encoding fails | `ValidationEquivalenceEncodingError` is **raised**; no partial report is returned. |
 | Report identity cannot be produced | `ValidationEquivalenceReportCollisionError` is **raised**; no report is returned. |
 
-### 3.18 Private-R1 / Public-R2 delivery seam
+### 3.19 Private-R1 / Public-R2 delivery seam
 
 Stage 1C is delivered in two private increments (R1, R2) before the public API
 is exported. The seam between them is specified exactly:
 
-#### 3.18.1 Stage 1C-R1 (private implementation increment)
+#### 3.19.1 Stage 1C-R1 (private implementation increment)
 
 - Internal module/package implementation is permitted.
 - **No public `compare_contracts` export.**
@@ -678,7 +678,7 @@ is exported. The seam between them is specified exactly:
 - `ve_014_provenance_only_diff` and `ve_037_report_encoding_failure_raises`
   remain the **exact private-seam vectors**.
 
-#### 3.18.2 Stage 1C-R2 (public implementation increment)
+#### 3.19.2 Stage 1C-R2 (public implementation increment)
 
 - Implements **one generic content-addressed document-diff engine**.
 - Applies it to **both** canonical structural documents and payoff structural
@@ -688,7 +688,7 @@ is exported. The seam between them is specified exactly:
 - **Only then** exports `compare_contracts` with its exact permanent signature
   and canonical default `diff: DiffSelection = "canonical"`.
 
-### 3.19 Report collision defence without global state
+### 3.20 Report collision defence without global state
 
 Report construction computes `structural_bytes` from the complete structural
 projection and computes `report_id` from those bytes. The immutable report
@@ -710,7 +710,7 @@ Collision behaviour:
 - `__hash__` remains based on `report_id`.
 - The private digest seam may be monkeypatched in tests to force a collision.
 
-### 3.20 Double-canonicalization consistency rule
+### 3.21 Double-canonicalization consistency rule
 
 `compile_payoff_graph` accepts a Stage 1A `Contract` and internally canonicalizes
 it. Stage 1C payoff-level processing therefore:
@@ -729,7 +729,7 @@ it. Stage 1C payoff-level processing therefore:
 7. When canonicalization failed, payoff compilation is **not attempted** and the
    original canonical failure is recorded once.
 
-### 3.21 Preserved failure capture rule
+### 3.22 Preserved failure capture rule
 
 Captured failures use the **original upstream error code in its original
 namespace** (`canonicalization.*` or `payoff_graph.*`). Stage 1C must not
@@ -1185,11 +1185,11 @@ Stage 1C owns the `validation_equivalence` error namespace. All derive from
 | `ValidationEquivalenceMalformedRepresentationError` | `validation_equivalence.malformed_representation` | A trusted Stage 1B output fails internal consistency checks (e.g., node id not in table, reference to missing node). |
 
 **Caller-owned vs operand-owned policy.** The errors above are **raised** for
-caller-owned failures (§3.13.1), including unsupported canonical/payoff schema
+caller-owned failures (§3.14.1), including unsupported canonical/payoff schema
 selection and contradictory schema configuration. Upstream errors (Stage 1A
 `validation.*`, Stage 1B-R1 `canonicalization.*`, Stage 1B-R2 `payoff_graph.*`)
 are **captured inside the report** in the single per-side `failures` array
-(§3.4, §3.13.2) and **do not raise** from `compare_contracts`, provided a
+(§3.4, §3.14.2) and **do not raise** from `compare_contracts`, provided a
 deterministic report can still be formed. Only the Stage 1C-owned errors above
 may raise.
 
@@ -1637,7 +1637,7 @@ merged. They are enforced by `tests/test_documentation.py`:
 - `schema_metadata` and `limits_used` participate in structural identity.
 - No global collision registry is authorized.
 - Collision behaviour for same-id/different-bytes is explicit.
-- The double-canonicalization consistency rule is documented (§3.20).
+- The double-canonicalization consistency rule is documented (§3.21).
 - No synthetic `payoff_graph.upstream_failure` code exists.
 - Vector Kind values remain exactly 42 `public_api` and 2 `private_seam`.
 - `ve_014` and `ve_037` remain the only private seams.

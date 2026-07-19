@@ -3964,3 +3964,161 @@ def test_all_runtime_status_guards_remain_accurate() -> None:
     assert _near(road, r"stage 1a\b", "complete")
     assert _near(road, r"stage 1b\b", "in progress")
     assert _near(road, r"stage 1c\b", "planned")
+
+
+# ---- Stage 1C section-numbering repair guards (PR #10) ----
+
+
+def _parse_h3_headings() -> list[str]:
+    """Return every level-3 (###) heading number from the Stage 1C spec."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    return [m.group(1) for m in re.finditer(r"^###\s+(3\.\d+)\b", spec, re.MULTILINE)]
+
+
+def _parse_h4_headings() -> list[str]:
+    """Return every level-4 (####) heading number from the Stage 1C spec."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    return [
+        m.group(1) for m in re.finditer(r"^####\s+(3\.\d+\.\d+)\b", spec, re.MULTILINE)
+    ]
+
+
+def test_no_duplicate_level3_headings() -> None:
+    """1. No duplicate numbered level-3 headings exist."""
+    headings = _parse_h3_headings()
+    dupes = [h for h in headings if headings.count(h) > 1]
+    assert not dupes, f"duplicate level-3 headings: {sorted(set(dupes))}"
+
+
+def test_level3_headings_3_10_through_3_22_each_once() -> None:
+    """2. Exact headings 3.10 through 3.22 occur once each."""
+    headings = _parse_h3_headings()
+    for n in range(10, 23):
+        num = f"3.{n}"
+        assert headings.count(num) == 1, (
+            f"heading {num!r} appears {headings.count(num)} times"
+        )
+
+
+def test_subheadings_3_14_and_3_19_occurs_once() -> None:
+    """3. Exact subheadings 3.14.1, 3.14.2, 3.14.3, 3.19.1, 3.19.2 occur once."""
+    subs = _parse_h4_headings()
+    for expected in ("3.14.1", "3.14.2", "3.14.3", "3.19.1", "3.19.2"):
+        assert subs.count(expected) == 1, (
+            f"subheading {expected!r} appears {subs.count(expected)} times"
+        )
+
+
+def test_hybrid_policy_is_exactly_3_14() -> None:
+    """4. 'Hybrid report-versus-exception policy' is exactly 3.14."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    for m in re.finditer(r"^###\s+(3\.\d+)\s+(.*)$", spec, re.MULTILINE):
+        if "hybrid report-versus-exception policy" in m.group(2).lower():
+            assert m.group(1) == "3.14", (
+                f"hybrid policy heading is {m.group(1)}, expected 3.14"
+            )
+            return
+    pytest.fail("hybrid report-versus-exception policy heading not found")
+
+
+def test_equality_semantics_is_exactly_3_13() -> None:
+    """5. 'Equality semantics' is exactly 3.13."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    for m in re.finditer(r"^###\s+(3\.\d+)\s+(.*)$", spec, re.MULTILINE):
+        if "equality semantics" in m.group(2).lower():
+            assert m.group(1) == "3.13", (
+                f"equality semantics heading is {m.group(1)}, expected 3.13"
+            )
+            return
+    pytest.fail("equality semantics heading not found")
+
+
+def test_captured_failure_references_point_to_3_14_2_or_3_14_3() -> None:
+    """6. Captured-failure references point to §3.14.2/§3.14.3."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    # The classification taxonomy reference (§3.13.3 -> §3.14.3)
+    assert "§3.14.3" in spec, "closed captured-failure taxonomy ref missing"
+    assert "§3.13.3" not in spec, "stale §3.13.3 reference remains"
+    # The captured-failure record reference (§3.13.2 -> §3.14.2)
+    assert "§3.14.2" in spec, "captured-failure record ref missing"
+    assert "§3.13.2" not in spec, "stale §3.13.2 reference remains"
+    # Verify the section heading is correct.
+    for m in re.finditer(r"^####\s+3\.14\.2\s+(.*)$", spec, re.MULTILINE):
+        assert "operand-owned outcomes" in m.group(1).lower()
+        break
+    else:
+        pytest.fail("3.14.2 heading not found")
+    for m in re.finditer(r"^####\s+3\.14\.3\s+(.*)$", spec, re.MULTILINE):
+        assert "closed captured-failure classification" in m.group(1).lower()
+        break
+    else:
+        pytest.fail("3.14.3 heading not found")
+
+
+def test_precondition_references_point_to_3_18() -> None:
+    """7. Precondition references point to §3.18."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    # The behaviour-when-preconditions-fail section is 3.18.
+    for m in re.finditer(r"^###\s+3\.18\s+(.*)$", spec, re.MULTILINE):
+        assert "behaviour when preconditions fail" in m.group(1).lower()
+        break
+    else:
+        pytest.fail("3.18 'Behaviour when preconditions fail' heading not found")
+    # Old §3.17 must not appear as a section reference for preconditions.
+    assert "§3.17" not in spec, "stale §3.17 reference remains"
+
+
+def test_private_r1_public_r2_seam_is_3_19() -> None:
+    """8. The private-R1/public-R2 seam is §3.19."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    for m in re.finditer(r"^###\s+3\.19\s+(.*)$", spec, re.MULTILINE):
+        assert (
+            "private-r1" in m.group(1).lower() or "delivery seam" in m.group(1).lower()
+        )
+        break
+    else:
+        pytest.fail("3.19 'Private-R1 / Public-R2 delivery seam' heading not found")
+    # Subsections 3.19.1 and 3.19.2 must exist.
+    assert re.search(r"^####\s+3\.19\.1\s", spec, re.MULTILINE), (
+        "3.19.1 heading missing"
+    )
+    assert re.search(r"^####\s+3\.19\.2\s", spec, re.MULTILINE), (
+        "3.19.2 heading missing"
+    )
+    # Old §3.18 section references for the delivery seam must be gone.
+    assert "§3.18" not in spec, "stale §3.18 reference remains"
+
+
+def test_no_old_duplicate_or_stale_affected_heading() -> None:
+    """9. No old duplicate or stale affected heading remains."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    # The old duplicate 3.13 must not appear as a heading for the hybrid policy.
+    headings = re.findall(r"^###\s+(3\.\d+)\s+(.*)$", spec, re.MULTILINE)
+    heading_texts = dict(headings)
+    # 3.13 must be Equality semantics, not Hybrid policy.
+    assert "equality semantics" in heading_texts.get("3.13", "").lower(), (
+        "3.13 is not 'Equality semantics'"
+    )
+    assert "hybrid" not in heading_texts.get("3.13", "").lower(), (
+        "old duplicate: 3.13 still carries 'Hybrid' policy"
+    )
+    # Old section numbers must not appear as headings.
+    for stale in ("3.18.1", "3.18.2"):
+        assert not re.search(rf"^####\s+{re.escape(stale)}\s", spec, re.MULTILINE), (
+            f"stale subheading {stale} still present"
+        )
+    # No second 3.13 heading.
+    h3_nums = _parse_h3_headings()
+    assert h3_nums.count("3.13") == 1, (
+        f"3.13 appears {h3_nums.count('3.13')} times (expected exactly 1)"
+    )
+
+
+def test_no_runtime_source_modified() -> None:
+    """10. No runtime source is modified."""
+    assert not (SRC_ROOT / "validationequivalence").exists()
+    assert not (SRC_ROOT / "validation_equivalence").exists()
+    assert not (SRC_ROOT / "stage1c").exists()
+    spec = _frozen_defaults_spec()
+    assert "no stage 1c runtime module exists" in spec
+    assert "not yet implemented" in spec
