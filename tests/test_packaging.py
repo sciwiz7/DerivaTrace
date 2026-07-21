@@ -83,10 +83,10 @@ VALIDATION_EQUIVALENCE_MODULES = [
 ]
 
 VALIDATION_EQUIVALENCE_TESTS = [
-    "tests/validation_equivalence/conftest.py",
+    "tests/validation_equivalence/test_encoding_codec.py",
     "tests/validation_equivalence/test_report.py",
     "tests/validation_equivalence/test_schema.py",
-    "tests/validation_equivalence/test_encoding.py",
+    "tests/validation_equivalence/test_invariants_coverage.py",
 ]
 
 REQUIRED_SDIST_PATHS = [

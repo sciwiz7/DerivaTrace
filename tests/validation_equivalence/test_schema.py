@@ -12,15 +12,24 @@ from derivatrace.validation_equivalence._errors import (
     ValidationEquivalenceMalformedRepresentationError,
     ValidationEquivalenceReportCollisionError,
 )
+from derivatrace.validation_equivalence._records import (
+    validate_comparison_coherence,
+)
 from derivatrace.validation_equivalence._schema import (
+    CapturedFailureClassification,
+    ComparisonReason,
+    ComparisonStatus,
     DiffLimits,
     DiffOperation,
     DiffSelection,
+    FailureStage,
     TruncationReason,
     UnavailableReason,
     ValidationLevel,
+    ValidationOutcome,
     _validate_diff_limits,
     _validate_diff_selection,
+    _validate_exact_enum,
     _validate_validation_level,
 )
 
@@ -48,6 +57,12 @@ class TestErrorHierarchy:
             ValidationEquivalenceError,
         )
 
+    def test_no_complexity_error(self) -> None:
+        """ValidationEquivalenceComplexityError is absent from the v1 taxonomy."""
+        import derivatrace.validation_equivalence._errors as err_mod
+
+        assert not hasattr(err_mod, "ValidationEquivalenceComplexityError")
+
     def test_error_codes(self) -> None:
         assert ValidationEquivalenceError.code == "validation_equivalence.error"
         assert ValidationEquivalenceInputError.code == "validation_equivalence.input"
@@ -58,6 +73,109 @@ class TestErrorHierarchy:
             ValidationEquivalenceReportCollisionError.code
             == "validation_equivalence.report_collision"
         )
+
+
+class TestNewEnums:
+    """Test frozen closed taxonomies added in R1A."""
+
+    def test_comparison_status_is_enum(self) -> None:
+        assert issubclass(ComparisonStatus, enum.Enum)
+
+    def test_comparison_status_values(self) -> None:
+        assert ComparisonStatus.EQUIVALENT.value == "equivalent"
+        assert ComparisonStatus.DIFFERENT.value == "different"
+        assert ComparisonStatus.NOT_COMPARABLE.value == "not_comparable"
+        assert ComparisonStatus.NOT_EVALUATED.value == "not_evaluated"
+
+    def test_comparison_status_closed(self) -> None:
+        assert len(ComparisonStatus) == 4
+
+    def test_validation_outcome_is_enum(self) -> None:
+        assert issubclass(ValidationOutcome, enum.Enum)
+
+    def test_validation_outcome_values(self) -> None:
+        assert ValidationOutcome.VALID.value == "valid"
+        assert ValidationOutcome.INVALID.value == "invalid"
+
+    def test_validation_outcome_closed(self) -> None:
+        assert len(ValidationOutcome) == 2
+
+    def test_failure_stage_is_enum(self) -> None:
+        assert issubclass(FailureStage, enum.Enum)
+
+    def test_failure_stage_values(self) -> None:
+        assert FailureStage.STRUCTURAL.value == "structural"
+        assert FailureStage.CANONICAL.value == "canonical"
+        assert FailureStage.PAYOFF.value == "payoff"
+
+    def test_failure_stage_closed(self) -> None:
+        assert len(FailureStage) == 3
+
+    def test_captured_failure_classification_is_enum(self) -> None:
+        assert issubclass(CapturedFailureClassification, enum.Enum)
+
+    def test_captured_failure_classification_values(self) -> None:
+        assert (
+            CapturedFailureClassification.VALIDATION_FAILURE.value
+            == "validation_failure"
+        )
+        assert (
+            CapturedFailureClassification.CANONICALIZATION_FAILURE.value
+            == "canonicalization_failure"
+        )
+        assert (
+            CapturedFailureClassification.PAYOFF_COMPILATION_FAILURE.value
+            == "payoff_compilation_failure"
+        )
+        assert (
+            CapturedFailureClassification.COMPLEXITY_FAILURE.value
+            == "complexity_failure"
+        )
+        assert (
+            CapturedFailureClassification.COLLISION_FAILURE.value == "collision_failure"
+        )
+        assert (
+            CapturedFailureClassification.ENCODING_FAILURE.value == "encoding_failure"
+        )
+
+    def test_captured_failure_classification_closed(self) -> None:
+        assert len(CapturedFailureClassification) == 6
+
+    def test_comparison_reason_is_enum(self) -> None:
+        assert issubclass(ComparisonReason, enum.Enum)
+
+    def test_comparison_reason_values(self) -> None:
+        assert ComparisonReason.UPSTREAM_STAGE_FAILURE.value == "upstream_stage_failure"
+        assert (
+            ComparisonReason.REPRESENTATION_UNAVAILABLE.value
+            == "representation_unavailable"
+        )
+        assert (
+            ComparisonReason.RUNTIME_PRECONDITION_FAILED.value
+            == "runtime_precondition_failed"
+        )
+        assert (
+            ComparisonReason.SHALLOWER_LEVEL_REQUESTED.value
+            == "shallower_level_requested"
+        )
+
+    def test_comparison_reason_closed(self) -> None:
+        assert len(ComparisonReason) == 4
+
+    def test_all_new_enums_reject_raw_strings(self) -> None:
+        """Raw strings are rejected for all new enum types."""
+        with pytest.raises(ValidationEquivalenceInputError):
+            _validate_exact_enum("equivalent", ComparisonStatus, "test")
+        with pytest.raises(ValidationEquivalenceInputError):
+            _validate_exact_enum("valid", ValidationOutcome, "test")
+        with pytest.raises(ValidationEquivalenceInputError):
+            _validate_exact_enum("structural", FailureStage, "test")
+        with pytest.raises(ValidationEquivalenceInputError):
+            _validate_exact_enum(
+                "validation_failure", CapturedFailureClassification, "test"
+            )
+        with pytest.raises(ValidationEquivalenceInputError):
+            _validate_exact_enum("upstream_stage_failure", ComparisonReason, "test")
 
 
 class TestEnums:
@@ -139,11 +257,11 @@ class TestDiffLimits:
 
     def test_bool_rejection_for_integer_limits(self) -> None:
         with pytest.raises(ValidationEquivalenceInputError):
-            DiffLimits(max_compared_bytes=True)  # type: ignore[arg-type]
+            DiffLimits(max_compared_bytes=True)
         with pytest.raises(ValidationEquivalenceInputError):
-            DiffLimits(max_compared_nodes=True)  # type: ignore[arg-type]
+            DiffLimits(max_compared_nodes=True)
         with pytest.raises(ValidationEquivalenceInputError):
-            DiffLimits(max_entries=True)  # type: ignore[arg-type]
+            DiffLimits(max_entries=True)
 
     def test_zero_rejection(self) -> None:
         with pytest.raises(ValidationEquivalenceInputError):
@@ -191,3 +309,41 @@ class TestDiffSelectionBoundary:
     def test_reject_both(self) -> None:
         with pytest.raises(ValidationEquivalenceInputError):
             _validate_diff_selection("both")
+
+
+class TestComparisonStatusReasonValidation:
+    def test_equivalent_with_none_reason(self) -> None:
+        validate_comparison_coherence(ComparisonStatus.EQUIVALENT, None)
+
+    def test_different_with_none_reason(self) -> None:
+        validate_comparison_coherence(ComparisonStatus.DIFFERENT, None)
+
+    def test_not_comparable_requires_reason(self) -> None:
+        with pytest.raises(ValidationEquivalenceInputError):
+            validate_comparison_coherence(ComparisonStatus.NOT_COMPARABLE, None)
+
+    def test_not_comparable_with_reason(self) -> None:
+        validate_comparison_coherence(
+            ComparisonStatus.NOT_COMPARABLE,
+            ComparisonReason.UPSTREAM_STAGE_FAILURE,
+        )
+
+    def test_not_evaluated_requires_shallower(self) -> None:
+        with pytest.raises(ValidationEquivalenceInputError):
+            validate_comparison_coherence(
+                ComparisonStatus.NOT_EVALUATED,
+                ComparisonReason.UPSTREAM_STAGE_FAILURE,
+            )
+
+    def test_not_evaluated_with_shallower(self) -> None:
+        validate_comparison_coherence(
+            ComparisonStatus.NOT_EVALUATED,
+            ComparisonReason.SHALLOWER_LEVEL_REQUESTED,
+        )
+
+    def test_equivalent_with_reason_rejected(self) -> None:
+        with pytest.raises(ValidationEquivalenceInputError):
+            validate_comparison_coherence(
+                ComparisonStatus.EQUIVALENT,
+                ComparisonReason.SHALLOWER_LEVEL_REQUESTED,
+            )

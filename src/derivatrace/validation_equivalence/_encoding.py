@@ -22,8 +22,12 @@ def canonical_json(obj: object) -> bytes:
 
 def _to_jsonable(obj: object) -> Any:
     """Convert a record tree to a JSON-serializable structure."""
+    import enum
+
     if obj is None or isinstance(obj, (bool, int, float, str)):
         return obj
+    if isinstance(obj, enum.Enum):
+        return obj.value
     if isinstance(obj, tuple):
         return [_to_jsonable(item) for item in obj]
     if hasattr(obj, "__dataclass_fields__"):
@@ -34,9 +38,7 @@ def _to_jsonable(obj: object) -> Any:
         return result
     if isinstance(obj, dict):
         return {k: _to_jsonable(v) for k, v in obj.items()}
-    raise ValidationEquivalenceEncodingError(
-        f"cannot serialize {type(obj).__name__} to JSON"
-    )
+    raise ValidationEquivalenceEncodingError("failed to encode structural projection")
 
 
 def report_to_jsonable(report: object) -> dict[str, Any]:
@@ -66,7 +68,7 @@ def structural_bytes(report: object, encoder: ReportEncoder = canonical_json) ->
         return encoder(d)
     except Exception as exc:
         raise ValidationEquivalenceEncodingError(
-            f"failed to encode structural projection: {exc}"
+            "failed to encode structural projection"
         ) from exc
 
 
@@ -79,7 +81,7 @@ def encode_report(report: object, encoder: ReportEncoder = canonical_json) -> by
         raise
     except Exception as exc:
         raise ValidationEquivalenceEncodingError(
-            f"failed to encode report: {exc}"
+            "failed to encode complete report"
         ) from exc
 
 

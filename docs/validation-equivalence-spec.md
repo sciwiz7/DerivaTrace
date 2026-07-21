@@ -569,7 +569,7 @@ Required rules for the captured-failure record:
   there is no null-versus-empty ambiguity.
 - `stage` — the failing stage, one of `structural`, `canonical`, `payoff`.
 - `code` — the existing upstream error code **in its original namespace**
-  (`validation.*`, `canonicalization.*`, `payoff_graph.*`); never relabelled.
+  (`contract.validation.*`, `contract.input.*`, `canonicalization.*`, `payoff_graph.*`); never relabelled.
 - `classification` — a value drawn from a **closed documented taxonomy** (§3.14.3).
 - No `side` field appears **inside** a record: the array is already nested under
   `left` or `right`, so the side is unambiguous and is never repeated.
@@ -1187,7 +1187,7 @@ Stage 1C owns the `validation_equivalence` error namespace. All derive from
 **Caller-owned vs operand-owned policy.** The errors above are **raised** for
 caller-owned failures (§3.14.1), including unsupported canonical/payoff schema
 selection and contradictory schema configuration. Upstream errors (Stage 1A
-`validation.*`, Stage 1B-R1 `canonicalization.*`, Stage 1B-R2 `payoff_graph.*`)
+`contract.validation.*` / `contract.input.*`, Stage 1B-R1 `canonicalization.*`, Stage 1B-R2 `payoff_graph.*`)
 are **captured inside the report** in the single per-side `failures` array
 (§3.4, §3.14.2) and **do not raise** from `compare_contracts`, provided a
 deterministic report can still be formed. Only the Stage 1C-owned errors above

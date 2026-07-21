@@ -20,6 +20,15 @@ from derivatrace.validation_equivalence._records import (
     ReportSide,
     SchemaMetadataRecord,
 )
+from derivatrace.validation_equivalence._schema import (
+    CapturedFailureClassification,
+    ComparisonReason,
+    ComparisonStatus,
+    DiffSelection,
+    FailureStage,
+    ValidationLevel,
+    ValidationOutcome,
+)
 
 
 class TestCanonicalJson:
@@ -57,8 +66,9 @@ class TestReportEncoding:
             raise ValidationEquivalenceEncodingError("injected")
 
         report = _make_test_report()
-        with pytest.raises(ValidationEquivalenceEncodingError):
+        with pytest.raises(ValidationEquivalenceEncodingError) as exc_info:
             encode_report(report, _failing_encoder)
+        assert "injected" in str(exc_info.value)
 
     def test_structural_bytes_excludes_provenance(self) -> None:
         report = _make_test_report()
@@ -107,13 +117,49 @@ class TestReportToJsonable:
 
     def test_tuple_to_list(self) -> None:
         side = ReportSide(
-            contract_identity="canonical:sha256:aaaa",
+            contract_identity="canonical:sha256:" + "a" * 64,
             failures=(
-                CapturedFailure("structural", "validation.input", "validation_failure"),
+                CapturedFailure(
+                    stage=FailureStage.STRUCTURAL,
+                    code="contract.input",
+                    classification=CapturedFailureClassification.VALIDATION_FAILURE,
+                ),
             ),
         )
         d = report_to_jsonable(side)
         assert isinstance(d["failures"], list)
+
+
+class TestNestedLimitsJson:
+    """limits_used JSON tree is exact."""
+
+    def test_nested_limits_json_keys(self) -> None:
+        report = _make_test_report()
+        d = report_to_jsonable(report)
+        lu = d["limits_used"]
+        assert "validation" in lu
+        assert "canonicalization" in lu
+        assert "payoff" in lu
+        assert "diff" in lu
+        assert lu["validation"]["max_depth"] == 64
+        assert lu["canonicalization"]["max_canonical_bytes"] == 8_000_000
+        assert lu["payoff"]["max_structural_bytes"] == 2_097_152
+        assert lu["diff"]["max_entries"] == 1024
+
+
+class TestNestedSchemaMetadataJson:
+    """schema_metadata JSON tree is exact."""
+
+    def test_nested_metadata_json_keys(self) -> None:
+        report = _make_test_report()
+        d = report_to_jsonable(report)
+        sm = d["schema_metadata"]
+        assert "canonical" in sm
+        assert "payoff" in sm
+        assert sm["canonical"]["schema_name"] == "derivatrace.contract.canonical"
+        assert sm["payoff"]["representation_identity_domain"] == (
+            "derivatrace.payoffgraph.graph"
+        )
 
 
 def _make_test_report() -> CompleteReport:
@@ -121,26 +167,26 @@ def _make_test_report() -> CompleteReport:
         report_id="validation-equivalence:sha256:" + "a" * 64,
         schema_name="derivatrace.validation-equivalence.report",
         schema_version="1.0.0",
-        requested_level="canonical",
+        requested_level=ValidationLevel.CANONICAL,
         canonical_schema_version="1.0.0",
         payoff_schema_version="1.0.0",
-        left_validation_outcome="valid",
-        right_validation_outcome="valid",
-        canonical_comparison_status="equivalent",
+        left_validation_outcome=ValidationOutcome.VALID,
+        right_validation_outcome=ValidationOutcome.VALID,
+        canonical_comparison_status=ComparisonStatus.EQUIVALENT,
         canonical_comparison_reason=None,
-        payoff_comparison_status="not_evaluated",
-        payoff_comparison_reason="shallower_level_requested",
+        payoff_comparison_status=ComparisonStatus.NOT_EVALUATED,
+        payoff_comparison_reason=ComparisonReason.SHALLOWER_LEVEL_REQUESTED,
         left=ReportSide(
-            contract_identity="canonical:sha256:aaaa",
+            contract_identity="canonical:sha256:" + "a" * 64,
             payoff_graph_identity=None,
             failures=(),
         ),
         right=ReportSide(
-            contract_identity="canonical:sha256:aaaa",
+            contract_identity="canonical:sha256:" + "a" * 64,
             payoff_graph_identity=None,
             failures=(),
         ),
-        diff_representation="none",
+        diff_representation=DiffSelection.NONE,
         diff_summary=DiffSummary(
             entries=(),
             truncated=False,
@@ -150,7 +196,7 @@ def _make_test_report() -> CompleteReport:
         limits_used=LimitsUsed(),
         schema_metadata=SchemaMetadataRecord(),
         provenance=ProvenanceRecord(
-            source_left_identity="canonical:sha256:xxxx",
-            source_right_identity="canonical:sha256:yyyy",
+            source_left_identity="canonical:sha256:" + "a" * 64,
+            source_right_identity="canonical:sha256:" + "b" * 64,
         ),
     )

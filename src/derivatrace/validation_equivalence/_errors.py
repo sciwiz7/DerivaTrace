@@ -29,12 +29,6 @@ class ValidationEquivalenceReportCollisionError(ValidationEquivalenceError):
     code: str = "validation_equivalence.report_collision"
 
 
-class ValidationEquivalenceComplexityError(ValidationEquivalenceError):
-    """Raised when internal complexity limits are exceeded (future use)."""
-
-    code: str = "validation_equivalence.complexity"
-
-
 class ValidationEquivalenceMalformedRepresentationError(ValidationEquivalenceError):
     """Raised when a trusted Stage 1B output fails internal consistency
     checks."""
@@ -43,7 +37,6 @@ class ValidationEquivalenceMalformedRepresentationError(ValidationEquivalenceErr
 
 
 __all__: list[str] = [
-    "ValidationEquivalenceComplexityError",
     "ValidationEquivalenceEncodingError",
     "ValidationEquivalenceError",
     "ValidationEquivalenceInputError",
