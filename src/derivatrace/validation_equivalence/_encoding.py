@@ -13,10 +13,11 @@ def canonical_json(obj: object) -> bytes:
     """Serialize a JSON-compatible structure to byte-exact canonical bytes.
 
     UTF-8, no BOM, no trailing newline, compact separators, ASCII-escaped,
-    with object keys sorted by their (ASCII) byte sequence.
+    with object keys sorted by their (ASCII) byte sequence. Rejects NaN
+    and infinity values.
     """
     return _json.dumps(
-        obj, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+        obj, ensure_ascii=True, sort_keys=True, separators=(",", ":"), allow_nan=False
     ).encode("utf-8")
 
 
@@ -60,11 +61,14 @@ def structural_bytes(report: object, encoder: ReportEncoder = canonical_json) ->
     """Compute the structural projection bytes of a report.
 
     The structural projection excludes ``provenance`` and ``report_id``.
+    Wraps report conversion, field removal, and encoding in a single try
+    boundary.  Every exception, regardless of its original type, is
+    normalized to ``ValidationEquivalenceEncodingError``.
     """
-    d = report_to_jsonable(report)
-    d.pop("provenance", None)
-    d.pop("report_id", None)
     try:
+        d = report_to_jsonable(report)
+        d.pop("provenance", None)
+        d.pop("report_id", None)
         return encoder(d)
     except Exception as exc:
         raise ValidationEquivalenceEncodingError(
@@ -73,12 +77,15 @@ def structural_bytes(report: object, encoder: ReportEncoder = canonical_json) ->
 
 
 def encode_report(report: object, encoder: ReportEncoder = canonical_json) -> bytes:
-    """Encode the complete report to canonical bytes."""
-    d = report_to_jsonable(report)
+    """Encode the complete report to canonical bytes.
+
+    Wraps report conversion and encoding in a single try boundary.
+    Every exception, regardless of its original type, is normalized to
+    ``ValidationEquivalenceEncodingError``.
+    """
     try:
+        d = report_to_jsonable(report)
         return encoder(d)
-    except ValidationEquivalenceEncodingError:
-        raise
     except Exception as exc:
         raise ValidationEquivalenceEncodingError(
             "failed to encode complete report"

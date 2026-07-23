@@ -8,8 +8,14 @@ from derivatrace.canonical import CanonicalizationLimits
 from derivatrace.contracts import ValidationLimits
 from derivatrace.payoffgraph import PayoffGraphLimits
 
-from ._errors import ValidationEquivalenceInputError
+from ._encoding import structural_bytes as _compute_structural_bytes
+from ._errors import (
+    ValidationEquivalenceInputError,
+    ValidationEquivalenceReportCollisionError,
+)
+from ._identity import _safe_report_identity
 from ._schema import (
+    PROVENANCE_POLICY,
     CapturedFailureClassification,
     ComparisonReason,
     ComparisonStatus,
@@ -17,7 +23,6 @@ from ._schema import (
     DiffOperation,
     DiffSelection,
     FailureStage,
-    PROVENANCE_POLICY,
     TruncationReason,
     UnavailableReason,
     ValidationLevel,
@@ -29,10 +34,63 @@ _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 _FAILURE_CODE_RE = re.compile(r"^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$")
 
 _FAILURE_STAGE_NAMESPACE: dict[str, tuple[str, ...]] = {
-    "structural": ("contract.validation.", "contract.validation", "contract.input.", "contract.input"),
-    "canonical": ("canonicalization.",),
-    "payoff": ("payoff_graph.",),
+    "structural": (
+        "contract.validation",
+        "contract.input",
+    ),
+    "canonical": ("canonicalization",),
+    "payoff": ("payoff_graph",),
 }
+
+_CODE_SUFFIX_CLASSIFICATION: dict[str, CapturedFailureClassification] = {
+    ".complexity": CapturedFailureClassification.COMPLEXITY_FAILURE,
+    ".collision": CapturedFailureClassification.COLLISION_FAILURE,
+    ".encoding": CapturedFailureClassification.ENCODING_FAILURE,
+}
+
+
+# ---------------------------------------------------------------------------
+# R1A diff invariant (shared by _StructuralPayload, CompleteReport, _build_report)
+# ---------------------------------------------------------------------------
+
+
+def _validate_r1a_diff_invariant(
+    diff_representation: DiffSelection,
+    diff_summary: DiffSummary,
+) -> None:
+    """Enforce the exact R1A diff invariant.
+
+    The R1A factory may construct only:
+    - DiffSelection.NONE
+    - entries == ()
+    - truncated is False
+    - truncation_reason is None
+    - unavailable_reason is None
+    """
+    if type(diff_representation) is not DiffSelection:
+        raise ValidationEquivalenceInputError(
+            "diff_representation must be a DiffSelection enum member"
+        )
+    if diff_representation is not DiffSelection.NONE:
+        raise ValidationEquivalenceInputError("R1A requires diff_representation=none")
+    if type(diff_summary) is not DiffSummary:
+        raise ValidationEquivalenceInputError("diff_summary must be a DiffSummary")
+    if diff_summary.entries != ():
+        raise ValidationEquivalenceInputError(
+            "R1A requires diff_summary.entries to be empty"
+        )
+    if diff_summary.truncated is not False:
+        raise ValidationEquivalenceInputError(
+            "R1A requires diff_summary.truncated=False"
+        )
+    if diff_summary.truncation_reason is not None:
+        raise ValidationEquivalenceInputError(
+            "R1A requires diff_summary.truncation_reason=None"
+        )
+    if diff_summary.unavailable_reason is not None:
+        raise ValidationEquivalenceInputError(
+            "R1A requires diff_summary.unavailable_reason=None"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -95,30 +153,32 @@ def validate_comparison_coherence(
 
     Rejects not_comparable + shallower_level_requested.
     """
-    if status is ComparisonStatus.EQUIVALENT or status is ComparisonStatus.DIFFERENT:
-        if reason is not None:
-            raise ValidationEquivalenceInputError(
-                f"comparison_status={status.value!r} requires reason=None"
-            )
-    elif status is ComparisonStatus.NOT_EVALUATED:
-        if reason is not ComparisonReason.SHALLOWER_LEVEL_REQUESTED:
-            raise ValidationEquivalenceInputError(
-                "comparison_status=not_evaluated requires reason="
-                "shallower_level_requested"
-            )
-    elif status is ComparisonStatus.NOT_COMPARABLE:
+    _validate_exact_enum(status, ComparisonStatus, "comparison_status")
+    if reason is not None:
+        _validate_exact_enum(reason, ComparisonReason, "reason")
+    if (
+        status is ComparisonStatus.EQUIVALENT or status is ComparisonStatus.DIFFERENT
+    ) and reason is not None:
+        raise ValidationEquivalenceInputError(
+            f"comparison_status={status.value!r} requires reason=None"
+        )
+    if (
+        status is ComparisonStatus.NOT_EVALUATED
+        and reason is not ComparisonReason.SHALLOWER_LEVEL_REQUESTED
+    ):
+        raise ValidationEquivalenceInputError(
+            "comparison_status=not_evaluated requires reason=shallower_level_requested"
+        )
+    if status is ComparisonStatus.NOT_COMPARABLE:
         if reason is None:
             raise ValidationEquivalenceInputError(
                 "comparison_status=not_comparable requires a non-null reason"
             )
-        _validate_exact_enum(reason, ComparisonReason, "reason")
         if reason is ComparisonReason.SHALLOWER_LEVEL_REQUESTED:
             raise ValidationEquivalenceInputError(
                 "comparison_status=not_comparable rejects reason="
                 "shallower_level_requested"
             )
-    else:  # pragma: no cover
-        _validate_exact_enum(status, ComparisonStatus, "comparison_status")
 
 
 # ---------------------------------------------------------------------------
@@ -134,14 +194,49 @@ def _validate_failure_code(code: str, stage: FailureStage) -> None:
         )
     if not _FAILURE_CODE_RE.fullmatch(code):
         raise ValidationEquivalenceInputError(
-            "CapturedFailure.code must match "
-            "^[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+$"
+            "CapturedFailure.code must match ^[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+$"
         )
-    ns_tuple = _FAILURE_STAGE_NAMESPACE.get(stage.value)
-    if ns_tuple is not None and not any(code.startswith(ns) for ns in ns_tuple):
+    ns_tuple = _FAILURE_STAGE_NAMESPACE[stage.value]
+    matched = False
+    for ns in ns_tuple:
+        if code == ns or code.startswith(ns + "."):
+            matched = True
+            break
+    if not matched:
         raise ValidationEquivalenceInputError(
-            f"CapturedFailure.code for stage {stage.value!r} must start with "
-            f"one of {ns_tuple!r}"
+            f"CapturedFailure.code for stage {stage.value!r} "
+            "must match an accepted namespace"
+        )
+
+
+_STAGE_DEFAULT_CLASSIFICATION: dict[str, CapturedFailureClassification] = {
+    "structural": CapturedFailureClassification.VALIDATION_FAILURE,
+    "canonical": CapturedFailureClassification.CANONICALIZATION_FAILURE,
+    "payoff": CapturedFailureClassification.PAYOFF_COMPILATION_FAILURE,
+}
+
+
+def _validate_classification_coherence(
+    code: str,
+    classification: CapturedFailureClassification,
+    stage: FailureStage,
+) -> None:
+    """Reject contradictory code-suffix / classification pairings.
+
+    Suffix rules take priority. If no suffix matches, the classification
+    must match the stage default.
+    """
+    for suffix, required_cls in _CODE_SUFFIX_CLASSIFICATION.items():
+        if code.endswith(suffix):
+            if classification is not required_cls:
+                raise ValidationEquivalenceInputError(
+                    "CapturedFailure.classification contradicts code suffix"
+                )
+            return
+    default_cls = _STAGE_DEFAULT_CLASSIFICATION.get(stage.value)
+    if default_cls is not None and classification is not default_cls:
+        raise ValidationEquivalenceInputError(
+            "CapturedFailure.classification contradicts stage default"
         )
 
 
@@ -262,9 +357,7 @@ def _validate_diff_scalar(value: object, name: str) -> None:
         return
     if type(value) is float:
         if not math.isfinite(value):
-            raise ValidationEquivalenceInputError(
-                f"{name} must not be nan or inf"
-            )
+            raise ValidationEquivalenceInputError(f"{name} must not be nan or inf")
         return
     raise ValidationEquivalenceInputError(
         f"{name} must be an immutable JSON scalar or None"
@@ -294,6 +387,7 @@ class CapturedFailure:
         _validate_exact_enum(
             self.classification, CapturedFailureClassification, "classification"
         )
+        _validate_classification_coherence(self.code, self.classification, self.stage)
 
 
 @dataclass(frozen=True)
@@ -489,9 +583,17 @@ class _StructuralPayload:
             raise ValidationEquivalenceInputError(
                 "_StructuralPayload.canonical_schema_version must be a string"
             )
+        if self.canonical_schema_version != "1.0.0":
+            raise ValidationEquivalenceInputError(
+                "_StructuralPayload.canonical_schema_version must be exact: 1.0.0"
+            )
         if type(self.payoff_schema_version) is not str:
             raise ValidationEquivalenceInputError(
                 "_StructuralPayload.payoff_schema_version must be a string"
+            )
+        if self.payoff_schema_version != "1.0.0":
+            raise ValidationEquivalenceInputError(
+                "_StructuralPayload.payoff_schema_version must be exact: 1.0.0"
             )
         _validate_exact_enum(
             self.left_validation_outcome, ValidationOutcome, "left_validation_outcome"
@@ -544,6 +646,7 @@ class _StructuralPayload:
             raise ValidationEquivalenceInputError(
                 "schema_metadata must be a SchemaMetadataRecord"
             )
+        _validate_r1a_diff_invariant(self.diff_representation, self.diff_summary)
 
 
 # ---------------------------------------------------------------------------
@@ -558,7 +661,7 @@ class CompleteReport:
     Identity-bearing fields use exact enum types internally; serialization
     emits their ``.value`` strings. This is the structural projection used
     for report_id computation. Provenance is excluded from the structural
-    projection (§7).
+    projection (section 7).
     """
 
     report_id: str
@@ -599,9 +702,17 @@ class CompleteReport:
             raise ValidationEquivalenceInputError(
                 "CompleteReport.canonical_schema_version must be a string"
             )
+        if self.canonical_schema_version != "1.0.0":
+            raise ValidationEquivalenceInputError(
+                "CompleteReport.canonical_schema_version must be exact: 1.0.0"
+            )
         if type(self.payoff_schema_version) is not str:
             raise ValidationEquivalenceInputError(
                 "CompleteReport.payoff_schema_version must be a string"
+            )
+        if self.payoff_schema_version != "1.0.0":
+            raise ValidationEquivalenceInputError(
+                "CompleteReport.payoff_schema_version must be exact: 1.0.0"
             )
         _validate_exact_enum(
             self.left_validation_outcome, ValidationOutcome, "left_validation_outcome"
@@ -658,6 +769,13 @@ class CompleteReport:
             raise ValidationEquivalenceInputError(
                 "provenance must be a ProvenanceRecord"
             )
+        _validate_r1a_diff_invariant(self.diff_representation, self.diff_summary)
+        s_bytes = _compute_structural_bytes(self)
+        recomputed_rid = _safe_report_identity(s_bytes)
+        if recomputed_rid != self.report_id:
+            raise ValidationEquivalenceReportCollisionError(
+                "failed to produce report identity"
+            )
 
 
 __all__: list[str] = [
@@ -676,8 +794,10 @@ __all__: list[str] = [
     "SchemaMetadataRecord",
     "ValidationLimits",
     "_StructuralPayload",
+    "_validate_classification_coherence",
     "_validate_failure_code",
     "_validate_identity",
+    "_validate_r1a_diff_invariant",
     "_validate_report_id_identity",
     "validate_comparison_coherence",
 ]

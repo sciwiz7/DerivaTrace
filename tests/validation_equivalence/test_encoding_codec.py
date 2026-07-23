@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from derivatrace.validation_equivalence._encoding import (
@@ -11,6 +13,7 @@ from derivatrace.validation_equivalence._encoding import (
 from derivatrace.validation_equivalence._errors import (
     ValidationEquivalenceEncodingError,
 )
+from derivatrace.validation_equivalence._identity import _safe_report_identity
 from derivatrace.validation_equivalence._records import (
     CapturedFailure,
     CompleteReport,
@@ -19,6 +22,7 @@ from derivatrace.validation_equivalence._records import (
     ProvenanceRecord,
     ReportSide,
     SchemaMetadataRecord,
+    _StructuralPayload,
 )
 from derivatrace.validation_equivalence._schema import (
     CapturedFailureClassification,
@@ -29,6 +33,66 @@ from derivatrace.validation_equivalence._schema import (
     ValidationLevel,
     ValidationOutcome,
 )
+
+
+def _valid_side() -> ReportSide:
+    return ReportSide(
+        contract_identity="canonical:sha256:" + "a" * 64,
+        payoff_graph_identity=None,
+        failures=(),
+    )
+
+
+def _make_test_report() -> CompleteReport:
+    payload = _StructuralPayload(
+        schema_name="derivatrace.validation-equivalence.report",
+        schema_version="1.0.0",
+        requested_level=ValidationLevel.CANONICAL,
+        canonical_schema_version="1.0.0",
+        payoff_schema_version="1.0.0",
+        left_validation_outcome=ValidationOutcome.VALID,
+        right_validation_outcome=ValidationOutcome.VALID,
+        canonical_comparison_status=ComparisonStatus.EQUIVALENT,
+        canonical_comparison_reason=None,
+        payoff_comparison_status=ComparisonStatus.NOT_EVALUATED,
+        payoff_comparison_reason=ComparisonReason.SHALLOWER_LEVEL_REQUESTED,
+        left=_valid_side(),
+        right=_valid_side(),
+        diff_representation=DiffSelection.NONE,
+        diff_summary=DiffSummary(),
+        limits_used=LimitsUsed(),
+        schema_metadata=SchemaMetadataRecord(),
+    )
+    s_bytes = structural_bytes(payload)
+    rid = _safe_report_identity(s_bytes)
+    return CompleteReport(
+        report_id=rid,
+        schema_name=payload.schema_name,
+        schema_version=payload.schema_version,
+        requested_level=payload.requested_level,
+        canonical_schema_version=payload.canonical_schema_version,
+        payoff_schema_version=payload.payoff_schema_version,
+        left_validation_outcome=payload.left_validation_outcome,
+        right_validation_outcome=payload.right_validation_outcome,
+        canonical_comparison_status=payload.canonical_comparison_status,
+        canonical_comparison_reason=payload.canonical_comparison_reason,
+        payoff_comparison_status=payload.payoff_comparison_status,
+        payoff_comparison_reason=payload.payoff_comparison_reason,
+        left=payload.left,
+        right=payload.right,
+        diff_representation=payload.diff_representation,
+        diff_summary=payload.diff_summary,
+        limits_used=payload.limits_used,
+        schema_metadata=payload.schema_metadata,
+        provenance=ProvenanceRecord(
+            source_left_identity="canonical:sha256:" + "a" * 64,
+            source_right_identity="canonical:sha256:" + "b" * 64,
+        ),
+    )
+
+
+def _failing_report_to_jsonable(report: object) -> dict[str, Any]:
+    raise RuntimeError("secret conversion detail")
 
 
 class TestCanonicalJson:
@@ -53,6 +117,18 @@ class TestCanonicalJson:
         assert b": " not in result
         assert b", " not in result
 
+    def test_rejects_nan(self) -> None:
+        with pytest.raises(ValueError):
+            canonical_json({"key": float("nan")})
+
+    def test_rejects_positive_inf(self) -> None:
+        with pytest.raises(ValueError):
+            canonical_json({"key": float("inf")})
+
+    def test_rejects_negative_inf(self) -> None:
+        with pytest.raises(ValueError):
+            canonical_json({"key": float("-inf")})
+
 
 class TestReportEncoding:
     def test_encode_report_produces_bytes(self) -> None:
@@ -68,7 +144,10 @@ class TestReportEncoding:
         report = _make_test_report()
         with pytest.raises(ValidationEquivalenceEncodingError) as exc_info:
             encode_report(report, _failing_encoder)
-        assert "injected" in str(exc_info.value)
+        assert type(exc_info.value) is ValidationEquivalenceEncodingError
+        assert "failed to encode complete report" in str(exc_info.value)
+        assert "injected" not in str(exc_info.value)
+        assert isinstance(exc_info.value.__cause__, ValidationEquivalenceEncodingError)
 
     def test_structural_bytes_excludes_provenance(self) -> None:
         report = _make_test_report()
@@ -95,6 +174,65 @@ class TestReportEncoding:
         report = _make_test_report()
         with pytest.raises(ValidationEquivalenceEncodingError):
             structural_bytes(report, _failing_encoder)
+
+    def test_structural_bytes_conversion_failure_message(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import derivatrace.validation_equivalence._encoding as enc_mod
+
+        report = _make_test_report()
+        monkeypatch.setattr(enc_mod, "report_to_jsonable", _failing_report_to_jsonable)
+        with pytest.raises(ValidationEquivalenceEncodingError) as exc_info:
+            structural_bytes(report)
+        assert "failed to encode structural projection" in str(exc_info.value)
+        assert "secret" not in str(exc_info.value)
+
+    def test_structural_bytes_encoder_failure_message(self) -> None:
+        def _exploding_encoder(obj: object) -> bytes:
+            raise RuntimeError("secret encoder detail")
+
+        with pytest.raises(ValidationEquivalenceEncodingError) as exc_info:
+            structural_bytes(_make_test_report(), _exploding_encoder)
+        assert "failed to encode structural projection" in str(exc_info.value)
+        assert "secret" not in str(exc_info.value)
+
+    def test_encode_report_conversion_failure_message(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import derivatrace.validation_equivalence._encoding as enc_mod
+
+        report = _make_test_report()
+        monkeypatch.setattr(enc_mod, "report_to_jsonable", _failing_report_to_jsonable)
+        with pytest.raises(ValidationEquivalenceEncodingError) as exc_info:
+            encode_report(report)
+        assert "failed to encode complete report" in str(exc_info.value)
+        assert "secret" not in str(exc_info.value)
+
+    def test_encode_report_encoder_failure_message(self) -> None:
+        def _exploding_encoder(obj: object) -> bytes:
+            raise RuntimeError("secret encoder detail")
+
+        with pytest.raises(ValidationEquivalenceEncodingError) as exc_info:
+            encode_report(_make_test_report(), _exploding_encoder)
+        assert "failed to encode complete report" in str(exc_info.value)
+        assert "secret" not in str(exc_info.value)
+
+    def test_underlying_secret_text_absent_from_messages(self) -> None:
+        import derivatrace.validation_equivalence._encoding as enc_mod
+
+        report = _make_test_report()
+        original = enc_mod._to_jsonable
+        enc_mod._to_jsonable = lambda obj: (_ for _ in ()).throw(
+            RuntimeError("very_secret_implementation_detail")
+        )
+        try:
+            with pytest.raises(ValidationEquivalenceEncodingError) as exc_info:
+                structural_bytes(report)
+            msg = str(exc_info.value)
+            assert "very_secret_implementation_detail" not in msg
+            assert "secret" not in msg
+        finally:
+            enc_mod._to_jsonable = original
 
 
 class TestReportToJsonable:
@@ -160,43 +298,3 @@ class TestNestedSchemaMetadataJson:
         assert sm["payoff"]["representation_identity_domain"] == (
             "derivatrace.payoffgraph.graph"
         )
-
-
-def _make_test_report() -> CompleteReport:
-    return CompleteReport(
-        report_id="validation-equivalence:sha256:" + "a" * 64,
-        schema_name="derivatrace.validation-equivalence.report",
-        schema_version="1.0.0",
-        requested_level=ValidationLevel.CANONICAL,
-        canonical_schema_version="1.0.0",
-        payoff_schema_version="1.0.0",
-        left_validation_outcome=ValidationOutcome.VALID,
-        right_validation_outcome=ValidationOutcome.VALID,
-        canonical_comparison_status=ComparisonStatus.EQUIVALENT,
-        canonical_comparison_reason=None,
-        payoff_comparison_status=ComparisonStatus.NOT_EVALUATED,
-        payoff_comparison_reason=ComparisonReason.SHALLOWER_LEVEL_REQUESTED,
-        left=ReportSide(
-            contract_identity="canonical:sha256:" + "a" * 64,
-            payoff_graph_identity=None,
-            failures=(),
-        ),
-        right=ReportSide(
-            contract_identity="canonical:sha256:" + "a" * 64,
-            payoff_graph_identity=None,
-            failures=(),
-        ),
-        diff_representation=DiffSelection.NONE,
-        diff_summary=DiffSummary(
-            entries=(),
-            truncated=False,
-            truncation_reason=None,
-            unavailable_reason=None,
-        ),
-        limits_used=LimitsUsed(),
-        schema_metadata=SchemaMetadataRecord(),
-        provenance=ProvenanceRecord(
-            source_left_identity="canonical:sha256:" + "a" * 64,
-            source_right_identity="canonical:sha256:" + "b" * 64,
-        ),
-    )

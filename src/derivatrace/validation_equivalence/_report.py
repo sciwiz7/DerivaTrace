@@ -5,14 +5,14 @@ from dataclasses import dataclass, field
 from derivatrace.canonical import CanonicalSchemaVersion
 from derivatrace.payoffgraph import PayoffGraphSchemaVersion
 
-from ._encoding import encode_report as _encode_report
+from ._encoding import encode_report as _encode_report_canonical
 from ._encoding import structural_bytes
 from ._errors import (
     ValidationEquivalenceEncodingError,
     ValidationEquivalenceInputError,
     ValidationEquivalenceReportCollisionError,
 )
-from ._identity import report_identity as _report_identity
+from ._identity import _safe_report_identity
 from ._records import (
     CompleteReport,
     DiffSummary,
@@ -21,6 +21,7 @@ from ._records import (
     ReportSide,
     SchemaMetadataRecord,
     _StructuralPayload,
+    _validate_r1a_diff_invariant,
 )
 from ._schema import (
     COMPILER_TAG,
@@ -29,60 +30,14 @@ from ._schema import (
     DiffSelection,
     ValidationLevel,
     ValidationOutcome,
-    _validate_diff_selection,
     _validate_exact_enum,
     _validate_validation_level,
 )
 
 
-def _safe_report_identity(structural_bytes: bytes) -> str:
-    """Single private helper wrapping ``report_identity``.
-
-    Normalizes any internal failure into
-    ``ValidationEquivalenceEncodingError`` with a fixed message.
-    """
-    try:
-        return _report_identity(structural_bytes)
-    except Exception as exc:
-        raise ValidationEquivalenceEncodingError(
-            "failed to compute report identity"
-        ) from exc
-
-
-def _validate_r1a_diff_invariant(
-    diff_representation: DiffSelection,
-    diff_summary: DiffSummary,
-) -> None:
-    """Enforce the exact R1A diff invariant.
-
-    The R1A factory may construct only:
-    - DiffSelection.NONE
-    - entries == ()
-    - truncated is False
-    - truncation_reason is None
-    - unavailable_reason is None
-    """
-    _validate_diff_selection(diff_representation)
-    if diff_representation is not DiffSelection.NONE:
-        raise ValidationEquivalenceInputError("R1A requires diff_representation=none")
-    if type(diff_summary) is not DiffSummary:
-        raise ValidationEquivalenceInputError("diff_summary must be a DiffSummary")
-    if diff_summary.entries != ():
-        raise ValidationEquivalenceInputError(
-            "R1A requires diff_summary.entries to be empty"
-        )
-    if diff_summary.truncated is not False:
-        raise ValidationEquivalenceInputError(
-            "R1A requires diff_summary.truncated=False"
-        )
-    if diff_summary.truncation_reason is not None:
-        raise ValidationEquivalenceInputError(
-            "R1A requires diff_summary.truncation_reason=None"
-        )
-    if diff_summary.unavailable_reason is not None:
-        raise ValidationEquivalenceInputError(
-            "R1A requires diff_summary.unavailable_reason=None"
-        )
+def _encode_report(report: object) -> bytes:
+    """Private seam for report encoding (tests may monkeypatch this)."""
+    return _encode_report_canonical(report)
 
 
 def _validate_record_types(
@@ -226,7 +181,8 @@ def _build_report(
             "failed to encode structural projection"
         ) from exc
 
-    # Step 4: compute report_id
+    # Step 4: compute report_id — let ValidationEquivalenceReportCollisionError
+    # propagate without conversion.
     rid = _safe_report_identity(s_bytes)
 
     # Step 5: create final CompleteReport carrying the exact valid report_id
@@ -265,8 +221,8 @@ def _build_report(
         )
     recomputed_rid = _safe_report_identity(recomputed_s)
     if recomputed_rid != rid:
-        raise ValidationEquivalenceEncodingError(
-            "report_id mismatch: report may be forged"
+        raise ValidationEquivalenceReportCollisionError(
+            "failed to produce report identity"
         )
 
     # Step 7: encode complete report bytes
@@ -323,8 +279,8 @@ class ValidationEquivalenceReport:
             )
         recomputed_rid = _safe_report_identity(self._structural_bytes)
         if self._report.report_id != recomputed_rid:
-            raise ValidationEquivalenceEncodingError(
-                "report_id mismatch: report may be forged"
+            raise ValidationEquivalenceReportCollisionError(
+                "failed to produce report identity"
             )
         try:
             recomputed_rb = _encode_report(self._report)
@@ -374,5 +330,6 @@ class ValidationEquivalenceReport:
 __all__: list[str] = [
     "ValidationEquivalenceReport",
     "_build_report",
+    "_encode_report",
     "structural_bytes",
 ]

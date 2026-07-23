@@ -43,6 +43,14 @@ from derivatrace.validation_equivalence._schema import (
 )
 
 
+def _valid_side() -> ReportSide:
+    return ReportSide(
+        contract_identity="canonical:sha256:" + "a" * 64,
+        payoff_graph_identity=None,
+        failures=(),
+    )
+
+
 def _default_report_kwargs() -> dict[str, Any]:
     """Return default kwargs for _build_report."""
     return {
@@ -55,16 +63,8 @@ def _default_report_kwargs() -> dict[str, Any]:
         "canonical_comparison_reason": None,
         "payoff_comparison_status": ComparisonStatus.NOT_EVALUATED,
         "payoff_comparison_reason": ComparisonReason.SHALLOWER_LEVEL_REQUESTED,
-        "left": ReportSide(
-            contract_identity="canonical:sha256:" + "a" * 64,
-            payoff_graph_identity=None,
-            failures=(),
-        ),
-        "right": ReportSide(
-            contract_identity="canonical:sha256:" + "a" * 64,
-            payoff_graph_identity=None,
-            failures=(),
-        ),
+        "left": _valid_side(),
+        "right": _valid_side(),
         "diff_representation": DiffSelection.NONE,
         "diff_summary": DiffSummary(
             entries=(),
@@ -75,6 +75,12 @@ def _default_report_kwargs() -> dict[str, Any]:
         "limits_used": LimitsUsed(),
         "schema_metadata": SchemaMetadataRecord(),
     }
+
+
+def _build_report_with_real_id(**overrides: Any) -> CompleteReport:
+    """Build a CompleteReport through _build_report and return the inner report."""
+    r = _build_report(**overrides)
+    return r.report
 
 
 class TestVe014ProvenanceOnlyDiff:
@@ -175,21 +181,17 @@ class TestVe037ReportEncodingFailureRaises:
     """ve_037: injected deterministic report-encoder failure raises
     validation_equivalence.encoding."""
 
-    def test_encoding_failure_raises(self) -> None:
-        def _failing_structural(obj: object) -> bytes:
+    def test_encoding_failure_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def _failing_structural(obj: object, encoder: object = None) -> bytes:
             raise ValidationEquivalenceEncodingError("injected failure")
 
         import derivatrace.validation_equivalence._report as report_mod
 
-        original = report_mod.structural_bytes
-        report_mod.structural_bytes = _failing_structural
-        try:
-            with pytest.raises(ValidationEquivalenceEncodingError) as exc_info:
-                _build_report(**_default_report_kwargs())
-            assert "injected failure" not in str(exc_info.value)
-            assert "failed to encode structural projection" in str(exc_info.value)
-        finally:
-            report_mod.structural_bytes = original
+        monkeypatch.setattr(report_mod, "structural_bytes", _failing_structural)
+        with pytest.raises(ValidationEquivalenceEncodingError) as exc_info:
+            _build_report(**_default_report_kwargs())
+        assert "injected failure" not in str(exc_info.value)
+        assert "failed to encode structural projection" in str(exc_info.value)
 
     def test_structural_bytes_encoding_failure_raises(self) -> None:
         def _failing_encoder(obj: object) -> bytes:
@@ -444,30 +446,27 @@ class TestFactoryIdentityVerification:
 
     def test_forged_report_id_rejected(self) -> None:
         report = _build_report(**_default_report_kwargs())
-        forged = CompleteReport(
-            report_id="validation-equivalence:sha256:" + "f" * 64,
-            schema_name=report.report.schema_name,
-            schema_version=report.report.schema_version,
-            requested_level=report.report.requested_level,
-            canonical_schema_version=report.report.canonical_schema_version,
-            payoff_schema_version=report.report.payoff_schema_version,
-            left_validation_outcome=report.report.left_validation_outcome,
-            right_validation_outcome=report.report.right_validation_outcome,
-            canonical_comparison_status=report.report.canonical_comparison_status,
-            canonical_comparison_reason=report.report.canonical_comparison_reason,
-            payoff_comparison_status=report.report.payoff_comparison_status,
-            payoff_comparison_reason=report.report.payoff_comparison_reason,
-            left=report.report.left,
-            right=report.report.right,
-            diff_representation=report.report.diff_representation,
-            diff_summary=report.report.diff_summary,
-            limits_used=report.report.limits_used,
-            schema_metadata=report.report.schema_metadata,
-            provenance=report.report.provenance,
-        )
-        with pytest.raises(ValidationEquivalenceEncodingError):
-            ValidationEquivalenceReport(
-                forged, report.structural_bytes, report.report_bytes
+        with pytest.raises(ValidationEquivalenceReportCollisionError):
+            CompleteReport(
+                report_id="validation-equivalence:sha256:" + "f" * 64,
+                schema_name=report.report.schema_name,
+                schema_version=report.report.schema_version,
+                requested_level=report.report.requested_level,
+                canonical_schema_version=report.report.canonical_schema_version,
+                payoff_schema_version=report.report.payoff_schema_version,
+                left_validation_outcome=report.report.left_validation_outcome,
+                right_validation_outcome=report.report.right_validation_outcome,
+                canonical_comparison_status=report.report.canonical_comparison_status,
+                canonical_comparison_reason=report.report.canonical_comparison_reason,
+                payoff_comparison_status=report.report.payoff_comparison_status,
+                payoff_comparison_reason=report.report.payoff_comparison_reason,
+                left=report.report.left,
+                right=report.report.right,
+                diff_representation=report.report.diff_representation,
+                diff_summary=report.report.diff_summary,
+                limits_used=report.report.limits_used,
+                schema_metadata=report.report.schema_metadata,
+                provenance=report.report.provenance,
             )
 
     def test_mismatched_structural_bytes_rejected(self) -> None:
@@ -688,3 +687,44 @@ class TestNoMutableCollectionLeakage:
     def test_diff_entries_is_tuple(self) -> None:
         ds = DiffSummary(entries=(), truncated=False)
         assert type(ds.entries) is tuple
+
+
+class TestSafeReportIdentityInputTypes:
+    """_safe_report_identity rejects None, bytes subclasses, str, int."""
+
+    def test_none_rejected(self) -> None:
+        from derivatrace.validation_equivalence._identity import _safe_report_identity
+
+        with pytest.raises(ValidationEquivalenceReportCollisionError):
+            _safe_report_identity(None)  # type: ignore[arg-type]
+
+    def test_bytes_input_accepted(self) -> None:
+        from derivatrace.validation_equivalence._identity import _safe_report_identity
+
+        result = _safe_report_identity(b"\x00")
+        assert result.startswith("validation-equivalence:sha256:")
+
+    def test_int_rejected(self) -> None:
+        from derivatrace.validation_equivalence._identity import _safe_report_identity
+
+        with pytest.raises(ValidationEquivalenceReportCollisionError):
+            _safe_report_identity(42)  # type: ignore[arg-type]
+
+    def test_str_subclass_output_rejected(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression: a valid-looking str subclass must never be returned."""
+
+        class IdentityString(str):
+            pass
+
+        from derivatrace.validation_equivalence import _identity as id_mod
+
+        def _fake_report_identity(data: bytes) -> IdentityString:
+            return IdentityString("validation-equivalence:sha256:" + "a" * 64)
+
+        monkeypatch.setattr(id_mod, "report_identity", _fake_report_identity)
+        with pytest.raises(ValidationEquivalenceReportCollisionError) as exc_info:
+            id_mod._safe_report_identity(b"\x00")
+        assert str(exc_info.value).endswith("failed to produce report identity")
+        assert exc_info.value.__cause__ is None

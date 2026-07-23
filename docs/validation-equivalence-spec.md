@@ -1,9 +1,13 @@
 # Validation-equivalence specification (Stage 1C baseline)
 
-- **Status:** Architecture baseline established. Runtime implementation planned for
-  Stage 1C-R1 (validation levels and equivalence reports) and Stage 1C-R2
-  (deterministic structural diffing).
-- **Stage:** 1C (architecture baseline **established**; runtimes planned).
+- **Status:** Architecture baseline established. Private R1A validation-equivalence
+  data structures and report construction recovered under
+  `derivatrace.validation_equivalence` (no public `compare_contracts` export).
+  The top-level `derivatrace.__init__` exports no `compare_contracts` function and
+  no `validation_equivalence` public API. Runtime R1 full delivery and Stage 1C-R2
+  (deterministic structural diffing) remain planned.
+- **Stage:** 1C (architecture baseline **established**; private R1A recovered, R1
+  public delivery and R2 planned).
 - **Depends on:** Stage 1A (`derivatrace.contracts`), Stage 1B-R1 canonical runtime
   (`derivatrace.canonical`), Stage 1B-R2 payoff-graph runtime
   (`derivatrace.payoffgraph`), ADR 0001–0007, ADR 0008.
