@@ -1545,7 +1545,7 @@ def test_stage_1c_status_established_not_implemented() -> None:
     # Runtime must not be claimed as implemented.
     assert "stage 1c-r1" not in spec or "planned" in spec
     assert "stage 1c-r2" not in spec or "planned" in spec
-    assert "no stage 1c runtime module exists" in spec
+    assert "no public stage 1c api is exported" in spec
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8").lower()
     assert "architecture baseline established" in readme
     assert "unimplemented" in readme or "planned" in readme
@@ -1979,13 +1979,13 @@ def test_stage_1c_documentation_guards_enforced() -> None:
 
 
 def test_stage_1c_runtime_unimplemented() -> None:
-    # No Stage 1C runtime module may be added.
+    # No public Stage 1C API exported; private R1A package exists.
+    assert (SRC_ROOT / "validation_equivalence").is_dir()
     assert not (SRC_ROOT / "validationequivalence").exists()
-    assert not (SRC_ROOT / "validation_equivalence").exists()
     assert not (SRC_ROOT / "stage1c").exists()
     spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
     assert "unimplemented" in spec
-    assert "no stage 1c runtime module exists" in spec
+    assert "no public stage 1c api is exported" in spec
     # The public entry point is explicitly not yet implemented.
     assert "not yet implemented" in spec
 
@@ -2282,12 +2282,12 @@ def test_provenance_identities_null_when_not_requested_or_failed() -> None:
 
 
 def test_stage_1c_runtime_unimplemented_final() -> None:
-    """Stage 1C runtime remains unimplemented."""
+    """Stage 1C public API remains unimplemented; private R1A package exists."""
+    assert (SRC_ROOT / "validation_equivalence").is_dir()
     assert not (SRC_ROOT / "validationequivalence").exists()
-    assert not (SRC_ROOT / "validation_equivalence").exists()
     assert not (SRC_ROOT / "stage1c").exists()
     spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
-    assert "no stage 1c runtime module exists" in spec
+    assert "no public stage 1c api is exported" in spec
     assert "not yet implemented" in spec
 
 
@@ -3112,12 +3112,12 @@ def test_exact_ordered_44_key_tuple_unchanged() -> None:
 
 
 def test_stage_1c_runtime_unimplemented_final_guard() -> None:
-    """Stage 1C runtime remains unimplemented (final guard)."""
+    """Stage 1C public API unimplemented (final guard); private R1A exists."""
+    assert (SRC_ROOT / "validation_equivalence").is_dir()
     assert not (SRC_ROOT / "validationequivalence").exists()
-    assert not (SRC_ROOT / "validation_equivalence").exists()
     assert not (SRC_ROOT / "stage1c").exists()
     spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
-    assert "no stage 1c runtime module exists" in spec
+    assert "no public stage 1c api is exported" in spec
     assert "not yet implemented" in spec
 
 
@@ -3910,13 +3910,13 @@ def test_phase_buckets_preserve_exact_ordered_inventory() -> None:
 
 
 def test_phase_buckets_stage_1c_runtime_unimplemented() -> None:
-    """Stage 1C runtime remains unimplemented (no runtime module exists)."""
+    """Stage 1C public API remains unimplemented; private R1A package exists."""
+    assert (SRC_ROOT / "validation_equivalence").is_dir()
     assert not (SRC_ROOT / "validationequivalence").exists()
-    assert not (SRC_ROOT / "validation_equivalence").exists()
     assert not (SRC_ROOT / "stage1c").exists()
     spec = _frozen_defaults_spec()
     adr9 = _frozen_defaults_adr9()
-    assert "no stage 1c runtime module exists" in spec
+    assert "no public stage 1c api is exported" in spec
     assert "unimplemented" in spec
     assert "not yet implemented" in spec
     # ADR 0009 defines the runtime delivery seam and states the public export
@@ -3925,10 +3925,10 @@ def test_phase_buckets_stage_1c_runtime_unimplemented() -> None:
 
 
 def test_phase_buckets_no_stage_1c_runtime_source_module() -> None:
-    """No Stage 1C runtime source module exists."""
+    """No public Stage 1C runtime module exists; private R1A package is present."""
+    assert (SRC_ROOT / "validation_equivalence").is_dir()
     for candidate in (
         SRC_ROOT / "validationequivalence",
-        SRC_ROOT / "validation_equivalence",
         SRC_ROOT / "stage1c",
     ):
         assert not candidate.exists()
@@ -3951,12 +3951,12 @@ def test_all_runtime_status_guards_remain_accurate() -> None:
     assert "planned" in road and "stage 1c" in road
     # Public runtime unimplemented.
     assert "unimplemented" in spec
-    assert "no stage 1c runtime module exists" in spec
+    assert "no public stage 1c api is exported" in spec
     assert "not yet implemented" in spec
-    # No new runtime module added.
+    # Private R1A package exists; no public module or stage1c module.
     spec_src = SRC_ROOT
+    assert (spec_src / "validation_equivalence").is_dir()
     assert not (spec_src / "validationequivalence").exists()
-    assert not (spec_src / "validation_equivalence").exists()
     assert not (spec_src / "stage1c").exists()
     # README must not claim Stage 1C runtime implemented.
     assert "planned" in readme or "unimplemented" in readme
@@ -4115,10 +4115,10 @@ def test_no_old_duplicate_or_stale_affected_heading() -> None:
 
 
 def test_no_runtime_source_modified() -> None:
-    """10. No runtime source is modified."""
+    """10. No public runtime source is modified; private R1A package exists."""
+    assert (SRC_ROOT / "validation_equivalence").is_dir()
     assert not (SRC_ROOT / "validationequivalence").exists()
-    assert not (SRC_ROOT / "validation_equivalence").exists()
     assert not (SRC_ROOT / "stage1c").exists()
     spec = _frozen_defaults_spec()
-    assert "no stage 1c runtime module exists" in spec
+    assert "no public stage 1c api is exported" in spec
     assert "not yet implemented" in spec

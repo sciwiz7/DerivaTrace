@@ -71,6 +71,24 @@ CANONICAL_DOCS = [
     "docs/adr/0007-canonical-contract-identity-and-payoff-graph.md",
 ]
 
+# The complete Stage 1C-R1A private validation-equivalence package.
+VALIDATION_EQUIVALENCE_MODULES = [
+    "src/derivatrace/validation_equivalence/__init__.py",
+    "src/derivatrace/validation_equivalence/_errors.py",
+    "src/derivatrace/validation_equivalence/_schema.py",
+    "src/derivatrace/validation_equivalence/_records.py",
+    "src/derivatrace/validation_equivalence/_encoding.py",
+    "src/derivatrace/validation_equivalence/_identity.py",
+    "src/derivatrace/validation_equivalence/_report.py",
+]
+
+VALIDATION_EQUIVALENCE_TESTS = [
+    "tests/validation_equivalence/test_encoding_codec.py",
+    "tests/validation_equivalence/test_report.py",
+    "tests/validation_equivalence/test_schema.py",
+    "tests/validation_equivalence/test_invariants_coverage.py",
+]
+
 REQUIRED_SDIST_PATHS = [
     "src/derivatrace/__init__.py",
     "src/derivatrace/_metadata.py",
@@ -179,6 +197,9 @@ def test_wheel_inventory(artifacts: Path) -> None:
     # The complete canonical runtime package must ship in the wheel.
     for module in CANONICAL_MODULES:
         assert f"derivatrace/{module.split('src/derivatrace/')[1]}" in names
+    # The private validation-equivalence package must ship in the wheel.
+    for module in VALIDATION_EQUIVALENCE_MODULES:
+        assert f"derivatrace/{module.split('src/derivatrace/')[1]}" in names
     # No tests, docs, caches or generated files belong in the wheel.
     for name in names:
         assert not name.startswith("tests/")
@@ -196,6 +217,9 @@ def test_sdist_inventory(artifacts: Path) -> None:
     assert not missing, f"missing from sdist: {missing}"
     # The canonical runtime modules and tests must ship in the sdist.
     for module in (*CANONICAL_MODULES, *CANONICAL_TESTS, *CANONICAL_DOCS):
+        assert module in stripped, f"missing from sdist: {module}"
+    # The private validation-equivalence modules and tests must ship in the sdist.
+    for module in (*VALIDATION_EQUIVALENCE_MODULES, *VALIDATION_EQUIVALENCE_TESTS):
         assert module in stripped, f"missing from sdist: {module}"
     bad = [
         n for n in names for forbidden in FORBIDDEN_SDIST_SUBSTRINGS if forbidden in n

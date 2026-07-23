@@ -1,9 +1,13 @@
 # Validation-equivalence specification (Stage 1C baseline)
 
-- **Status:** Architecture baseline established. Runtime implementation planned for
-  Stage 1C-R1 (validation levels and equivalence reports) and Stage 1C-R2
-  (deterministic structural diffing).
-- **Stage:** 1C (architecture baseline **established**; runtimes planned).
+- **Status:** Architecture baseline established. Private R1A validation-equivalence
+  data structures and report construction recovered under
+  `derivatrace.validation_equivalence` (no public `compare_contracts` export).
+  The top-level `derivatrace.__init__` exports no `compare_contracts` function and
+  no `validation_equivalence` public API. Runtime R1 full delivery and Stage 1C-R2
+  (deterministic structural diffing) remain planned.
+- **Stage:** 1C (architecture baseline **established**; private R1A recovered, R1
+  public delivery and R2 planned).
 - **Depends on:** Stage 1A (`derivatrace.contracts`), Stage 1B-R1 canonical runtime
   (`derivatrace.canonical`), Stage 1B-R2 payoff-graph runtime
   (`derivatrace.payoffgraph`), ADR 0001–0007, ADR 0008.
@@ -135,7 +139,7 @@ def compare_contracts(
 ```
 
 The function is **not yet implemented**; this specification defines its contract.
-No Stage 1C runtime module exists.
+No public Stage 1C API is exported; R1A adds a private internal package.
 
 #### 3.1.1 Per-call schema selection (never per-side)
 
@@ -569,7 +573,7 @@ Required rules for the captured-failure record:
   there is no null-versus-empty ambiguity.
 - `stage` — the failing stage, one of `structural`, `canonical`, `payoff`.
 - `code` — the existing upstream error code **in its original namespace**
-  (`validation.*`, `canonicalization.*`, `payoff_graph.*`); never relabelled.
+  (`contract.validation.*`, `contract.input.*`, `canonicalization.*`, `payoff_graph.*`); never relabelled.
 - `classification` — a value drawn from a **closed documented taxonomy** (§3.14.3).
 - No `side` field appears **inside** a record: the array is already nested under
   `left` or `right`, so the side is unambiguous and is never repeated.
@@ -1187,7 +1191,7 @@ Stage 1C owns the `validation_equivalence` error namespace. All derive from
 **Caller-owned vs operand-owned policy.** The errors above are **raised** for
 caller-owned failures (§3.14.1), including unsupported canonical/payoff schema
 selection and contradictory schema configuration. Upstream errors (Stage 1A
-`validation.*`, Stage 1B-R1 `canonicalization.*`, Stage 1B-R2 `payoff_graph.*`)
+`contract.validation.*` / `contract.input.*`, Stage 1B-R1 `canonicalization.*`, Stage 1B-R2 `payoff_graph.*`)
 are **captured inside the report** in the single per-side `failures` array
 (§3.4, §3.14.2) and **do not raise** from `compare_contracts`, provided a
 deterministic report can still be formed. Only the Stage 1C-owned errors above
@@ -1510,7 +1514,7 @@ merged. They are enforced by `tests/test_documentation.py`:
 - Stage 1B is no longer marked "In progress" (Stage 1B-R1: Implemented;
   Stage 1B-R2: Implemented).
 - Stage 1C architecture baseline: "Established".
-- Stage 1C runtime: "Unimplemented" (no public API, no runtime module).
+- Stage 1C runtime: "Unimplemented" (no public API exported; R1A private package exists).
 - No economic-equivalence claim exists in any documentation.
 - All three validation-level terms (`structural`, `canonical`, `payoff`) and the
   progressive-processing-depth rule appear in `validation-equivalence-spec.md`.
@@ -1566,7 +1570,7 @@ merged. They are enforced by `tests/test_documentation.py`:
 - `ValidationEquivalenceComplexityError` is absent from the v1 error taxonomy.
 - Provenance identities are `null` when canonicalization was not requested or
   failed; this is one exact rule covering structural-level and failed reports.
-- Stage 1C runtime: **Unimplemented** (no public API, no runtime module exists).
+- Stage 1C runtime: **Unimplemented** (no public API exported; R1A private package exists).
 - No economic-equivalence claim exists.
 - Vector keys remain unique.
 - When either operand fails Stage 1A validation: requested `structural` →
