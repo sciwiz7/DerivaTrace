@@ -181,14 +181,23 @@ Every normative vector in §9.2 carries a `Kind` value that is either
 it is never inferred from prose, labels, formatting, or defaults.
 
 - **`public_api`** vectors provide two Stage 1A `Contract` operands
-  constructible through the ordinary public API (or their Stage 1B
-  projections). The expected outcomes are verifiable once the public
-  `compare_contracts` API is exported.
+  passed through the ordinary eventual `compare_contracts` boundary (or
+  their Stage 1B projections). The expected outcomes are verifiable once
+  the public `compare_contracts` API is exported.  Caller-owned hostile
+  or forged objects are permitted when testing use-time boundary
+  hardening, provided:
+  - no Stage 1C internal function is monkeypatched;
+  - no encoder, digest or report-construction seam is replaced;
+  - no orchestration dependency is injected;
+  - the hostile caller construction is documented exactly.
 - **`private_seam`** vectors provide explicitly labelled controlled
   fault-injection, report-construction, identity-projection, or
   invariant-seam inputs that are **not** constructible through ordinary
   `compare_contracts` inputs. Private-seam vectors verify internal
   invariants that cannot be exercised through the public API boundary.
+  Internal Stage 1C fault injection (monkeypatching, seam replacement,
+  orchestration dependency injection) is restricted to `private_seam`
+  vectors.
 
 ### 3.3 Report schema and versioning
 
@@ -1336,13 +1345,13 @@ formatting, or defaults; each normative row explicitly carries the field.
 | `ve_015_settlement_timestamp_diff` | `public_api` | `Payment(Num("1", USD), USD, T0)` | `Payment(Num("1", USD), USD, T0_500ms)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
 | `ve_016_observation_timestamp_diff` | `public_api` | `Payment(Add(obs_A@T0, obs_B@T0), USD, T0)` | `Payment(Add(obs_A@T0_500ms, obs_B@T0), USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
 | `ve_017_currency_diff` | `public_api` | `Payment(Num("1", USD), USD, T0)` | `Payment(Num("1", EUR), EUR, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
-| `ve_018_scalar_vs_money_unit` | `public_api` | `Scale(Num("2", scalar), Payment(obs_A, USD, T0))` | `Scale(Num("3", money(EUR)), Payment(obs_A, USD, T0))` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
+| `ve_018_scalar_vs_money_unit` | `public_api` | `Scale(Num("2", scalar), Payment(obs_A, USD, T0))` | caller-forged `Scale` with money-denominated `factor` via `object.__setattr__` (root `Scale`, fails use-time validation) | `payoff` | valid / invalid | not_comparable | not_comparable | none |  | never |
 | `ve_019_comparison_operator_diff` | `public_api` | `Payment(ConditionalValue(Comparison(obs_A, obs_B, GT), obs_A, obs_B), USD, T0)` | `Payment(ConditionalValue(Comparison(obs_A, obs_B, LT), obs_A, obs_B), USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
 | `ve_020_conditional_branch_order` | `public_api` | `Payment(ConditionalValue(cond, obs_A, obs_B), USD, T0)` | `Payment(ConditionalValue(cond, obs_B, obs_A), USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
 | `ve_021_zero_vs_nonzero` | `public_api` | `Zero()` | `Payment(Num("1", USD), USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
-| `ve_022_invalid_left` | `public_api` | `Add(obs_A)` (single operand — invalid) | `Payment(obs_A, USD, T0)` | `structural` | invalid / valid | not_evaluated | not_evaluated | empty |  | never |
-| `ve_023_invalid_right` | `public_api` | `Payment(obs_A, USD, T0)` | `Add(obs_A)` | `structural` | valid / invalid | not_evaluated | not_evaluated | empty |  | never |
-| `ve_024_invalid_left_at_payoff_level` | `public_api` | `Add(obs_A)` (single operand — invalid) | `Payment(obs_A, USD, T0)` | `payoff` | invalid / valid | not_comparable | not_comparable | none |  | never |
+| `ve_022_invalid_left` | `public_api` | `UnsupportedContract()` (unsupported `Contract` subclass — invalid) | `Payment(obs_A, USD, T0)` | `structural` | invalid / valid | not_evaluated | not_evaluated | empty |  | never |
+| `ve_023_invalid_right` | `public_api` | `Payment(obs_A, USD, T0)` | `UnsupportedContract()` (unsupported `Contract` subclass — invalid) | `structural` | valid / invalid | not_evaluated | not_evaluated | empty |  | never |
+| `ve_024_invalid_left_at_payoff_level` | `public_api` | `UnsupportedContract()` (unsupported `Contract` subclass — invalid) | `Payment(obs_A, USD, T0)` | `payoff` | invalid / valid | not_comparable | not_comparable | none |  | never |
 | `ve_025_admission_byte_boundary_exact` | `public_api` | Large contract (exactly `max_compared_bytes` total structural bytes) | Same contract | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
 | `ve_026_admission_byte_boundary_exceeded` | `public_api` | Large contract (exactly `max_compared_bytes + 1` total structural bytes) | Same contract | `payoff` | valid / valid | equivalent | equivalent | none |  | never |
 | `ve_027_admission_node_boundary_exact` | `public_api` | Large contract (exactly `max_compared_nodes` combined nodes) | Same contract | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
@@ -1356,7 +1365,7 @@ formatting, or defaults; each normative row explicitly carries the field.
 | `ve_035_unsupported_level_raises` | `public_api` | Contract A | Contract A | `bogus` | valid / valid | — | — | — | `validation_equivalence.unsupported_level` | never |
 | `ve_036_malformed_limits_raise` | `public_api` | Contract A | Contract A | `canonical` | valid / valid | — | — | — | `validation_equivalence.input` | never |
 | `ve_037_report_encoding_failure_raises` | `private_seam` | valid Contract A; injected deterministic report-encoder failure | valid Contract A; injected deterministic report-encoder failure | `canonical` | — | — | — | — | `validation_equivalence.encoding` | never |
-| `ve_038_deterministic_repeated_captured_failure` | `public_api` | `Add(obs_A)` (single operand — invalid) | `Payment(obs_A, USD, T0)` | `canonical` | invalid / valid | not_comparable | not_evaluated | none |  | never |
+| `ve_038_deterministic_repeated_captured_failure` | `public_api` | `UnsupportedContract()` (unsupported `Contract` subclass — invalid) | `Payment(obs_A, USD, T0)` | `canonical` | invalid / valid | not_comparable | not_evaluated | none |  | never |
 | `ve_039_upstream_r1_failure_captured` | `public_api` | Contract whose R1 canonicalization fails (e.g. internal complexity bound) | `Payment(obs_A, USD, T0)` | `canonical` | valid / valid | not_comparable | not_evaluated | none |  | never |
 | `ve_040_upstream_r2_failure_captured` | `public_api` | Contract whose R2 payoff compilation fails (e.g. payoff complexity bound) | `Payment(obs_A, USD, T0)` | `payoff` | valid / valid | equivalent | not_comparable | none |  | never |
 | `ve_041_wrong_schema_type_raises` | `public_api` | Contract A | Contract A | `canonical` (`canonical_schema` receives a `PayoffGraphSchemaVersion`) | — | — | — | — | `validation_equivalence.input` | never |
@@ -1370,6 +1379,33 @@ formatting, or defaults; each normative row explicitly carries the field.
 - `scalar_A`, `scalar_B` are `Observable(ObservableId("macro", "SCALARA|SCALARB", "level"), T0, Unit.scalar())`.
 - `Num("2", scalar)` is `Number(ExactNumber("2"), Unit.scalar())`.
 - `T0` = `2030-01-01T00:00:00.000000Z`; `T0_500ms` = `2030-01-01T00:00:00.500000Z`.
+- `UnsupportedContract` is an unsupported `Contract` subclass used to
+  exercise use-time boundary rejection: `class UnsupportedContract(Contract): pass`.
+  `UnsupportedContract()` fails Stage 1A use-time validation but passes
+  root construction; it exercises the same boundary path as any other
+  invalid operand.  It is used in `ve_022`, `ve_023`, `ve_024` and
+  `ve_038`.
+- The `ve_018` right-side construction uses a documented caller-forged
+  `Scale` with a money-denominated `factor`:
+
+  ```python
+  right = Scale(
+      Num("2", scalar),
+      Payment(obs_A, USD, T0),
+  )
+  object.__setattr__(
+      right,
+      "factor",
+      Num("2", money(USD)),
+  )
+  ```
+
+  The root remains a `Scale` and is passed through the ordinary
+  comparison boundary.  The `object.__setattr__` bypasses normal
+  construction but does not monkeypatch any Stage 1C internal function;
+  it forges a caller-owned `Contract` attribute.  The right operand fails
+  Stage 1A use-time validation (`scalar_vs_money_unit`), so
+  `right_validation_outcome` is `invalid`.
 - All `kind=public_api` vectors use two Stage 1A source operands.
   `kind=private_seam` vectors use controlled fault-injection,
   report-construction, identity-projection, or invariant-seam
@@ -1389,12 +1425,23 @@ formatting, or defaults; each normative row explicitly carries the field.
   swaps, timestamp/currency/operator changes, and duplicate-reference changes)
   produce content-addressed node removals/additions plus a `/root` change. None
   produces a same-node-id leaf `change`.
+- `ve_018` demonstrates a **caller-forged money-denominated `Scale.factor`**:
+  the left operand is a valid `Scale(Num("2", scalar), Payment(...))`, and
+  the right operand is a `Scale` whose `factor` attribute is forged via
+  `object.__setattr__` to `Num("2", money(USD))` (money-denominated instead of
+  scalar).  The root remains a `Scale` and is passed through the ordinary
+  comparison boundary.  The right operand fails Stage 1A use-time validation
+  (`scalar_vs_money_unit`), so `right_validation_outcome` is `invalid`.
+  Repeated calls produce byte-identical reports with identical `report_id`.
+  This is a caller-owned hostile construction; no Stage 1C internal function is
+  monkeypatched.
 - `ve_022` and `ve_023` demonstrate **invalid Stage 1A operand at requested
   `structural` level**: `left_validation_outcome`/`right_validation_outcome` =
   `invalid`, the corresponding side's `failures` array is populated
   (`stage: structural`), `canonical_comparison_status` = `not_evaluated`
   (shallower_level_requested), `payoff_comparison_status` = `not_evaluated`
-  (shallower_level_requested); no Stage 1C error is raised.
+  (shallower_level_requested); no Stage 1C error is raised.  Both use
+  `UnsupportedContract()` as the unsupported left/right operand.
 - `ve_038` demonstrates **invalid Stage 1A operand at requested `canonical`
   level**: `left_validation_outcome` = `invalid`, `failures` populated
   (`stage: structural`), `canonical_comparison_status` = `not_comparable`
@@ -1408,7 +1455,8 @@ formatting, or defaults; each normative row explicitly carries the field.
   included in the requested progressive evaluation depth. Binding vocabulary:
   comparisons included in the requested progressive evaluation depth and
   blocked by an upstream failure are `not_comparable`; comparisons strictly
-  deeper than the requested level are `not_evaluated`.
+  deeper than the requested level are `not_evaluated`.  Uses
+  `UnsupportedContract()` as the unsupported left operand.
 - `ve_043` and `ve_044` demonstrate that an **unsupported** canonical or payoff
   schema selection is a caller-owned **raised** error
   (`validation_equivalence.input`); no report is returned. Because
@@ -1432,6 +1480,7 @@ formatting, or defaults; each normative row explicitly carries the field.
   (`canonical_comparison_status` = `not_comparable`,
   `payoff_comparison_status` = `not_evaluated`) and repeated comparisons of the
   same inputs produce byte-identical reports with identical `report_id`.
+  `UnsupportedContract()` is used as the unsupported left operand.
 - `ve_039` and `ve_040` demonstrate **upstream R1 / R2 failures captured** in
   the failing side's `failures` array with the **original** upstream code
   (`canonicalization.*` / `payoff_graph.*`); no Stage 1C error is raised.
@@ -1751,3 +1800,18 @@ merged. They are enforced by `tests/test_documentation.py`:
 - Vector Kind values remain exactly 42 `public_api` and 2 `private_seam`.
 - `ve_014` and `ve_037` remain the only private seams.
 - All current runtime-status guards remain accurate.
+- `ve_018` documents `object.__setattr__` as the mechanism for forging the
+  caller-owned money-denominated `Scale.factor`.
+- `ve_018` has `valid / invalid` structural outcomes (left valid, right invalid).
+- `UnsupportedContract` is documented as an unsupported `Contract` subclass
+  used for use-time boundary rejection in `ve_022`, `ve_023`, `ve_024`
+  and `ve_038`.
+- The vector table no longer contains the single-operand construction
+  `Add(obs_A)`.
+- The vector table does not describe a money-denominated `Scale.factor` as an
+  ordinary valid construction; the `ve_018` right-side construction is explicitly
+  documented as a caller-forged attribute via `object.__setattr__`.
+- `public_api` vectors permit caller-owned hostile or forged objects when testing
+  use-time boundary hardening, provided no Stage 1C internal function is
+  monkeypatched, no seam is replaced, no orchestration dependency is injected,
+  and the hostile construction is documented exactly.

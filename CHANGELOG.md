@@ -114,10 +114,19 @@ adheres to semantic versioning once a stable release is published.
 - Replaced vector `ve_041_contradictory_schema_config_raises` (error code
   `incompatible_schemas`) with `ve_041_wrong_schema_type_raises` (error code
   `input`): passing a `PayoffGraphSchemaVersion` instance as `canonical_schema`.
-- Corrected the `ve_018_scalar_vs_money_unit` vector so both operands are
-  valid (previously the right operand was invalid at Stage 1A).
+- Corrected the `ve_018_scalar_vs_money_unit` vector: `ve_018` now uses a
+  documented caller-forged money-denominated `Scale.factor` (via
+  `object.__setattr__`) that passes root construction but fails Stage 1A
+  use-time validation; the right operand outcome is `invalid`.
+- Replaced the `Add(obs_A)` single-operand construction in `ve_022`,
+  `ve_023`, `ve_024` and `ve_038` with a constructible unsupported
+  `Contract` subclass (`UnsupportedContract`).
 - Clarified `public_api` vs `private_seam` vector-kind definitions in
-  `validation-equivalence-spec.md` §3.1.2.
+  `validation-equivalence-spec.md` §3.1.2: `public_api` vectors now
+  explicitly permit caller-owned hostile or forged objects when testing
+  use-time boundary hardening, provided no Stage 1C internal function is
+  monkeypatched, no seam is replaced, and no orchestration dependency is
+  injected.
 - Added the R1 nine-step orchestration sequence (`validation-equivalence-spec.md`
   §9.5), documenting that Stage 1A validation occurs through
   `validate_contract`, not only through the Stage 1B-R1 path.

@@ -4124,3 +4124,100 @@ def test_no_runtime_source_modified() -> None:
     spec = _frozen_defaults_spec()
     assert "no public stage 1c api is exported" in spec
     assert "not yet implemented" in spec
+
+
+# ---- Stage 1C-R1B vector constructibility correction guards ----
+
+
+def test_ve_018_documents_object_setattr() -> None:
+    """ve_018 documents object.__setattr__ as the forging mechanism."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    assert "object.__setattr__" in spec
+    notes_start = spec.lower().find("**notes:**")
+    assert notes_start != -1
+    notes_text = spec[notes_start:]
+    ve_018_start = notes_text.find("ve_018")
+    assert ve_018_start != -1
+    ve_018_para = notes_text[ve_018_start:]
+    end = ve_018_para.find("\n- `ve_0", 5)
+    if end == -1:
+        end = len(ve_018_para)
+    ve_018_text = ve_018_para[:end]
+    assert "object.__setattr__" in ve_018_text
+    assert "money-denominated" in ve_018_text or "money(" in ve_018_text.lower()
+
+
+def test_ve_018_valid_invalid() -> None:
+    """ve_018 has valid / invalid structural outcomes."""
+    table = _parse_inventory_table()
+    ve_018 = next(r for r in table if r["Key"] == "ve_018_scalar_vs_money_unit")
+    structural = ve_018.get("Structural (L/R)", "").strip("`")
+    assert "valid" in structural and "invalid" in structural, (
+        f"ve_018 Structural (L/R) must contain valid / invalid, got {structural!r}"
+    )
+
+
+def test_unsupported_contract_documented() -> None:
+    """UnsupportedContract is documented in the spec notes."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    assert "UnsupportedContract" in spec
+    assert "class UnsupportedContract(Contract): pass" in spec
+
+
+def test_ve_022_ve_023_ve_024_ve_038_use_unsupported_contract() -> None:
+    """ve_022, ve_023, ve_024, ve_038 use UnsupportedContract."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    inv_section = _section(spec, r"vector inventory")
+    for key in ("ve_022_invalid_left", "ve_023_invalid_right",
+                "ve_024_invalid_left_at_payoff_level",
+                "ve_038_deterministic_repeated_captured_failure"):
+        for line in inv_section.splitlines():
+            if key in line:
+                assert "UnsupportedContract" in line, (
+                    f"{key} must use UnsupportedContract"
+                )
+                break
+        else:
+            pytest.fail(f"{key} not found in vector inventory table")
+
+
+def test_vector_table_no_add_obs_a() -> None:
+    """Vector table no longer contains the single-operand Add(obs_A)."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    inv_section = _section(spec, r"vector inventory")
+    for line in inv_section.splitlines():
+        if line.strip().startswith("|") and "ve_" in line:
+            assert "Add(obs_A)" not in line, (
+                f"vector table still contains Add(obs_A): {line!r}"
+            )
+
+
+def test_ve_018_money_denominated_factor_not_valid() -> None:
+    """The vector table does not describe a money-denominated Scale.factor as valid."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
+    inv_section = _section(spec, r"vector inventory")
+    for line in inv_section.splitlines():
+        if "ve_018" in line and "ve_018_scalar_vs_money_unit" in line:
+            assert "invalid" in line.lower(), (
+                "ve_018 right-side must be documented as invalid"
+            )
+            break
+
+
+def test_public_api_permits_hostile_caller_objects() -> None:
+    """public_api permits caller-owned hostile objects for hardening."""
+    spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
+    assert "hostile" in spec
+    assert "caller-owned" in spec or "caller-owned hostile" in spec
+    assert "no stage 1c internal function is monkeypatched" in spec
+    assert "no encoder, digest or report-construction seam is replaced" in spec
+    assert "no orchestration dependency is injected" in spec
+
+
+def test_vector_counts_44_42_2_unchanged() -> None:
+    """Vector counts remain exactly 44 / 42 / 2."""
+    table = _parse_inventory_table()
+    assert len(table) == 44
+    kinds = [r.get("Kind", "").strip("`") for r in table]
+    assert kinds.count("public_api") == 42
+    assert kinds.count("private_seam") == 2
