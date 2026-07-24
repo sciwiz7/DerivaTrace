@@ -154,8 +154,10 @@ Consequences, binding for Stage 1C v1:
 - Ordinary `compare_contracts` **cannot** construct a left/right schema-version
   mismatch, because there is no per-side schema input.
 - An unsupported `canonical_schema` selection, an unsupported `payoff_schema`
-  selection, and a contradictory schema configuration are **caller-owned raised
-  Stage 1C errors** (§3.14.1, §8), never captured comparison outcomes.
+  selection, and a wrong schema type passed in the `canonical_schema` or
+  `payoff_schema` parameter (e.g., a `PayoffGraphSchemaVersion` passed as
+  `canonical_schema`) are **caller-owned raised Stage 1C errors**
+  (§3.14.1, §8), never captured comparison outcomes.
 - No Stage 1C v1 report claims `not_comparable` merely because two sides used
   different schema versions, because the public API cannot construct that state.
 - Cross-version comparison of previously generated representations is **outside**
@@ -171,6 +173,31 @@ Consequences, binding for Stage 1C v1:
   pre-computed identities, or arbitrary JSON.
 - Both operands are processed under the single per-call `canonical_schema` and
   `payoff_schema` selections (§3.1.1).
+
+#### 3.1.2 Vector kind: `public_api` vs `private_seam`
+
+Every normative vector in §9.2 carries a `Kind` value that is either
+`public_api` or `private_seam`. The kind is a **stable, normative field**;
+it is never inferred from prose, labels, formatting, or defaults.
+
+- **`public_api`** vectors provide two Stage 1A `Contract` operands
+  passed through the ordinary eventual `compare_contracts` boundary (or
+  their Stage 1B projections). The expected outcomes are verifiable once
+  the public `compare_contracts` API is exported.  Caller-owned hostile
+  or forged objects are permitted when testing use-time boundary
+  hardening, provided:
+  - no Stage 1C internal function is monkeypatched;
+  - no encoder, digest or report-construction seam is replaced;
+  - no orchestration dependency is injected;
+  - the hostile caller construction is documented exactly.
+- **`private_seam`** vectors provide explicitly labelled controlled
+  fault-injection, report-construction, identity-projection, or
+  invariant-seam inputs that are **not** constructible through ordinary
+  `compare_contracts` inputs. Private-seam vectors verify internal
+  invariants that cannot be exercised through the public API boundary.
+  Internal Stage 1C fault injection (monkeypatching, seam replacement,
+  orchestration dependency injection) is restricted to `private_seam`
+  vectors.
 
 ### 3.3 Report schema and versioning
 
@@ -355,7 +382,7 @@ taxonomy. The four states are distinct and must not be collapsed into a boolean.
 Because `canonical_schema` and `payoff_schema` are per-call selections (§3.1.1),
 `not_comparable` is **never** produced because left and right used different
 schema versions: ordinary `compare_contracts` cannot construct that state.
-Unsupported or contradictory schema selections are raised, not reported (§8).
+Unsupported or wrong-schema-type selections are raised, not reported (§8).
 
 Exact meaning:
 
@@ -394,7 +421,7 @@ There is **no** `incompatible_schema_versions` reason code and **no**
 `unsupported_migration_boundary` reason code in Stage 1C v1: the public API
 processes both operands under one per-call schema selection (§3.1.1), so a
 left/right schema-version mismatch is not constructible, and unsupported or
-contradictory schema selections are **raised** (§8), not reported.
+wrong-schema-type selections are **raised** (§8), not reported.
 
 ### 3.6 Validation outcome taxonomy (closed enum)
 
@@ -425,10 +452,12 @@ same recorded selections, so both sides always share one canonical schema
 version and one payoff schema version.
 
 An unsupported `canonical_schema` selection, an unsupported `payoff_schema`
-selection, or a contradictory schema configuration is a **caller-owned raised**
-Stage 1C error (§8); it is never reported as a comparison outcome. Cross-version
-comparison of previously generated representations is outside the Stage 1C v1
-public API and is deferred to a future adapter (§5.2).
+selection, or a wrong schema type passed in the `canonical_schema` or
+`payoff_schema` parameter (e.g., a `PayoffGraphSchemaVersion` passed as
+`canonical_schema`) is a **caller-owned raised** Stage 1C error (§8); it is
+never reported as a comparison outcome. Cross-version comparison of previously
+generated representations is outside the Stage 1C v1 public API and is deferred
+to a future adapter (§5.2).
 
 ### 3.9 Optional bounded structural-diff summary
 
@@ -645,7 +674,7 @@ participate in identity.
 | R2 payoff-graph compilation fails | `payoff_graph_identity: null`; that side's `failures` populated (`stage: payoff`); `payoff_comparison_status` = `not_comparable` (reason `upstream_stage_failure`) when requested; `canonical_comparison_status` retains its actual result when both R1 representations exist. |
 | Unsupported canonical schema selection | `ValidationEquivalenceInputError` is **raised** (not placed in report); no report is returned. |
 | Unsupported payoff schema selection | `ValidationEquivalenceInputError` is **raised** (not placed in report); no report is returned. |
-| Contradictory schema configuration | `ValidationEquivalenceIncompatibleSchemasError` is **raised** (not placed in report); no report is returned. |
+| Wrong schema type in `canonical_schema` or `payoff_schema` parameter | `ValidationEquivalenceInputError` is **raised** (not placed in report); no report is returned. |
 | Repeated comparison under the same explicit schema version | Deterministic: repeated calls with the same inputs and the same per-call schema selections produce byte-identical reports with identical `report_id`. |
 | Limits differ between sides | Limits are per-call, not per-side; the single `limits_used` applies to both. |
 | Identities collide at an internal seam (R1 or R2 collision) | The originating runtime raises its collision error (`canonicalization.collision` or `payoff_graph.collision`); Stage 1C captures it in that side's `failures` (`code` retains its original namespace, `classification: collision_failure`) and marks the relevant comparison as `not_comparable` (reason `upstream_stage_failure`). |
@@ -1041,9 +1070,9 @@ own error codes and report fields; it is **not** part of `compare_contracts` v1.
 - No silent downgrade; a canonical/payoff form claiming an unsupported version
   is rejected at the Stage 1B boundary with `canonicalization.input` or
   `payoff_graph.input`.
-- An unsupported Stage 1C schema selection, or a contradictory schema
-  configuration, is **raised** by the Stage 1C boundary (§8); it is never a
-  reported comparison outcome.
+- An unsupported Stage 1C schema selection, or a wrong schema type passed in
+  the `canonical_schema` or `payoff_schema` parameter, is **raised** by the
+  Stage 1C boundary (§8); it is never a reported comparison outcome.
 
 ### 5.4 Report identity stability across implementation versions
 
@@ -1180,17 +1209,17 @@ Stage 1C owns the `validation_equivalence` error namespace. All derive from
 | Exception | Stable `.code` | When raised (caller-owned) |
 |-----------|----------------|----------------------------|
 | `ValidationEquivalenceError` | `validation_equivalence.error` | Unexpected internal failure / malformed internal state or invariant failure. |
-| `ValidationEquivalenceInputError` | `validation_equivalence.input` | Wrong exact input type at the API boundary; malformed limits; **unsupported canonical schema selection**; **unsupported payoff schema selection**; unsupported report schema version; invalid enum value; invalid diff representation selection (including `"both"`). |
+| `ValidationEquivalenceInputError` | `validation_equivalence.input` | Wrong exact input type at the API boundary; malformed limits; **unsupported canonical schema selection**; **unsupported payoff schema selection**; **wrong schema type passed in `canonical_schema` or `payoff_schema` parameter**; unsupported report schema version; invalid enum value; invalid diff representation selection (including `"both"`). |
 | `ValidationEquivalenceUnsupportedLevelError` | `validation_equivalence.unsupported_level` | Caller passes a `level` not in the closed enum. |
-| `ValidationEquivalenceIncompatibleSchemasError` | `validation_equivalence.incompatible_schemas` | **Contradictory schema configuration** at the call boundary (a raised caller-owned error). Cross-version comparison of previously generated representations is out of scope for v1 (§5.2) and is not a comparison outcome. |
-| `ValidationEquivalenceComparisonError` | `validation_equivalence.comparison_failed` | Internal comparison logic failure (should not occur). |
+| `ValidationEquivalenceComparisonError` | `validation_equivalence.comparison_failed` | Internal comparison logic failure (unexpected non-DerivaTrace orchestration exception); internal second-pass canonicalization inconsistency after a successful first canonicalization. |
 | `ValidationEquivalenceEncodingError` | `validation_equivalence.encoding` | Report serialization failed; **raised**, no partial report returned. |
 | `ValidationEquivalenceReportCollisionError` | `validation_equivalence.report_collision` | Two distinct structural projections hash to the same `report_id`; **raised**, no report returned. |
-| `ValidationEquivalenceMalformedRepresentationError` | `validation_equivalence.malformed_representation` | A trusted Stage 1B output fails internal consistency checks (e.g., node id not in table, reference to missing node). |
+| `ValidationEquivalenceMalformedRepresentationError` | `validation_equivalence.malformed_representation` | A trusted Stage 1B output fails internal consistency checks (e.g., `payoff_graph.source_contract_identity` does not match `canonical_contract.identity`). |
 
 **Caller-owned vs operand-owned policy.** The errors above are **raised** for
 caller-owned failures (§3.14.1), including unsupported canonical/payoff schema
-selection and contradictory schema configuration. Upstream errors (Stage 1A
+selection and wrong schema type passed in the `canonical_schema` or
+`payoff_schema` parameter. Upstream errors (Stage 1A
 `contract.validation.*` / `contract.input.*`, Stage 1B-R1 `canonicalization.*`, Stage 1B-R2 `payoff_graph.*`)
 are **captured inside the report** in the single per-side `failures` array
 (§3.4, §3.14.2) and **do not raise** from `compare_contracts`, provided a
@@ -1210,6 +1239,32 @@ error handling and lose the per-side granularity. Caller-owned mistakes (wrong
 types, unsupported level, malformed limits, unsupported report schema version,
 encoding/collision failure) are distinct and are raised because no valid report
 can be formed.
+
+### 8.1 Double-canonicalization exception policy
+
+When Stage 1C internally invokes canonicalization (Stage 1B-R1) and the
+first canonicalization succeeds but a second pass (e.g., for identity
+cross-check) fails, the policy is:
+
+- **Non-overlapping exceptions:** The first failure during any
+  canonicalization pass is captured as a `canonicalization.*` failure in
+  the side's `failures` array (`stage: canonical`). If a second
+  canonicalization pass is attempted and fails, the exception is captured
+  as `ValidationEquivalenceComparisonError`
+  (`validation_equivalence.comparison_failed`) and raised.
+- **`PayoffGraphError`:** If the second pass involves payoff-graph
+  compilation and raises a `PayoffGraphError`, the failure is captured as
+  `payoff_graph.*` in the side's `failures` array (`stage: payoff`).
+- **Identity mismatch:** If the first and second canonicalization passes
+  produce different canonical identities, the mismatch is raised as
+  `ValidationEquivalenceMalformedRepresentationError`
+  (`validation_equivalence.malformed_representation`).
+- **Unexpected exceptions:** Any unexpected exception during the second
+  pass is raised as `ValidationEquivalenceComparisonError`
+  (`validation_equivalence.comparison_failed`).
+
+This policy ensures deterministic, predictable error propagation for
+internal consistency failures.
 
 ## 9. Normative conformance vectors
 
@@ -1290,13 +1345,13 @@ formatting, or defaults; each normative row explicitly carries the field.
 | `ve_015_settlement_timestamp_diff` | `public_api` | `Payment(Num("1", USD), USD, T0)` | `Payment(Num("1", USD), USD, T0_500ms)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
 | `ve_016_observation_timestamp_diff` | `public_api` | `Payment(Add(obs_A@T0, obs_B@T0), USD, T0)` | `Payment(Add(obs_A@T0_500ms, obs_B@T0), USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
 | `ve_017_currency_diff` | `public_api` | `Payment(Num("1", USD), USD, T0)` | `Payment(Num("1", EUR), EUR, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
-| `ve_018_scalar_vs_money_unit` | `public_api` | `Scale(Num("2", scalar), Payment(obs_A, USD, T0))` | `Scale(Num("2", money(USD)), Payment(obs_A, USD, T0))` — invalid right (Stage 1A rejects) | `payoff` | valid / invalid | not_comparable | not_comparable | none |  | never |
+| `ve_018_scalar_vs_money_unit` | `public_api` | `Scale(Num("2", scalar), Payment(obs_A, USD, T0))` | caller-forged `Scale` with money-denominated `factor` via `object.__setattr__` (root `Scale`, fails use-time validation) | `payoff` | valid / invalid | not_comparable | not_comparable | none |  | never |
 | `ve_019_comparison_operator_diff` | `public_api` | `Payment(ConditionalValue(Comparison(obs_A, obs_B, GT), obs_A, obs_B), USD, T0)` | `Payment(ConditionalValue(Comparison(obs_A, obs_B, LT), obs_A, obs_B), USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
 | `ve_020_conditional_branch_order` | `public_api` | `Payment(ConditionalValue(cond, obs_A, obs_B), USD, T0)` | `Payment(ConditionalValue(cond, obs_B, obs_A), USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
 | `ve_021_zero_vs_nonzero` | `public_api` | `Zero()` | `Payment(Num("1", USD), USD, T0)` | `payoff` | valid / valid | different | different | remove_add_root |  | never |
-| `ve_022_invalid_left` | `public_api` | `Add(obs_A)` (single operand — invalid) | `Payment(obs_A, USD, T0)` | `structural` | invalid / valid | not_evaluated | not_evaluated | empty |  | never |
-| `ve_023_invalid_right` | `public_api` | `Payment(obs_A, USD, T0)` | `Add(obs_A)` | `structural` | valid / invalid | not_evaluated | not_evaluated | empty |  | never |
-| `ve_024_invalid_left_at_payoff_level` | `public_api` | `Add(obs_A)` (single operand — invalid) | `Payment(obs_A, USD, T0)` | `payoff` | invalid / valid | not_comparable | not_comparable | none |  | never |
+| `ve_022_invalid_left` | `public_api` | `UnsupportedContract()` (unsupported `Contract` subclass — invalid) | `Payment(obs_A, USD, T0)` | `structural` | invalid / valid | not_evaluated | not_evaluated | empty |  | never |
+| `ve_023_invalid_right` | `public_api` | `Payment(obs_A, USD, T0)` | `UnsupportedContract()` (unsupported `Contract` subclass — invalid) | `structural` | valid / invalid | not_evaluated | not_evaluated | empty |  | never |
+| `ve_024_invalid_left_at_payoff_level` | `public_api` | `UnsupportedContract()` (unsupported `Contract` subclass — invalid) | `Payment(obs_A, USD, T0)` | `payoff` | invalid / valid | not_comparable | not_comparable | none |  | never |
 | `ve_025_admission_byte_boundary_exact` | `public_api` | Large contract (exactly `max_compared_bytes` total structural bytes) | Same contract | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
 | `ve_026_admission_byte_boundary_exceeded` | `public_api` | Large contract (exactly `max_compared_bytes + 1` total structural bytes) | Same contract | `payoff` | valid / valid | equivalent | equivalent | none |  | never |
 | `ve_027_admission_node_boundary_exact` | `public_api` | Large contract (exactly `max_compared_nodes` combined nodes) | Same contract | `payoff` | valid / valid | equivalent | equivalent | empty |  | never |
@@ -1310,10 +1365,10 @@ formatting, or defaults; each normative row explicitly carries the field.
 | `ve_035_unsupported_level_raises` | `public_api` | Contract A | Contract A | `bogus` | valid / valid | — | — | — | `validation_equivalence.unsupported_level` | never |
 | `ve_036_malformed_limits_raise` | `public_api` | Contract A | Contract A | `canonical` | valid / valid | — | — | — | `validation_equivalence.input` | never |
 | `ve_037_report_encoding_failure_raises` | `private_seam` | valid Contract A; injected deterministic report-encoder failure | valid Contract A; injected deterministic report-encoder failure | `canonical` | — | — | — | — | `validation_equivalence.encoding` | never |
-| `ve_038_deterministic_repeated_captured_failure` | `public_api` | `Add(obs_A)` (single operand — invalid) | `Payment(obs_A, USD, T0)` | `canonical` | invalid / valid | not_comparable | not_evaluated | none |  | never |
+| `ve_038_deterministic_repeated_captured_failure` | `public_api` | `UnsupportedContract()` (unsupported `Contract` subclass — invalid) | `Payment(obs_A, USD, T0)` | `canonical` | invalid / valid | not_comparable | not_evaluated | none |  | never |
 | `ve_039_upstream_r1_failure_captured` | `public_api` | Contract whose R1 canonicalization fails (e.g. internal complexity bound) | `Payment(obs_A, USD, T0)` | `canonical` | valid / valid | not_comparable | not_evaluated | none |  | never |
 | `ve_040_upstream_r2_failure_captured` | `public_api` | Contract whose R2 payoff compilation fails (e.g. payoff complexity bound) | `Payment(obs_A, USD, T0)` | `payoff` | valid / valid | equivalent | not_comparable | none |  | never |
-| `ve_041_contradictory_schema_config_raises` | `public_api` | Contract A | Contract A | `canonical` (contradictory schema configuration) | — | — | — | — | `validation_equivalence.incompatible_schemas` | never |
+| `ve_041_wrong_schema_type_raises` | `public_api` | Contract A | Contract A | `canonical` (`canonical_schema` receives a `PayoffGraphSchemaVersion`) | — | — | — | — | `validation_equivalence.input` | never |
 | `ve_042_report_identity_mandatory` | `public_api` | Contract A | Contract B (different structure) | `payoff` | valid / valid | different | different | remove_add_root |  | never |
 | `ve_043_unsupported_canonical_schema_raises` | `public_api` | Contract A | Contract A | `canonical` (unsupported `canonical_schema` selection) | — | — | — | — | `validation_equivalence.input` | never |
 | `ve_044_unsupported_payoff_schema_raises` | `public_api` | Contract A | Contract A | `payoff` (unsupported `payoff_schema` selection) | — | — | — | — | `validation_equivalence.input` | never |
@@ -1324,6 +1379,33 @@ formatting, or defaults; each normative row explicitly carries the field.
 - `scalar_A`, `scalar_B` are `Observable(ObservableId("macro", "SCALARA|SCALARB", "level"), T0, Unit.scalar())`.
 - `Num("2", scalar)` is `Number(ExactNumber("2"), Unit.scalar())`.
 - `T0` = `2030-01-01T00:00:00.000000Z`; `T0_500ms` = `2030-01-01T00:00:00.500000Z`.
+- `UnsupportedContract` is an unsupported `Contract` subclass used to
+  exercise use-time boundary rejection: `class UnsupportedContract(Contract): pass`.
+  `UnsupportedContract()` fails Stage 1A use-time validation but passes
+  root construction; it exercises the same boundary path as any other
+  invalid operand.  It is used in `ve_022`, `ve_023`, `ve_024` and
+  `ve_038`.
+- The `ve_018` right-side construction uses a documented caller-forged
+  `Scale` with a money-denominated `factor`:
+
+  ```python
+  right = Scale(
+      Num("2", scalar),
+      Payment(obs_A, USD, T0),
+  )
+  object.__setattr__(
+      right,
+      "factor",
+      Num("2", money(USD)),
+  )
+  ```
+
+  The root remains a `Scale` and is passed through the ordinary
+  comparison boundary.  The `object.__setattr__` bypasses normal
+  construction but does not monkeypatch any Stage 1C internal function;
+  it forges a caller-owned `Contract` attribute.  The right operand fails
+  Stage 1A use-time validation (`scalar_vs_money_unit`), so
+  `right_validation_outcome` is `invalid`.
 - All `kind=public_api` vectors use two Stage 1A source operands.
   `kind=private_seam` vectors use controlled fault-injection,
   report-construction, identity-projection, or invariant-seam
@@ -1343,12 +1425,23 @@ formatting, or defaults; each normative row explicitly carries the field.
   swaps, timestamp/currency/operator changes, and duplicate-reference changes)
   produce content-addressed node removals/additions plus a `/root` change. None
   produces a same-node-id leaf `change`.
+- `ve_018` demonstrates a **caller-forged money-denominated `Scale.factor`**:
+  the left operand is a valid `Scale(Num("2", scalar), Payment(...))`, and
+  the right operand is a `Scale` whose `factor` attribute is forged via
+  `object.__setattr__` to `Num("2", money(USD))` (money-denominated instead of
+  scalar).  The root remains a `Scale` and is passed through the ordinary
+  comparison boundary.  The right operand fails Stage 1A use-time validation
+  (`scalar_vs_money_unit`), so `right_validation_outcome` is `invalid`.
+  Repeated calls produce byte-identical reports with identical `report_id`.
+  This is a caller-owned hostile construction; no Stage 1C internal function is
+  monkeypatched.
 - `ve_022` and `ve_023` demonstrate **invalid Stage 1A operand at requested
   `structural` level**: `left_validation_outcome`/`right_validation_outcome` =
   `invalid`, the corresponding side's `failures` array is populated
   (`stage: structural`), `canonical_comparison_status` = `not_evaluated`
   (shallower_level_requested), `payoff_comparison_status` = `not_evaluated`
-  (shallower_level_requested); no Stage 1C error is raised.
+  (shallower_level_requested); no Stage 1C error is raised.  Both use
+  `UnsupportedContract()` as the unsupported left/right operand.
 - `ve_038` demonstrates **invalid Stage 1A operand at requested `canonical`
   level**: `left_validation_outcome` = `invalid`, `failures` populated
   (`stage: structural`), `canonical_comparison_status` = `not_comparable`
@@ -1362,7 +1455,8 @@ formatting, or defaults; each normative row explicitly carries the field.
   included in the requested progressive evaluation depth. Binding vocabulary:
   comparisons included in the requested progressive evaluation depth and
   blocked by an upstream failure are `not_comparable`; comparisons strictly
-  deeper than the requested level are `not_evaluated`.
+  deeper than the requested level are `not_evaluated`.  Uses
+  `UnsupportedContract()` as the unsupported left operand.
 - `ve_043` and `ve_044` demonstrate that an **unsupported** canonical or payoff
   schema selection is a caller-owned **raised** error
   (`validation_equivalence.input`); no report is returned. Because
@@ -1372,8 +1466,8 @@ formatting, or defaults; each normative row explicitly carries the field.
   taxonomy; selecting it raises `validation_equivalence.input`.
 - `ve_035`, `ve_036`, and `ve_041` are **caller-owned raised-error** cases:
   no report is returned; the listed Stage 1C error code is raised. `ve_041`
-  is a contradictory schema configuration
-  (`validation_equivalence.incompatible_schemas`).
+  passes a `PayoffGraphSchemaVersion` instance as `canonical_schema` (wrong
+  schema type), raising `validation_equivalence.input`.
 - `ve_037` is a **private seam** vector: deterministic report-encoding failure
   requires an injected encoder/fault seam and is not constructible through
   normal public Stage 1A operands alone. The controlled seam consists of two
@@ -1386,6 +1480,7 @@ formatting, or defaults; each normative row explicitly carries the field.
   (`canonical_comparison_status` = `not_comparable`,
   `payoff_comparison_status` = `not_evaluated`) and repeated comparisons of the
   same inputs produce byte-identical reports with identical `report_id`.
+  `UnsupportedContract()` is used as the unsupported left operand.
 - `ve_039` and `ve_040` demonstrate **upstream R1 / R2 failures captured** in
   the failing side's `failures` array with the **original** upstream code
   (`canonicalization.*` / `payoff_graph.*`); no Stage 1C error is raised.
@@ -1445,7 +1540,7 @@ without changing any normative `Kind` value:
 | Bucket | Description | Vectors | Count |
 |--------|-------------|---------|-------|
 | `complete_public` | Complete public vector satisfied (public API) | — | 0 |
-| `supporting_r1_private` | Supporting R1 facts testable privately, but complete public vector unsatisfied (`public_api` vectors, exercised only once the public API exists) | `ve_001_self_equivalence`, `ve_002_independent_identical`, `ve_003_pgadd_commutation`, `ve_004_nested_vs_flat_add`, `ve_005_pgmultiply_commutation`, `ve_006_pgmultiply_grouping`, `ve_007_subtract_order`, `ve_008_divide_order`, `ve_009_both_order`, `ve_010_duplicate_add`, `ve_011_duplicate_multiply_ref`, `ve_012_duplicate_both`, `ve_013_shared_vs_copied_subgraph`, `ve_015_settlement_timestamp_diff`, `ve_016_observation_timestamp_diff`, `ve_017_currency_diff`, `ve_018_scalar_vs_money_unit`, `ve_019_comparison_operator_diff`, `ve_020_conditional_branch_order`, `ve_021_zero_vs_nonzero`, `ve_022_invalid_left`, `ve_023_invalid_right`, `ve_024_invalid_left_at_payoff_level`, `ve_033_deterministic_repeated_reporting`, `ve_034_invalid_both_diff_selection`, `ve_035_unsupported_level_raises`, `ve_036_malformed_limits_raise`, `ve_038_deterministic_repeated_captured_failure`, `ve_039_upstream_r1_failure_captured`, `ve_040_upstream_r2_failure_captured`, `ve_041_contradictory_schema_config_raises`, `ve_042_report_identity_mandatory`, `ve_043_unsupported_canonical_schema_raises`, `ve_044_unsupported_payoff_schema_raises` | 34 |
+| `supporting_r1_private` | Supporting R1 facts testable privately, but complete public vector unsatisfied (`public_api` vectors, exercised only once the public API exists) | `ve_001_self_equivalence`, `ve_002_independent_identical`, `ve_003_pgadd_commutation`, `ve_004_nested_vs_flat_add`, `ve_005_pgmultiply_commutation`, `ve_006_pgmultiply_grouping`, `ve_007_subtract_order`, `ve_008_divide_order`, `ve_009_both_order`, `ve_010_duplicate_add`, `ve_011_duplicate_multiply_ref`, `ve_012_duplicate_both`, `ve_013_shared_vs_copied_subgraph`, `ve_015_settlement_timestamp_diff`, `ve_016_observation_timestamp_diff`, `ve_017_currency_diff`, `ve_018_scalar_vs_money_unit`, `ve_019_comparison_operator_diff`, `ve_020_conditional_branch_order`, `ve_021_zero_vs_nonzero`, `ve_022_invalid_left`, `ve_023_invalid_right`, `ve_024_invalid_left_at_payoff_level`, `ve_033_deterministic_repeated_reporting`, `ve_034_invalid_both_diff_selection`, `ve_035_unsupported_level_raises`, `ve_036_malformed_limits_raise`, `ve_038_deterministic_repeated_captured_failure`, `ve_039_upstream_r1_failure_captured`, `ve_040_upstream_r2_failure_captured`, `ve_041_wrong_schema_type_raises`, `ve_042_report_identity_mandatory`, `ve_043_unsupported_canonical_schema_raises`, `ve_044_unsupported_payoff_schema_raises` | 34 |
 | `private_r1_seam` | Private R1 seam (`ve_014`, `ve_037`) | `ve_014_provenance_only_diff`, `ve_037_report_encoding_failure_raises` | 2 |
 | `fully_r2_dependent` | Fully R2-dependent (diff engine) | `ve_025_admission_byte_boundary_exact`, `ve_026_admission_byte_boundary_exceeded`, `ve_027_admission_node_boundary_exact`, `ve_028_admission_node_boundary_exceeded`, `ve_029_output_entry_boundary_exact`, `ve_030_output_entry_boundary_exceeded`, `ve_031_output_report_byte_truncation`, `ve_032_admission_failure_preserves_identities` | 8 |
 
@@ -1506,7 +1601,65 @@ a deterministic report-encoder failure after two valid Contract operands
 are provided, and the expected result is that `validation_equivalence.encoding`
 is raised before any report can be returned.
 
-## 10. Documentation guards (normative)
+### 9.5 R1 orchestration sequence (normative)
+
+The following nine-step sequence defines the R1 internal orchestration for
+`compare_contracts`. This sequence is **normative**; a future R1 runtime
+must follow it exactly.
+
+1. **Caller-owned exact-type validation (§3.15).** Validate all limit
+   objects, schema-version enums, `level`, and `diff` at call time. Unknown
+   or unsupported values raise the appropriate Stage 1C error.
+2. **Stage 1A validation — left.** Run `validate_contract(left)`. Record
+   `left_validation_outcome` (`valid` or `invalid`). If invalid, populate
+   the left side's `failures` array.
+3. **Stage 1A validation — right.** Run `validate_contract(right)`. Record
+   `right_validation_outcome` (`valid` or `invalid`). If invalid, populate
+   the right side's `failures` array.
+4. **Early termination check.** If both operands are invalid and the
+   requested level is `structural`, assemble and return the report
+   immediately (no canonicalization, no payoff compilation, no diff).
+5. **Stage 1B-R1 canonicalization (if requested level ≥ canonical).**
+   Run canonicalization on each valid operand. Record
+   `contract_identity` for each side. If canonicalization fails, populate
+   the side's `failures` array with the original upstream
+   `canonicalization.*` code.
+6. **Stage 1B-R2 payoff-graph compilation (if requested level = payoff).**
+   Run payoff-graph compilation on each valid operand. Record
+   `payoff_graph_identity` for each side. If compilation fails, populate
+   the side's `failures` array with the original upstream `payoff_graph.*`
+   code.
+7. **Structural comparison and diff computation.** Compare the two
+   representations (canonical and/or payoff, depending on `level` and
+   upstream outcomes). Compute the bounded structural diff.
+8. **Report assembly.** Assemble the `ValidationEquivalenceReport` with
+   all fields populated: validation outcomes, comparison statuses and
+   reasons, identities, diff summary, limits used, provenance.
+9. **Report encoding and identity.** Encode the report as canonical JSON,
+   compute `report_id`, and return the report. If encoding or identity
+   computation fails, raise the appropriate Stage 1C error.
+
+**Important:** Stage 1A validation (steps 2–3) occurs through
+`validate_contract`, **not** through the Stage 1B-R1 canonicalization
+entry point. The orchestration does **not** describe Stage 1A as occurring
+only through the Stage 1B-R1 canonicalization path.
+
+## 10. Structural-level identity rules (normative)
+
+When the requested level is `structural`:
+
+- `canonical_contract_identity` is `null` for both sides.
+- `payoff_graph_identity` is `null` for both sides.
+- `canonical_comparison_status` is `not_evaluated` (reason
+  `shallower_level_requested`).
+- `payoff_comparison_status` is `not_evaluated` (reason
+  `shallower_level_requested`).
+
+All identity fields at levels deeper than the requested level are
+`null`; all comparison statuses at levels deeper than the requested level
+are `not_evaluated` with reason `shallower_level_requested`.
+
+## 11. Documentation guards (normative)
 
 The following properties **must** hold in the repository after this baseline is
 merged. They are enforced by `tests/test_documentation.py`:
@@ -1544,9 +1697,10 @@ merged. They are enforced by `tests/test_documentation.py`:
 - Output-limit failure emits a deterministic truncated prefix.
 - Schema selection is **per-call** (one `canonical_schema`, one `payoff_schema`
   per comparison, §3.1.1): a left/right schema-version mismatch is not
-  constructible. An **unsupported** canonical/payoff schema selection raises
-  `validation_equivalence.input`; a **contradictory** schema configuration raises
-  `validation_equivalence.incompatible_schemas`. Neither maps to a
+  constructible.   An **unsupported** canonical/payoff schema selection raises
+  `validation_equivalence.input`; a **wrong schema type** passed in the
+  `canonical_schema` or `payoff_schema` parameter raises
+  `validation_equivalence.input`. Neither maps to a
   `not_comparable` report outcome.
 - A single captured-failure representation exists: each operand's `failures`
   array holds records `{stage, code, classification}` with the **original**
@@ -1646,3 +1800,18 @@ merged. They are enforced by `tests/test_documentation.py`:
 - Vector Kind values remain exactly 42 `public_api` and 2 `private_seam`.
 - `ve_014` and `ve_037` remain the only private seams.
 - All current runtime-status guards remain accurate.
+- `ve_018` documents `object.__setattr__` as the mechanism for forging the
+  caller-owned money-denominated `Scale.factor`.
+- `ve_018` has `valid / invalid` structural outcomes (left valid, right invalid).
+- `UnsupportedContract` is documented as an unsupported `Contract` subclass
+  used for use-time boundary rejection in `ve_022`, `ve_023`, `ve_024`
+  and `ve_038`.
+- The vector table no longer contains the single-operand construction
+  `Add(obs_A)`.
+- The vector table does not describe a money-denominated `Scale.factor` as an
+  ordinary valid construction; the `ve_018` right-side construction is explicitly
+  documented as a caller-forged attribute via `object.__setattr__`.
+- `public_api` vectors permit caller-owned hostile or forged objects when testing
+  use-time boundary hardening, provided no Stage 1C internal function is
+  monkeypatched, no seam is replaced, no orchestration dependency is injected,
+  and the hostile construction is documented exactly.

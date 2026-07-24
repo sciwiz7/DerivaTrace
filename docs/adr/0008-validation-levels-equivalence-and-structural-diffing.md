@@ -151,7 +151,8 @@ taxonomy:
   schema selection is per-call (one `canonical_schema` and one `payoff_schema`
   for both operands, §1C architecture), a left/right schema mismatch is not
   constructible. An unsupported selection is a raised caller-owned input error;
-  a contradictory configuration raises `incompatible_schemas`. Cross-version
+  a wrong schema type in `canonical_schema` or `payoff_schema` raises
+  `validation_equivalence.input`. Cross-version
   comparison is deferred (§7).
 - `not_evaluated` — the caller requested a shallower validation level, so this
   comparison was not attempted.
@@ -178,11 +179,11 @@ Do not use `null` to mean multiple different states.
 
 - Wrong exact input types at the Stage 1C API boundary.
 - Unsupported validation level.
-- Unsupported or contradictory `canonical_schema` / `payoff_schema` selection.
+- Unsupported or wrong-schema-type `canonical_schema` / `payoff_schema` selection.
 - Malformed Stage 1C limits.
 - Unsupported Stage 1C report schema version.
 - Invalid diff representation selection.
-- Impossible or contradictory caller configuration.
+- Wrong schema type in `canonical_schema` or `payoff_schema` parameter.
 - Report encoding failure.
 - Report identity collision.
 - Malformed Stage 1C internal state or invariant failure.
@@ -218,9 +219,9 @@ always present and is an array (empty on success). The deprecated field names
 `structural_errors`, `canonicalization_errors`, and
 `payoff_compilation_errors` are not used.
 
-Unsupported or contradictory caller schema configuration is **not** captured as
-a failure; it is a raised caller-owned error (§6 first list, and
-`incompatible_schemas` for contradictory configuration).
+Unsupported or wrong-schema-type caller schema configuration is **not** captured as
+a failure; it is a raised caller-owned error (§6 first list, using
+`validation_equivalence.input`).
 
 Upstream error codes retain their original namespace. Stage 1C must not relabel
 a canonicalization or payoff-graph failure as a Stage 1C error merely because it
@@ -243,9 +244,10 @@ normative consequences are:
 
 - An **unsupported** `canonical_schema` / `payoff_schema` selection is a raised
   caller-owned `validation_equivalence.input` error; no report is returned.
-- A **contradictory** schema configuration is a raised caller-owned
-  `validation_equivalence.incompatible_schemas` error; no report is returned.
-- Neither an unsupported nor a contradictory selection produces a
+- A **wrong schema type** in the `canonical_schema` or `payoff_schema`
+  parameter is a raised caller-owned
+  `validation_equivalence.input` error; no report is returned.
+- Neither an unsupported nor a wrong-schema-type selection produces a
   `not_comparable` report outcome.
 - No left/right cross-version report or content structural diff exists.
 
@@ -310,8 +312,8 @@ additional vectors. At minimum update or add cases for:
 - `canonical` level produces payoff status `not_evaluated`.
 - Unsupported canonical schema selection raises `validation_equivalence.input`.
 - Unsupported payoff schema selection raises `validation_equivalence.input`.
-- Contradictory schema configuration raises
-  `validation_equivalence.incompatible_schemas`.
+- Wrong schema type in `canonical_schema` or `payoff_schema` parameter raises
+  `validation_equivalence.input`.
 - Invalid left operand is captured in the report (`failures`, `stage: structural`).
 - Invalid right operand is captured in the report (`failures`, `stage: structural`).
 - Unsupported level raises Stage 1C input/unsupported-level error.

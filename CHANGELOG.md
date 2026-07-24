@@ -101,6 +101,46 @@ adheres to semantic versioning once a stable release is published.
   identity (computed by an isolated standard-library verification script, not
   shipped), and added planned R2 normative vectors.
 
+### Changed (Stage 1C-R1B — Architecture reconciliation, documentation only)
+
+- Revised the Stage 1C error taxonomy to exactly 7 classes:
+  `ValidationEquivalenceError`, `ValidationEquivalenceInputError`,
+  `ValidationEquivalenceUnsupportedLevelError`,
+  `ValidationEquivalenceComparisonError`, `ValidationEquivalenceEncodingError`,
+  `ValidationEquivalenceReportCollisionError`,
+  `ValidationEquivalenceMalformedRepresentationError`. Removed
+  `ValidationEquivalenceIncompatibleSchemasError` and its
+  `validation_equivalence.incompatible_schemas` code from all documentation.
+- Replaced vector `ve_041_contradictory_schema_config_raises` (error code
+  `incompatible_schemas`) with `ve_041_wrong_schema_type_raises` (error code
+  `input`): passing a `PayoffGraphSchemaVersion` instance as `canonical_schema`.
+- Corrected the `ve_018_scalar_vs_money_unit` vector: `ve_018` now uses a
+  documented caller-forged money-denominated `Scale.factor` (via
+  `object.__setattr__`) that passes root construction but fails Stage 1A
+  use-time validation; the right operand outcome is `invalid`.
+- Replaced the `Add(obs_A)` single-operand construction in `ve_022`,
+  `ve_023`, `ve_024` and `ve_038` with a constructible unsupported
+  `Contract` subclass (`UnsupportedContract`).
+- Clarified `public_api` vs `private_seam` vector-kind definitions in
+  `validation-equivalence-spec.md` §3.1.2: `public_api` vectors now
+  explicitly permit caller-owned hostile or forged objects when testing
+  use-time boundary hardening, provided no Stage 1C internal function is
+  monkeypatched, no seam is replaced, and no orchestration dependency is
+  injected.
+- Added the R1 nine-step orchestration sequence (`validation-equivalence-spec.md`
+  §9.5), documenting that Stage 1A validation occurs through
+  `validate_contract`, not only through the Stage 1B-R1 path.
+- Added the double-canonicalization exception policy
+  (`validation-equivalence-spec.md` §8.1).
+- Added structural-level identity rules (`validation-equivalence-spec.md` §10):
+  all identity fields `null`, all deeper-level statuses `not_evaluated`
+  with reason `shallower_level_requested`.
+- Corrected failure-code examples to use `canonicalization.input.not_validated`
+  (not `canonicalization.not_validated`) in canonicalization-spec.md.
+- Updated ADR 0008 and ADR 0009 to reflect the revised taxonomy and vector
+  names.
+- Updated `tests/test_documentation.py` to enforce all revised guards.
+
 ## [0.1.0.dev0] — Stage 0 (Unreleased)
 
 Stage 0 is the project foundation and system specification. It contains no
