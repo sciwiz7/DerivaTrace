@@ -4168,9 +4168,12 @@ def test_ve_022_ve_023_ve_024_ve_038_use_unsupported_contract() -> None:
     """ve_022, ve_023, ve_024, ve_038 use UnsupportedContract."""
     spec = _STAGE1C_SPEC.read_text(encoding="utf-8")
     inv_section = _section(spec, r"vector inventory")
-    for key in ("ve_022_invalid_left", "ve_023_invalid_right",
-                "ve_024_invalid_left_at_payoff_level",
-                "ve_038_deterministic_repeated_captured_failure"):
+    for key in (
+        "ve_022_invalid_left",
+        "ve_023_invalid_right",
+        "ve_024_invalid_left_at_payoff_level",
+        "ve_038_deterministic_repeated_captured_failure",
+    ):
         for line in inv_section.splitlines():
             if key in line:
                 assert "UnsupportedContract" in line, (
