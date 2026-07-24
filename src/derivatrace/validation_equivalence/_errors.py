@@ -29,6 +29,20 @@ class ValidationEquivalenceReportCollisionError(ValidationEquivalenceError):
     code: str = "validation_equivalence.report_collision"
 
 
+class ValidationEquivalenceUnsupportedLevelError(ValidationEquivalenceError):
+    """Raised when the requested validation level is not a recognized
+    ValidationLevel member."""
+
+    code: str = "validation_equivalence.unsupported_level"
+
+
+class ValidationEquivalenceComparisonError(ValidationEquivalenceError):
+    """Raised when an internal consistency violation is detected during
+    comparison orchestration; no report is returned."""
+
+    code: str = "validation_equivalence.comparison_failed"
+
+
 class ValidationEquivalenceMalformedRepresentationError(ValidationEquivalenceError):
     """Raised when a trusted Stage 1B output fails internal consistency
     checks."""
@@ -37,9 +51,11 @@ class ValidationEquivalenceMalformedRepresentationError(ValidationEquivalenceErr
 
 
 __all__: list[str] = [
+    "ValidationEquivalenceComparisonError",
     "ValidationEquivalenceEncodingError",
     "ValidationEquivalenceError",
     "ValidationEquivalenceInputError",
     "ValidationEquivalenceMalformedRepresentationError",
     "ValidationEquivalenceReportCollisionError",
+    "ValidationEquivalenceUnsupportedLevelError",
 ]

@@ -3,7 +3,10 @@ from __future__ import annotations
 import enum
 from dataclasses import dataclass
 
-from ._errors import ValidationEquivalenceInputError
+from ._errors import (
+    ValidationEquivalenceInputError,
+    ValidationEquivalenceUnsupportedLevelError,
+)
 
 # ---------------------------------------------------------------------------
 # Closed taxonomy enums (v1 frozen)
@@ -182,11 +185,11 @@ def _validate_diff_limits(limits: object) -> None:
 def _validate_validation_level(level: object) -> None:
     """Validate a ValidationLevel at the API boundary.
 
-    Raises ValidationEquivalenceInputError if level is not exactly
+    Raises ValidationEquivalenceUnsupportedLevelError if level is not exactly
     a ValidationLevel enum member.
     """
     if type(level) is not ValidationLevel:
-        raise ValidationEquivalenceInputError(
+        raise ValidationEquivalenceUnsupportedLevelError(
             "level must be a ValidationLevel enum member"
         )
 

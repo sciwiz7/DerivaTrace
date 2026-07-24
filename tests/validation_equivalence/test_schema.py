@@ -11,6 +11,7 @@ from derivatrace.validation_equivalence._errors import (
     ValidationEquivalenceInputError,
     ValidationEquivalenceMalformedRepresentationError,
     ValidationEquivalenceReportCollisionError,
+    ValidationEquivalenceUnsupportedLevelError,
 )
 from derivatrace.validation_equivalence._records import (
     validate_comparison_coherence,
@@ -57,6 +58,22 @@ class TestErrorHierarchy:
             ValidationEquivalenceError,
         )
 
+    def test_unsupported_level_error_derives_from_base(self) -> None:
+        assert issubclass(
+            ValidationEquivalenceUnsupportedLevelError,
+            ValidationEquivalenceError,
+        )
+
+    def test_comparison_error_derives_from_base(self) -> None:
+        from derivatrace.validation_equivalence._errors import (
+            ValidationEquivalenceComparisonError,
+        )
+
+        assert issubclass(
+            ValidationEquivalenceComparisonError,
+            ValidationEquivalenceError,
+        )
+
     def test_no_complexity_error(self) -> None:
         """ValidationEquivalenceComplexityError is absent from the v1 taxonomy."""
         import derivatrace.validation_equivalence._errors as err_mod
@@ -72,6 +89,10 @@ class TestErrorHierarchy:
         assert (
             ValidationEquivalenceReportCollisionError.code
             == "validation_equivalence.report_collision"
+        )
+        assert (
+            ValidationEquivalenceUnsupportedLevelError.code
+            == "validation_equivalence.unsupported_level"
         )
 
 
@@ -290,11 +311,11 @@ class TestValidationLevelBoundary:
         _validate_validation_level(ValidationLevel.CANONICAL)
 
     def test_reject_string(self) -> None:
-        with pytest.raises(ValidationEquivalenceInputError):
+        with pytest.raises(ValidationEquivalenceUnsupportedLevelError):
             _validate_validation_level("canonical")
 
     def test_reject_int(self) -> None:
-        with pytest.raises(ValidationEquivalenceInputError):
+        with pytest.raises(ValidationEquivalenceUnsupportedLevelError):
             _validate_validation_level(0)
 
 

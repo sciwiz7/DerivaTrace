@@ -6,6 +6,32 @@ adheres to semantic versioning once a stable release is published.
 
 ## [Unreleased]
 
+### Added (Stage 1C-R1B — Private orchestration runtime, implemented)
+
+- `derivatrace.validation_equivalence._orchestration`: private `_compare_contracts`
+  orchestrating independent Stage 1A validation, canonicalization, and payoff
+  compilation with deterministic equivalence-report construction through the
+  existing R1A report builder.
+- Caller-owned configuration validation with exact-type checks for all
+  arguments; unsupported diff selections and non-`ValidationLevel` values
+  rejected before any operand processing.
+- Per-side structural/canonical/payoff progression with upstream error capture
+  using original namespaced codes and documented classifications.
+- Second-pass consistency: internal canonicalization mismatch raises
+  `ValidationEquivalenceComparisonError`; source-identity mismatch raises
+  `ValidationEquivalenceMalformedRepresentationError`.
+- Deterministic comparison-status calculation: equivalent, different,
+  not_comparable, not_evaluated with correct `ComparisonReason` values.
+- `ValidationEquivalenceUnsupportedLevelError`
+  (`validation_equivalence.unsupported_level`) and
+  `ValidationEquivalenceComparisonError` (`validation_equivalence.comparison_failed`)
+  added to the seven-class Stage 1C error taxonomy.
+- `diff_representation="none"` only (R1 constraint); exact R1 empty diff
+  state enforced.
+- 49 focused orchestration tests covering caller boundary, structural,
+  canonical, payoff, internal consistency, and report integration.
+- Full coverage, Ruff, and mypy clean.
+
 ### Added (Stage 1A — Immutable contract algebra and runtime type system)
 
 - `derivatrace.contracts`: an immutable, strongly typed contract AST and a
