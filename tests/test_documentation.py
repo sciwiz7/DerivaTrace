@@ -1668,7 +1668,7 @@ def test_stage_1c_validation_outcome_taxonomy() -> None:
 
 def test_stage_1c_schema_selection_per_call_and_raised() -> None:
     # Schema selection is per-call, so a left/right schema-version mismatch is not
-    # constructible. Unsupported/contradictory schema selection is a caller-owned
+    # constructible. Unsupported/wrong-schema-type schema selection is a caller-owned
     # raised error (not a reported not_comparable outcome), and cross-version
     # comparison is deferred. The old incompatible-schema -> not_comparable mapping
     # must not exist.
@@ -1676,15 +1676,16 @@ def test_stage_1c_schema_selection_per_call_and_raised() -> None:
     assert "per-call" in spec
     assert "cannot construct a left/right" in spec
     assert "caller-owned raised error" in spec
-    assert "incompatible_schemas" in spec
+    assert "wrong schema type" in spec
     # The v1 API has no incompatible_schema_versions comparison outcome.
     assert "`incompatible_schema_versions` reason code" in spec
     assert "unsupported_migration_boundary" in spec
     assert "outcome in v1" in spec
-    # Unsupported / contradictory schema selection vectors raise, not not_comparable.
+    # Unsupported / wrong-schema-type schema selection vectors raise,
+    # not not_comparable.
     assert "ve_043_unsupported_canonical_schema_raises" in spec
     assert "ve_044_unsupported_payoff_schema_raises" in spec
-    assert "ve_041_contradictory_schema_config_raises" in spec
+    assert "ve_041_wrong_schema_type_raises" in spec
     # Cross-version comparison is deferred; no cross-version diff is promised.
     assert "deferred to a future" in spec
     assert "source of diff content" in spec
@@ -1704,7 +1705,8 @@ def test_stage_1c_caller_errors_raise() -> None:
         "validation_equivalence.encoding",
         "validation_equivalence.report_collision",
         "validation_equivalence.error",
-        "validation_equivalence.incompatible_schemas",
+        "validation_equivalence.comparison_failed",
+        "validation_equivalence.malformed_representation",
     ):
         assert code in spec, code
     # Complexity error must not be in the error taxonomy.
@@ -1717,7 +1719,7 @@ def test_stage_1c_caller_errors_raise() -> None:
         "malformed stage 1c limits",
         "unsupported stage 1c report schema version",
         "invalid diff representation selection",
-        "impossible or contradictory caller configuration",
+        "wrong schema type",
         "report encoding failure",
         "report identity collision",
         "malformed stage 1c internal state",
@@ -1914,7 +1916,7 @@ def test_stage_1c_normative_vectors_unique_and_complete() -> None:
         "ve_038_deterministic_repeated_captured_failure",
         "ve_039_upstream_r1_failure_captured",
         "ve_040_upstream_r2_failure_captured",
-        "ve_041_contradictory_schema_config_raises",
+        "ve_041_wrong_schema_type_raises",
         "ve_042_report_identity_mandatory",
         "ve_043_unsupported_canonical_schema_raises",
         "ve_044_unsupported_payoff_schema_raises",
@@ -2357,7 +2359,7 @@ def test_vector_exact_ordered_key_tuple() -> None:
         "ve_038_deterministic_repeated_captured_failure",
         "ve_039_upstream_r1_failure_captured",
         "ve_040_upstream_r2_failure_captured",
-        "ve_041_contradictory_schema_config_raises",
+        "ve_041_wrong_schema_type_raises",
         "ve_042_report_identity_mandatory",
         "ve_043_unsupported_canonical_schema_raises",
         "ve_044_unsupported_payoff_schema_raises",
@@ -3099,7 +3101,7 @@ def test_exact_ordered_44_key_tuple_unchanged() -> None:
         "ve_038_deterministic_repeated_captured_failure",
         "ve_039_upstream_r1_failure_captured",
         "ve_040_upstream_r2_failure_captured",
-        "ve_041_contradictory_schema_config_raises",
+        "ve_041_wrong_schema_type_raises",
         "ve_042_report_identity_mandatory",
         "ve_043_unsupported_canonical_schema_raises",
         "ve_044_unsupported_payoff_schema_raises",
@@ -3774,7 +3776,7 @@ def test_supporting_r1_private_exact_ordered_keys() -> None:
         "ve_038_deterministic_repeated_captured_failure",
         "ve_039_upstream_r1_failure_captured",
         "ve_040_upstream_r2_failure_captured",
-        "ve_041_contradictory_schema_config_raises",
+        "ve_041_wrong_schema_type_raises",
         "ve_042_report_identity_mandatory",
         "ve_043_unsupported_canonical_schema_raises",
         "ve_044_unsupported_payoff_schema_raises",
@@ -3901,7 +3903,7 @@ def test_phase_buckets_preserve_exact_ordered_inventory() -> None:
         "ve_038_deterministic_repeated_captured_failure",
         "ve_039_upstream_r1_failure_captured",
         "ve_040_upstream_r2_failure_captured",
-        "ve_041_contradictory_schema_config_raises",
+        "ve_041_wrong_schema_type_raises",
         "ve_042_report_identity_mandatory",
         "ve_043_unsupported_canonical_schema_raises",
         "ve_044_unsupported_payoff_schema_raises",
