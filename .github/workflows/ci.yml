@@ -53,6 +53,20 @@ jobs:
             --cov-report=term-missing \
             --cov-fail-under=100
 
+      - name: Capture documentation failure summary
+        if: ${{ failure() && matrix.python-version == '3.11' }}
+        run: |
+          pytest tests/test_documentation.py -q --tb=short \
+            > documentation-failures.txt 2>&1 || true
+
+      - name: Upload documentation failure summary
+        if: ${{ failure() && matrix.python-version == '3.11' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentation-failures
+          path: documentation-failures.txt
+          retention-days: 1
+
   packaging:
     name: Build and validate artifacts
     runs-on: ubuntu-latest
