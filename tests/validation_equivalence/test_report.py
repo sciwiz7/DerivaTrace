@@ -14,6 +14,7 @@ from derivatrace.validation_equivalence._errors import (
     ValidationEquivalenceEncodingError,
     ValidationEquivalenceInputError,
     ValidationEquivalenceReportCollisionError,
+    ValidationEquivalenceUnsupportedLevelError,
 )
 from derivatrace.validation_equivalence._identity import _digest, report_identity
 from derivatrace.validation_equivalence._records import (
@@ -548,7 +549,7 @@ class TestClosedEnumsRejectRawStrings:
     """All closed enum types reject raw strings."""
 
     def test_validation_level_rejects_string(self) -> None:
-        with pytest.raises(ValidationEquivalenceInputError):
+        with pytest.raises(ValidationEquivalenceUnsupportedLevelError):
             _build_report(
                 **{**_default_report_kwargs(), "requested_level": "canonical"}
             )

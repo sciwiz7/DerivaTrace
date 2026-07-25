@@ -1,9 +1,11 @@
 # ADR 0009 — Stage 1C runtime delivery seam (R1 private, R2 private, public after R2)
 
-- **Status:** Accepted (Stage 1C architecture baseline)
-- **Stage:** 1C (architecture baseline **Established**; private runtimes planned:
-  Stage 1C-R1 validation levels and equivalence reports, Stage 1C-R2
-  deterministic structural diffing; public API only after R2).
+- Status: Accepted (Stage 1C architecture baseline; R1 implemented)
+- Stage 1C-R1A private report foundation: implemented
+- Stage 1C-R1B private orchestration: implemented
+- Stage 1C-R1 overall: complete
+- Stage 1C-R2 deterministic structural diffing: planned
+- Stage 1C public API: unimplemented
 - **Date:** 2026-07-20
 - **Supersedes:** —
 - **Superseded by:** —
@@ -128,8 +130,15 @@ values remain exactly 42 `public_api` and 2 `private_seam`.
 
 ## Consequences
 
-- Stage 1C public runtime remains **Unimplemented** after R1 and after R2
-  (until the public export gate).
+- **Stage 1C-R1 is complete.** The private `_compare_contracts` orchestration
+  exists and is exercised by focused tests. Independent structural, canonical
+  and payoff processing is implemented. Caller-owned configuration is hardened
+  at use time. Upstream operand failures retain their original error
+  namespaces. The existing R1A report builder is used. Only
+  `diff_representation="none"` is supported privately.
+- No public `compare_contracts` is exported. No public vectors are claimed fully satisfied. R2 and the public export gate remain future work. Issues #8 and #1 remain open.
+- Stage 1C public runtime remains **Unimplemented** after R2 (until the
+  public export gate).
 - Documentation guards in `tests/test_documentation.py` enforce:
   - R1 has no public `compare_contracts` export.
   - R1 uses only `diff="none"` with exact empty diff state.

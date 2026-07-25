@@ -1538,13 +1538,13 @@ def test_stage_1c_baseline_files_exist() -> None:
 
 
 def test_stage_1c_status_established_not_implemented() -> None:
-    # Architecture baseline is "Established"; runtimes remain "Planned" /
-    # "Unimplemented".
+    # Architecture baseline is "Established"; public API remains "Unimplemented".
     spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
     assert "architecture baseline established" in spec or "established" in spec
-    # Runtime must not be claimed as implemented.
-    assert "stage 1c-r1" not in spec or "planned" in spec
+    # Stage 1C-R1 is complete; R2 remains planned.
+    assert "stage 1c-r1 overall: complete" in spec or "stage 1c-r1 overall" in spec
     assert "stage 1c-r2" not in spec or "planned" in spec
+    # Public API remains unimplemented.
     assert "no public stage 1c api is exported" in spec
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8").lower()
     assert "architecture baseline established" in readme
@@ -1981,12 +1981,15 @@ def test_stage_1c_documentation_guards_enforced() -> None:
 
 
 def test_stage_1c_runtime_unimplemented() -> None:
-    # No public Stage 1C API exported; private R1A package exists.
+    # No public Stage 1C API exported; private R1B package exists.
     assert (SRC_ROOT / "validation_equivalence").is_dir()
     assert not (SRC_ROOT / "validationequivalence").exists()
     assert not (SRC_ROOT / "stage1c").exists()
     spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
-    assert "unimplemented" in spec
+    # R1A and R1B are implemented; public API remains unimplemented.
+    assert "stage 1c-r1a private report foundation: implemented" in spec
+    assert "stage 1c-r1b private orchestration: implemented" in spec
+    assert "stage 1c public api: unimplemented" in spec
     assert "no public stage 1c api is exported" in spec
     # The public entry point is explicitly not yet implemented.
     assert "not yet implemented" in spec
@@ -2284,12 +2287,13 @@ def test_provenance_identities_null_when_not_requested_or_failed() -> None:
 
 
 def test_stage_1c_runtime_unimplemented_final() -> None:
-    """Stage 1C public API remains unimplemented; private R1A package exists."""
+    """Stage 1C public API remains unimplemented; private R1B package exists."""
     assert (SRC_ROOT / "validation_equivalence").is_dir()
     assert not (SRC_ROOT / "validationequivalence").exists()
     assert not (SRC_ROOT / "stage1c").exists()
     spec = _STAGE1C_SPEC.read_text(encoding="utf-8").lower()
     assert "no public stage 1c api is exported" in spec
+    assert "stage 1c public api: unimplemented" in spec
     assert "not yet implemented" in spec
 
 
@@ -3912,22 +3916,26 @@ def test_phase_buckets_preserve_exact_ordered_inventory() -> None:
 
 
 def test_phase_buckets_stage_1c_runtime_unimplemented() -> None:
-    """Stage 1C public API remains unimplemented; private R1A package exists."""
+    """Stage 1C public API remains unimplemented; private R1B package exists."""
     assert (SRC_ROOT / "validation_equivalence").is_dir()
     assert not (SRC_ROOT / "validationequivalence").exists()
     assert not (SRC_ROOT / "stage1c").exists()
     spec = _frozen_defaults_spec()
     adr9 = _frozen_defaults_adr9()
     assert "no public stage 1c api is exported" in spec
-    assert "unimplemented" in spec
+    assert "stage 1c public api: unimplemented" in spec
     assert "not yet implemented" in spec
+    # R1A and R1B are implemented; R1 overall is complete.
+    assert "stage 1c-r1a private report foundation: implemented" in spec
+    assert "stage 1c-r1b private orchestration: implemented" in spec
+    assert "stage 1c-r1 overall: complete" in spec
     # ADR 0009 defines the runtime delivery seam and states the public export
-    # gate occurs only after R2; the runtime is unimplemented until then.
+    # gate occurs only after R2; the public API is unimplemented until then.
     assert "public export gate" in adr9
 
 
 def test_phase_buckets_no_stage_1c_runtime_source_module() -> None:
-    """No public Stage 1C runtime module exists; private R1A package is present."""
+    """No public Stage 1C runtime module exists; private R1B package is present."""
     assert (SRC_ROOT / "validation_equivalence").is_dir()
     for candidate in (
         SRC_ROOT / "validationequivalence",
@@ -3945,22 +3953,31 @@ def test_phase_buckets_no_stage_1c_runtime_source_module() -> None:
 def test_all_runtime_status_guards_remain_accurate() -> None:
     """All current runtime-status guards remain accurate."""
     spec = _frozen_defaults_spec()
+    adr9 = _frozen_defaults_adr9()
     road = (REPO_ROOT / "ROADMAP.md").read_text(encoding="utf-8").lower()
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8").lower()
     # Architecture baseline established.
     assert "architecture baseline" in spec and "established" in spec
-    # Runtimes planned.
+    # R1A and R1B are implemented; R1 overall is complete.
+    assert "stage 1c-r1a private report foundation: implemented" in spec
+    assert "stage 1c-r1b private orchestration: implemented" in spec
+    assert "stage 1c-r1 overall: complete" in spec
+    assert "stage 1c-r1a private report foundation: implemented" in adr9
+    assert "stage 1c-r1b private orchestration: implemented" in adr9
+    assert "stage 1c-r1 overall: complete" in adr9
+    # R2 remains planned.
     assert "planned" in road and "stage 1c" in road
+    assert "stage 1c-r2 deterministic structural diffing: planned" in spec
     # Public runtime unimplemented.
-    assert "unimplemented" in spec
+    assert "stage 1c public api: unimplemented" in spec
     assert "no public stage 1c api is exported" in spec
     assert "not yet implemented" in spec
-    # Private R1A package exists; no public module or stage1c module.
+    # Private R1B package exists; no public module or stage1c module.
     spec_src = SRC_ROOT
     assert (spec_src / "validation_equivalence").is_dir()
     assert not (spec_src / "validationequivalence").exists()
     assert not (spec_src / "stage1c").exists()
-    # README must not claim Stage 1C runtime implemented.
+    # README must not claim Stage 1C public API is implemented.
     assert "planned" in readme or "unimplemented" in readme
     # Status ordering preserved.
     assert _near(road, r"stage 1a\b", "complete")
@@ -4117,12 +4134,13 @@ def test_no_old_duplicate_or_stale_affected_heading() -> None:
 
 
 def test_no_runtime_source_modified() -> None:
-    """10. No public runtime source is modified; private R1A package exists."""
+    """10. No public runtime source is modified; private R1B package exists."""
     assert (SRC_ROOT / "validation_equivalence").is_dir()
     assert not (SRC_ROOT / "validationequivalence").exists()
     assert not (SRC_ROOT / "stage1c").exists()
     spec = _frozen_defaults_spec()
     assert "no public stage 1c api is exported" in spec
+    assert "stage 1c public api: unimplemented" in spec
     assert "not yet implemented" in spec
 
 
@@ -4224,3 +4242,113 @@ def test_vector_counts_44_42_2_unchanged() -> None:
     kinds = [r.get("Kind", "").strip("`") for r in table]
     assert kinds.count("public_api") == 42
     assert kinds.count("private_seam") == 2
+
+
+# ---- Stage 1C-R1B publication guards ----
+
+
+def test_adr_0009_records_r1a_implemented() -> None:
+    """ADR 0009 records Stage 1C-R1A private report foundation as implemented."""
+    adr9 = _frozen_defaults_adr9()
+    assert "stage 1c-r1a private report foundation: implemented" in adr9
+
+
+def test_adr_0009_records_r1b_implemented() -> None:
+    """ADR 0009 records Stage 1C-R1B private orchestration as implemented."""
+    adr9 = _frozen_defaults_adr9()
+    assert "stage 1c-r1b private orchestration: implemented" in adr9
+
+
+def test_adr_0009_records_r1_overall_complete() -> None:
+    """ADR 0009 records Stage 1C-R1 overall as complete."""
+    adr9 = _frozen_defaults_adr9()
+    assert "stage 1c-r1 overall: complete" in adr9
+
+
+def test_adr_0009_records_r2_planned() -> None:
+    """ADR 0009 records Stage 1C-R2 as planned."""
+    adr9 = _frozen_defaults_adr9()
+    assert "stage 1c-r2 deterministic structural diffing: planned" in adr9
+
+
+def test_adr_0009_records_public_api_unimplemented() -> None:
+    """ADR 0009 records Stage 1C public API as unimplemented."""
+    adr9 = _frozen_defaults_adr9()
+    assert "stage 1c public api: unimplemented" in adr9
+
+
+def test_adr_0009_states_compare_contracts_private() -> None:
+    """ADR 0009 states the private _compare_contracts orchestration exists."""
+    adr9 = _frozen_defaults_adr9()
+    assert "_compare_contracts" in adr9
+    assert "private" in adr9
+
+
+def test_adr_0009_states_no_public_compare_contracts() -> None:
+    """ADR 0009 states no public compare_contracts is exported."""
+    adr9 = _frozen_defaults_adr9()
+    assert "no public `compare_contracts` is exported" in adr9
+
+
+def test_adr_0009_states_no_public_vectors_claimed() -> None:
+    """ADR 0009 states no public vectors are claimed fully satisfied."""
+    adr9 = _frozen_defaults_adr9()
+    assert "no public vectors are claimed fully satisfied" in adr9
+
+
+def test_adr_0009_states_issues_open() -> None:
+    """ADR 0009 states issues #8 and #1 remain open."""
+    adr9 = _frozen_defaults_adr9()
+    assert "issues #8 and #1 remain open" in adr9
+
+
+def test_spec_records_r1a_implemented() -> None:
+    """Spec records Stage 1C-R1A private report foundation as implemented."""
+    spec = _frozen_defaults_spec()
+    assert "stage 1c-r1a private report foundation: implemented" in spec
+
+
+def test_spec_records_r1b_implemented() -> None:
+    """Spec records Stage 1C-R1B private orchestration as implemented."""
+    spec = _frozen_defaults_spec()
+    assert "stage 1c-r1b private orchestration: implemented" in spec
+
+
+def test_spec_records_r1_overall_complete() -> None:
+    """Spec records Stage 1C-R1 overall as complete."""
+    spec = _frozen_defaults_spec()
+    assert "stage 1c-r1 overall: complete" in spec
+
+
+def test_spec_records_r2_planned() -> None:
+    """Spec records Stage 1C-R2 as planned."""
+    spec = _frozen_defaults_spec()
+    assert "stage 1c-r2 deterministic structural diffing: planned" in spec
+
+
+def test_no_public_compare_contracts_export() -> None:
+    """No public compare_contracts export exists in the package."""
+    import derivatrace.validation_equivalence as ve_pkg
+
+    assert ve_pkg.__all__ == []
+    assert not hasattr(ve_pkg, "compare_contracts")
+
+
+def test_private_orchestration_module_exists() -> None:
+    """The private _compare_contracts orchestration module exists."""
+    assert (SRC_ROOT / "validation_equivalence" / "_orchestration.py").exists()
+
+
+def test_only_two_private_seams_enforced() -> None:
+    """Only ve_014 and ve_037 remain as private seams (enforcement guard)."""
+    table = _parse_inventory_table()
+    private_keys = [
+        r["Key"] for r in table if r.get("Kind", "").strip("`") == "private_seam"
+    ]
+    assert private_keys == [
+        "ve_014_provenance_only_diff",
+        "ve_037_report_encoding_failure_raises",
+    ]
+    public_count = sum(1 for r in table if r.get("Kind", "").strip("`") == "public_api")
+    assert public_count == 42
+    assert len(table) == 44

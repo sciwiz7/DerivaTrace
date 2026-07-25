@@ -1667,7 +1667,12 @@ merged. They are enforced by `tests/test_documentation.py`:
 - Stage 1B is no longer marked "In progress" (Stage 1B-R1: Implemented;
   Stage 1B-R2: Implemented).
 - Stage 1C architecture baseline: "Established".
-- Stage 1C runtime: "Unimplemented" (no public API exported; R1A private package exists).
+- Stage 1C runtime: R1 complete (R1A implemented, R1B implemented), R2 planned, public API unimplemented.
+- Stage 1C-R1A private report foundation: implemented.
+- Stage 1C-R1B private orchestration: implemented.
+- Stage 1C-R1 overall: complete.
+- Stage 1C-R2 deterministic structural diffing: planned.
+- Stage 1C public API: unimplemented (no public API exported; private orchestration package exists).
 - No economic-equivalence claim exists in any documentation.
 - All three validation-level terms (`structural`, `canonical`, `payoff`) and the
   progressive-processing-depth rule appear in `validation-equivalence-spec.md`.
@@ -1724,7 +1729,11 @@ merged. They are enforced by `tests/test_documentation.py`:
 - `ValidationEquivalenceComplexityError` is absent from the v1 error taxonomy.
 - Provenance identities are `null` when canonicalization was not requested or
   failed; this is one exact rule covering structural-level and failed reports.
-- Stage 1C runtime: **Unimplemented** (no public API exported; R1A private package exists).
+- Stage 1C-R1A private report foundation: implemented.
+- Stage 1C-R1B private orchestration: implemented.
+- Stage 1C-R1 overall: complete.
+- Stage 1C-R2 deterministic structural diffing: planned.
+- Stage 1C public API: **Unimplemented** (no public API exported; private orchestration package exists).
 - No economic-equivalence claim exists.
 - Vector keys remain unique.
 - When either operand fails Stage 1A validation: requested `structural` →
