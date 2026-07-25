@@ -53,7 +53,7 @@ apply once stable releases begin.
 
 ### Stage 1B-R2 — Payoff-graph runtime
 
-- Added `derivatrace.payoffgraph` and public `compile_payoff_graph`.
+- Added `derivatrace.payoffgraph` and the public payoff-graph compilation boundary.
 - Implemented all supported canonical-to-payoff node mappings.
 - Added deterministic reachable-only structural and provenance-bearing document
   representations.
@@ -64,7 +64,7 @@ apply once stable releases begin.
 
 ### Stage 1B-R1 — Canonical runtime
 
-- Added `derivatrace.canonical` and public `canonicalize_contract`.
+- Added `derivatrace.canonical` and the public Stage 1B-R1 canonicalization boundary.
 - Added byte-exact compact canonical JSON, exact-value encoding,
   content-addressed node identifiers, collision detection and deterministic
   `canonical:sha256:` contract identity.
