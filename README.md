@@ -2,207 +2,130 @@
 
 > An open-source evidence-carrying derivatives compiler and model-risk laboratory.
 
-- **Current status:** Stage 1A implemented — Immutable contract algebra and
-  runtime type system. Stage 1B architecture baseline complete; **Stage 1B-R1
-  canonical runtime implemented** (byte-exact canonicalization and canonical
-  contract identity). **Stage 1B-R2 payoff-graph runtime implemented** (CV-011:
-  byte-exact payoff-graph identity, deterministic node graph, and provenance).
-  **Stage 1C architecture baseline established** (graded validation levels,
-  equivalence reporting, structural diffing; runtimes planned for 1C-R1 and
-  1C-R2). Stage 0 foundation complete.
-- **Release stage:** Pre-Alpha. **Not published.** Not available on PyPI.
-- **License:** [MIT](LICENSE)
+[![CI](https://github.com/sciwiz7/DerivaTrace/actions/workflows/ci.yml/badge.svg)](https://github.com/sciwiz7/DerivaTrace/actions/workflows/ci.yml)
+![Python 3.11–3.14](https://img.shields.io/badge/python-3.11%E2%80%933.14-blue)
+![Coverage](https://img.shields.io/badge/statement%20%26%20branch%20coverage-100%25-brightgreen)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-## What DerivaTrace aims to be
+## Current status
 
-DerivaTrace is a planned open-source system in which a user defines a financial
-contract once and the system compiles it into a canonical, model-independent
-payoff representation. That representation can later be valued by different
-models and numerical engines, and every valuation is designed to produce an
-auditable **evidence certificate**.
+DerivaTrace is **pre-alpha**, **not published**, and not available on PyPI.
 
-The guiding architectural principle is:
+- **Stage 0:** foundation, governance, security policy, CI, packaging and architecture — complete.
+- **Stage 1A:** immutable typed contract algebra and whole-graph validation — complete.
+- **Stage 1B-R1:** byte-exact canonical contract representation and deterministic identity — implemented.
+- **Stage 1B-R2:** deterministic payoff-graph compilation, identity and provenance — implemented.
+- **Stage 1C architecture baseline:** established.
+- **Stage 1C-R1A:** private validation-equivalence report foundation — implemented.
+- **Stage 1C-R1B:** private orchestration runtime — implemented.
+- **Stage 1C-R1 overall:** complete privately.
+- **Stage 1C-R2:** deterministic structural diffing — planned.
+- **Public Stage 1C API:** unimplemented; no public `compare_contracts` export exists.
+
+The repository currently has **1,451 passing tests**, 5 intentionally skipped tests,
+100% statement and branch coverage, strict mypy, Ruff, packaging validation and CI
+across Python 3.11–3.14.
+
+## Why DerivaTrace exists
+
+Derivatives analytics often delivers a number without a self-contained record of
+how it was produced. Reproducing, comparing or challenging that result can require
+scattered notebooks, undocumented engine settings and institutional knowledge.
+
+DerivaTrace is designed around a stricter principle:
 
 > **A valuation without evidence is an incomplete output.**
 
-A certificate is designed to capture the contract identity, the market-data
-snapshot identity, the model and parameters, the numerical-engine configuration,
-the resulting value and sensitivities, numerical uncertainty, validation and
-arbitrage checks, software and source versions, and deterministic integrity
-hashes.
+The long-term system separates contract semantics, market data, models, numerical
+engines, risk, validation and evidence certificates so that one layer cannot
+silently absorb another layer's responsibility.
 
-## Problem statement
+## What exists today
 
-In contemporary derivatives analytics, a number is often delivered without a
-self-contained record of *how* it was produced. Reproducing a price, comparing
-it across models, or challenging it during model-risk review can require
-scattered notebooks, undocumented engine settings, and tribal knowledge.
+### Stage 1A — Contract algebra and validation
 
-DerivaTrace is designed so that the evidence required to understand, reproduce,
-and challenge a valuation travels with the result.
+The public `derivatrace.contracts` package provides:
 
-## Proposed system
+- exact domain values including `ExactNumber`, `Currency`, `Unit`, identifiers and timestamps;
+- immutable scalar and Boolean expression nodes;
+- immutable contract nodes including `Zero`, `Payment`, `Both`, `Scale` and `ConditionalContract`;
+- iterative whole-graph validation with deterministic metrics;
+- rejection of forged objects, unsupported subclasses, cycles and excessive complexity.
 
-DerivaTrace separates concerns that are too often entangled:
+### Stage 1B-R1 — Canonical contract identity
 
-- **Contract semantics** — what the instrument pays.
-- **Market data** — observable inputs and snapshots.
-- **Model** — assumptions governing stochastic behaviour.
-- **Numerical engine** — the method used to calculate results.
-- **Risk** — sensitivities and uncertainty.
-- **Validation** — invariants and arbitrage checks.
-- **Evidence certificate** — what was calculated and how.
+The public `derivatrace.canonical` package:
 
-No layer silently absorbs another layer's responsibility. The canonicalization,
-determinism, and certificate design are specified in the architecture and
-supporting documents below.
+- validates and canonicalizes supported contracts;
+- emits compact, byte-exact canonical JSON;
+- content-addresses canonical nodes;
+- detects collisions;
+- derives deterministic `canonical:sha256:` identities.
 
-## Architectural principle
+### Stage 1B-R2 — Payoff-graph runtime
 
-A price is treated as an *incomplete* output unless it is accompanied by
-auditable evidence. The deterministic core remains authoritative for contract
-semantics, canonicalization, calculations, tolerances, validation, and
-certificates. Future assistive features may explain or summarize results, but
-they must not silently change contracts, models, market inputs, engine
-settings, or validation outcomes.
+The public `derivatrace.payoffgraph` package compiles supported contracts into a
+deterministic, reachable-only payoff DAG.
 
-## Planned capabilities
+- `structural_bytes` contains the canonical structural projection used for identity.
+- `document_bytes` contains the same structural fields plus deterministic provenance.
+- Neither representation is pretty-printed.
+- Provenance includes the compiler tag and source contract identity but is excluded
+  from the payoff-graph identity.
+- The resulting identity uses the `payoffgraph:sha256:` domain.
 
-These capabilities are **planned** for later stages and do **not** exist today:
+### Stage 1C-R1 — Private validation-equivalence runtime
 
-- Immutable, typed contract algebra (delivered in Stage 1A), a canonical
-  contract representation with deterministic identity (Stage 1B-R1 implemented),
-  and a canonical payoff-graph runtime with deterministic payoff-graph identity
-  (Stage 1B-R2 implemented).
-- Market snapshots with deterministic evidence identity.
-- Reference pricing engines (Black–Scholes, trees, Monte Carlo).
-- Evidence-carrying valuation certificates.
-- Greeks with independent sensitivity verification.
-- Volatility surfaces and calibration diagnostics.
-- Additional models (Heston, local volatility, jumps) and model comparison.
-- Hedging laboratory and P&L attribution.
-- Model-risk and uncertainty decomposition.
-- Path-dependent and callable contracts.
-- Interactive graph and certificate explorer.
-- Secure extensions, interoperability, and governance maturity.
+The architecture baseline established graded evaluation levels (`structural`,
+`canonical`, `payoff`) and deterministic equivalence reports.
 
-See [ROADMAP.md](ROADMAP.md) for the staged plan.
+The private R1 runtime now:
 
-## What exists today (Stage 1A)
+- validates caller-owned schemas and limits before operand processing;
+- processes each operand independently through the requested evaluation depth;
+- preserves upstream error namespaces and classifications;
+- checks explicit and internal canonicalization consistency;
+- constructs deterministic, self-validating reports;
+- supports `diff_representation="none"` only.
 
-Stage 1A delivers the immutable contract algebra and its runtime type system on
-top of the Stage 0 foundation. You can:
+Stage 1C-R2 structural diffing remains planned. The public Stage 1C API remains
+unimplemented until the R2 and export gates are completed.
 
-- Create exact domain values: `ExactNumber`, `Currency`, `Unit`/`UnitKind`,
-  `ObservableId`, `ObservationTime`, `SettlementTime`.
-- Construct immutable scalar expressions (`Number`, `Observable`, `Add`,
-  `Subtract`, `Multiply`, `Divide`, `Negate`, `Maximum`, `Minimum`,
-  `ConditionalValue`) and boolean expressions (`BooleanConstant`, `Comparison`,
-  `AllOf`, `AnyOf`, `Not`).
-- Compose contractual obligations (`Zero`, `Payment`, `Both`, `Scale`,
-  `ConditionalContract`).
-- Structurally validate a contract graph with `validate_contract`, which
-  re-checks every node's invariants, rejects forged objects, unsupported
-  subclasses, cycles, and excessive depth or node count.
-- Inspect deterministic `ContractMetrics` (unique node count and maximum depth).
+## Security and maintenance model
 
-## What exists today (Stage 1B-R2)
+DerivaTrace treats caller-owned objects and serialized representations as untrusted.
+The project uses exact-type boundaries, use-time invariant validation, iterative
+bounded traversal, collision checks, deterministic encoding, exception containment
+and a dedicated security-reporting process.
 
-Stage 1B-R2 delivers the canonical payoff-graph runtime on top of the Stage 1B-R1
-canonical contract identity. You can:
+Maintenance work is organised through issues, ADRs, focused pull requests and a CI
+gate requiring:
 
-- Compile an immutable contract into a deterministic payoff graph with
-  `compile_payoff_graph`, yielding a byte-exact `payoffgraph:sha256:` identity
-  derived from a canonical structural document (the `structural_bytes`).
-- Inspect the compact canonical `structural_bytes` (the structural projection
-  only), the `document_bytes` (same structural fields plus deterministic
-  provenance), the `root_node_id`, the `node_count`, and the
-  `source_contract_identity` (the canonical contract identity of the compiled
-  contract). Neither representation is pretty-printed; the graph identity hashes
-  `structural_bytes` only.
-- Rely on provenance: the `PayoffGraph` records the compiler tag and source
-  contract identity; changing provenance alone never changes the payoff-graph
-  identity.
+- Ruff formatting and linting;
+- strict mypy;
+- 100% statement and branch coverage;
+- Python 3.11–3.14 compatibility;
+- wheel and sdist inventory validation.
 
-## What exists today (Stage 1C architecture baseline)
-
-Stage 1C defines the **validation-equivalence layer**: graded validation levels
-(`structural`, `canonical`, `payoff`), a deterministic equivalence report
-schema (`derivatrace.validation-equivalence.report`), and deterministic
-structural diffing over trusted Stage 1B representations. The specification is
-in `docs/validation-equivalence-spec.md` and the architectural decision is
-recorded in [ADR 0008](docs/adr/0008-validation-levels-equivalence-and-structural-diffing.md).
-No runtime implementation exists yet; Stage 1C-R1 (validation levels and
-reports) and Stage 1C-R2 (structural diffing) are planned increments.
+See [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](CONTRIBUTING.md) and
+[GOVERNANCE.md](GOVERNANCE.md).
 
 ## What does not exist today
 
-Explicitly unimplemented:
+DerivaTrace does **not** currently provide:
 
-- Any pricing, valuation, or Greeks computation.
-- Monte Carlo, PDE, tree, or closed-form numerical engines.
-- Calibration, hedging, or advanced contract logic.
-- Any financial calculation of any kind.
-- Market data, snapshots, or evaluation of observables.
-- Any canonical payoff-graph **valuation**, or any pricing, model, or engine
-  behaviour. (The canonical contract representation and its identity are
-  implemented in Stage 1B-R1; the canonical payoff-graph runtime — byte-exact
-  payoff-graph identity, deterministic node graph, and provenance — is
-  implemented in Stage 1B-R2; see `docs/canonicalization-spec.md`,
-  `docs/payoff-graph-spec.md`, `docs/canonical-test-vectors.md`, and
-  [ADR 0007](docs/adr/0007-canonical-contract-identity-and-payoff-graph.md).)
-- **Stage 1C validation levels, equivalence reports, or structural diffing
-  runtime** (architecture baseline established in `docs/validation-equivalence-spec.md`
-  and ADR 0008; runtimes planned for Stage 1C-R1 and 1C-R2).
-- An evidence certificate or reproducibility hash.
-- A published package or PyPI release.
+- pricing, valuation or Greeks calculations;
+- Monte Carlo, PDE, tree or closed-form numerical engines;
+- market-data retrieval or market snapshots;
+- calibration, hedging or model selection;
+- evidence-carrying valuation certificates;
+- a public validation-equivalence comparison API;
+- a published package or stable release.
 
-## Intended users
+Nothing in this repository constitutes financial advice or a production-ready
+pricing or risk system.
 
-- Quantitative researchers and model-risk professionals.
-- Financial-engineering educators and students.
-- Open-source contributors interested in reproducible, evidence-carrying
-  financial computation.
-
-## Repository architecture
-
-```text
-DerivaTrace/
-├── .github/workflows/ci.yml
-├── docs/
-│   ├── index.md
-│   ├── vision.md
-│   ├── product-spec.md
-│   ├── architecture.md
-│   ├── contract-semantics.md
-│   ├── contract-api.md
-│   ├── certificate-spec.md
-│   ├── threat-model.md
-│   ├── glossary.md
-│   └── adr/
-│       ├── 0001-separation-of-contract-model-engine.md
-│       ├── 0002-deterministic-canonicalization.md
-│       ├── 0003-evidence-carrying-results.md
-│       ├── 0004-exact-contract-terms-and-numerical-boundaries.md
-│       ├── 0005-no-hidden-model-selection.md
-│       └── 0006-stage-1-contract-algebra-and-runtime-type-system.md
-├── src/derivatrace/
-├── tests/
-├── pyproject.toml
-├── README.md
-├── CHANGELOG.md
-├── ROADMAP.md
-├── CONTRIBUTING.md
-├── CODE_OF_CONDUCT.md
-├── SECURITY.md
-├── GOVERNANCE.md
-└── LICENSE
-```
-
-## Installation (contributors only)
-
-DerivaTrace is **not** published and must not be installed from PyPI. For local
-development only:
+## Installation for contributors
 
 ```bash
 python -m pip install --upgrade pip
@@ -217,17 +140,31 @@ ruff format --check .
 ruff check .
 mypy
 pytest --cov=derivatrace --cov-branch --cov-report=term-missing --cov-fail-under=100
-python -m build
+DG_TEST_PACKAGING=1 pytest tests/test_packaging.py -v
 ```
 
-## Safety and financial disclaimer
+## Repository map
 
-DerivaTrace is a research and educational project. It is **pre-alpha**,
-**not validated**, and **not suitable for production use**. Nothing in this
-repository constitutes financial advice, a validated pricing system, or a
-substitute for professional model-risk governance. Do not use it to make
-investment, trading, or risk decisions. Claims about future capabilities are
-aspirational and subject to change.
+```text
+DerivaTrace/
+├── .github/workflows/ci.yml
+├── docs/
+│   ├── architecture.md
+│   ├── canonicalization-spec.md
+│   ├── payoff-graph-spec.md
+│   ├── validation-equivalence-spec.md
+│   ├── threat-model.md
+│   └── adr/
+├── src/derivatrace/
+├── tests/
+├── README.md
+├── ROADMAP.md
+├── CONTRIBUTING.md
+├── SECURITY.md
+├── GOVERNANCE.md
+├── CHANGELOG.md
+└── LICENSE
+```
 
 ## Documentation
 
@@ -235,31 +172,23 @@ aspirational and subject to change.
 - [Vision](docs/vision.md)
 - [Product specification](docs/product-spec.md)
 - [Architecture](docs/architecture.md)
-- [Contract semantics](docs/contract-semantics.md)
-- [Contract API (Stage 1A)](docs/contract-api.md)
-- [Canonicalization specification (Stage 1B)](docs/canonicalization-spec.md)
-- [Payoff-graph specification (Stage 1B)](docs/payoff-graph-spec.md)
-- [Canonical test vectors (Stage 1B)](docs/canonical-test-vectors.md)
-- [Validation-equivalence specification (Stage 1C)](docs/validation-equivalence-spec.md)
-- [Certificate specification](docs/certificate-spec.md)
+- [Contract API](docs/contract-api.md)
+- [Canonicalization specification](docs/canonicalization-spec.md)
+- [Payoff-graph specification](docs/payoff-graph-spec.md)
+- [Canonical test vectors](docs/canonical-test-vectors.md)
+- [Validation-equivalence specification](docs/validation-equivalence-spec.md)
 - [Threat model](docs/threat-model.md)
-- [Glossary](docs/glossary.md)
 - [Architectural decision records](docs/adr/)
-  - [ADR 0001: Separation of contract, model, and engine](docs/adr/0001-separation-of-contract-model-engine.md)
-  - [ADR 0002: Deterministic canonicalization](docs/adr/0002-deterministic-canonicalization.md)
-  - [ADR 0003: Evidence-carrying results](docs/adr/0003-evidence-carrying-results.md)
-  - [ADR 0004: Exact contract terms and numerical boundaries](docs/adr/0004-exact-contract-terms-and-numerical-boundaries.md)
-  - [ADR 0005: No hidden model selection](docs/adr/0005-no-hidden-model-selection.md)
-  - [ADR 0006: Stage 1 contract algebra and runtime type system](docs/adr/0006-stage-1-contract-algebra-and-runtime-type-system.md)
-  - [ADR 0007: Canonical contract identity and payoff graph](docs/adr/0007-canonical-contract-identity-and-payoff-graph.md)
-  - [ADR 0008: Validation levels, equivalence, and structural diffing](docs/adr/0008-validation-levels-equivalence-and-structural-diffing.md)
 - [Roadmap](ROADMAP.md)
-- [Contributing](CONTRIBUTING.md)
-- [Code of conduct](CODE_OF_CONDUCT.md)
-- [Security policy](SECURITY.md)
-- [Governance](GOVERNANCE.md)
 - [Changelog](CHANGELOG.md)
 
 ## Licence
 
-DerivaTrace is released under the [MIT licence](LICENSE).
+DerivaTrace is released under the [MIT License](LICENSE).
+
+## Disclaimer
+
+DerivaTrace is a research and educational project. It is pre-alpha, not validated
+for production use, and must not be used to make investment, trading, valuation or
+risk decisions. Future capabilities described in the documentation are aspirational
+and subject to architectural review.

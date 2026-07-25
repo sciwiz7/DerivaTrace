@@ -1,219 +1,182 @@
 # Roadmap
 
-This roadmap defines the staged evolution of DerivaTrace. Stage 0 is the
-foundation and system specification. Stage 1 introduces the immutable contract
-algebra; it is delivered in three parts (1A, 1B, 1C). Later stages are
-**planned** and their scope may change through architectural review.
+DerivaTrace is developed in bounded stages. Completed work is separated from
+planned work so that specifications never imply an unavailable capability.
 
-Stages are marked as:
+Status vocabulary:
 
-- **Complete** — finished, reviewed, and merged.
-- **In progress** — actively being established.
-- **Planned** — not yet started.
+- **Complete** — implemented, reviewed and merged.
+- **In progress** — at least one bounded increment remains open.
+- **Planned** — not implemented.
+
+The project is pre-alpha, not published and has no stable release.
 
 ## Stage 0 — Foundation and system specification
 
 - **Status:** Complete.
-- **Objective:** Establish the project constitution, architecture, and a minimal
-  dependency-free package.
-- **Main deliverables:** Package skeleton, deterministic metadata, full
-  specification documents, ADRs, CI, governance and security policies.
-- **Acceptance criteria:** CI green on Python 3.11–3.14; 100% coverage of the
-  Stage 0 package; all documentation links resolve; no runtime dependencies.
-- **Explicit exclusions:** Pricing, Greeks, Monte Carlo, PDEs, calibration,
-  hedging, and advanced contract logic.
+- **Delivered:** package skeleton, project constitution, architecture,
+  documentation, ADR process, governance, security policy, CI and packaging
+  validation.
+- **Quality boundary:** Python 3.11–3.14, strict typing, no runtime dependencies.
+- **Excluded:** pricing, numerical engines, market data and trading connectivity.
 
-## Stage 1 — Immutable contract algebra
+## Stage 1 — Immutable contract and representation core
 
 - **Status:** In progress.
-- **Sub-stages:** Stage 1A Complete; **Stage 1B architecture baseline
-  Complete**; **Stage 1B-R1 canonical runtime Implemented**; **Stage 1B-R2
-  payoff-graph runtime Implemented**; **Stage 1C architecture baseline
-  Established**.
-- **Objective:** Introduce an immutable, typed contract AST, a deterministic
-  structural validator, a canonical contract representation with deterministic
-  identity, a canonical payoff graph with deterministic identity, and (later)
-  graded validation levels and equivalence reporting.
-- **Explicit exclusions for the whole of Stage 1:** Numerical valuation, market
-  data, and any pricing engine.
+- **Sub-stages:** Stage 1A Complete; Stage 1B architecture baseline Complete;
+  Stage 1B-R1 canonical runtime Implemented; Stage 1B-R2 payoff-graph runtime
+  Implemented; Stage 1C architecture baseline Established; Stage 1C-R1 Complete
+  privately; Stage 1C-R2 Planned; public Stage 1C API Unimplemented.
+- **Objective:** provide deterministic, bounded and auditable contract and payoff
+  representations without performing valuation.
+- **Whole-stage exclusions:** pricing, market data, numerical models, engines,
+  Greeks, calibration and hedging.
 
 ### Stage 1A — Contract algebra and runtime type system
 
 - **Status:** Complete.
-- **Objective:** A strongly typed, immutable contract algebra with exact-domain
-  value objects and whole-graph structural validation.
-- **Main deliverables:** `ExactNumber`; `Currency`; `Unit`/`UnitKind`;
-  `ObservableId`; `ObservationTime`/`SettlementTime`; scalar expression nodes
-  (`Number`, `Observable`, `Add`, `Subtract`, `Multiply`, `Divide`, `Negate`,
-  `Maximum`, `Minimum`, `ConditionalValue`); boolean expression nodes
-  (`BooleanConstant`, `Comparison`, `AllOf`, `AnyOf`, `Not`); contract nodes
-  (`Zero`, `Payment`, `Both`, `Scale`, `ConditionalContract`); structural
-  validation with deterministic `ContractMetrics`; a stable error taxonomy.
-- **Acceptance criteria:** `validate_contract` runs iteratively; re-checks every
-  node's invariants; rejects forged objects, unsupported subclasses, cycles, and
-  excessive depth or node count; returns reproducible metrics.
-- **Explicit exclusions:** Canonicalization, canonical identity, serialization,
-  hashing, equivalence checks, the payoff graph, models, engines, market data,
-  and certificates.
+- **Delivered:** exact domain values; immutable scalar, Boolean and contract nodes;
+  iterative whole-graph validation; cycle, forgery and complexity protection;
+  deterministic metrics and a stable error taxonomy.
+- **Excluded:** canonical identity, payoff compilation, equivalence reporting,
+  pricing, models, engines and certificates.
 
-### Stage 1B — Canonical payoff graph and structural canonicalization
+### Stage 1B — Canonical contract and payoff representations
 
-- **Status:** In progress.
-- **Objective:** Compile the validated contract graph into a canonical payoff
-  graph and produce a structural canonical form with a deterministic identity.
-- **Stage 1B architecture baseline — Status: Complete.** A rigorous design
-  baseline specifying canonical schema and versioning, canonical byte encoding
-  (UTF-8 JSON, sorted keys), exact `Decimal` / UTC / currency / unit / enum
-  encoding, per-node commutativity and associative-flattening decisions,
-  duplicate-operand policy, safe literal-only simplifications, forbidden
-  transformations, DAG-sharing and node-identity policy, cycle and complexity
-  protections, deterministic graph-node identifiers, SHA-256 domain separation,
-  canonicalization error taxonomy, version-migration policy, and test vectors —
-  plus [ADR 0007](docs/adr/0007-canonical-contract-identity-and-payoff-graph.md).
-- **Stage 1B-R1 canonical runtime — Status: Implemented.** The canonical
-  contract representation (`derivatrace.canonical`) is implemented: it
-  canonicalizes a validated Stage 1A contract graph into byte-exact canonical
-  JSON, content-addresses nodes, detects collisions, and derives a deterministic
-  canonical contract identity (SHA-256 domain separation). The normative test
-  vectors (`docs/canonical-test-vectors.md`) are produced and verified by this
-  runtime.
-- **Stage 1B-R2 payoff-graph runtime — Status: Implemented.** The payoff-graph
-  compilation runtime (`derivatrace.payoffgraph`) is implemented: it compiles a
-  validated and canonicalized Stage 1A contract into a deterministic, reachable-only
-  payoff DAG with byte-exact `payoffgraph:sha256:` identity derived from canonical
-  structural bytes (provenance excluded). All 20 canonical-to-payoff node mappings
-  are implemented and tested, including `PGSubtract`, `PGBooleanConstant`, the
-  `amount`-based `PGPayment` with settlement-time ownership, the `payoff_graph.*`
-  error taxonomy, `PayoffGraphLimits`, and provenance-excluded identity.
-- **Acceptance criteria:** Equivalent contracts produce identical canonical
-  forms and identities; non-equivalent contracts do not collapse through
-  undocumented transformations.
-- **Explicit exclusions:** Numerical valuation and market data.
+- **Status:** In progress as a parent stage because later Stage 1 work remains;
+  both Stage 1B runtime increments are implemented.
+
+#### Stage 1B architecture baseline
+
+- **Status:** Complete.
+- **Delivered:** schema, byte encoding, exact-value encoding, node laws, DAG policy,
+  complexity limits, collision handling, domain-separated identities, migration
+  policy and normative vectors.
+
+#### Stage 1B-R1 — Canonical runtime
+
+- **Status:** Implemented.
+- **Delivered:** `derivatrace.canonical`, byte-exact canonical JSON,
+  content-addressed nodes, collision detection and deterministic
+  `canonical:sha256:` contract identity.
+
+#### Stage 1B-R2 — Payoff-graph runtime
+
+- **Status:** Implemented.
+- **Delivered:** `derivatrace.payoffgraph`, deterministic reachable-only payoff
+  DAGs, compact structural bytes, provenance-bearing document bytes and
+  `payoffgraph:sha256:` identity.
 
 ### Stage 1C — Validation levels and equivalence reporting
 
-- **Status:** Architecture baseline Established; Runtimes Planned (Stage 1C-R1:
-  private validation levels and equivalence reports; Stage 1C-R2: private
-  diff engine; public API only after R2).
-- **Objective:** Define graded validation levels, deterministic equivalence
-  reporting, and structural diffing on top of the canonical form.
-- **Main deliverables:**
-  - **Architecture baseline (this increment):** Validation-level taxonomy,
-    equivalence report schema, structural-diff specification, versioning and
-    compatibility policy, limits and security model, error taxonomy, normative
-    conformance vectors, ADR 0008, ADR 0009.
-  - **Stage 1C-R1 (planned, private):** `ValidationLevel` enum,
-    `ValidationEquivalenceReport` type, `DiffLimits`, error classes, exact empty
-    diff summary (`diff="none"`), report identity, collision defence, frozen
-    `limits_used` and `schema_metadata` shapes, double-canonicalization
-    consistency rule. No public `compare_contracts` export.
-  - **Stage 1C-R2 (planned, private):** Generic content-addressed document-diff
-    engine applied to both canonical and payoff representations; both
-    `diff="canonical"` and `diff="payoff"`; admission limits, output limits,
-    ordering, paths, truncation. Only then is `compare_contracts` publicly
-    exported with its exact permanent signature and canonical default.
-- **Acceptance criteria:** Validation levels are documented, complete, and
-  reproducible; report schema is fully specified; diff representation is
-  deterministic and bounded; all vectors have unique keys; no economic-equivalence
-  claim exists.
-- **Explicit exclusions:** Numerical valuation, market data, any claim of
-  economic/legal/accounting/tax/model/suitability equivalence.
+- **Status:** Architecture baseline Established; Stage 1C-R1 Complete privately;
+  Stage 1C-R2 Planned; public API Unimplemented.
+- **Objective:** provide graded structural, canonical and payoff evaluation with
+  deterministic reports and later bounded structural diffing.
+
+#### Stage 1C architecture baseline
+
+- **Status:** Established.
+- **Delivered:** validation-level taxonomy, report schema, comparison vocabulary,
+  error taxonomy, versioning, limits, security rules, conformance vectors and
+  ADRs 0008 and 0009.
+
+#### Stage 1C-R1A — Private report foundation
+
+- **Status:** Implemented.
+- **Delivered:** closed enums and records, deterministic report encoding and
+  identity, collision defence, schema metadata, frozen limits and the exact empty
+  diff state.
+
+#### Stage 1C-R1B — Private orchestration
+
+- **Status:** Implemented.
+- **Delivered:** private `_compare_contracts` orchestration; authoritative use-time
+  configuration validation; independent per-side structural, canonical and payoff
+  processing; upstream failure capture; double-canonicalization consistency;
+  deterministic report construction; `diff_representation="none"` only.
+
+#### Stage 1C-R2 — Private structural diff engine
+
+- **Status:** Planned.
+- **Planned scope:** deterministic bounded diffing over canonical and payoff
+  representations, stable paths and ordering, admission and output limits, and
+  truncation semantics.
+- **Export gate:** only after R2 is reviewed may a public `compare_contracts` API be
+  considered. No public API exists today.
 
 ## Stage 2 — Market snapshots and deterministic evidence identity
 
 - **Status:** Planned.
-- **Objective:** Define market-data snapshots with deterministic identity.
-- **Main deliverables:** Snapshot schema, deterministic hashing, currency and
-  unit handling, rejection of ambiguous input.
-- **Acceptance criteria:** Identical snapshots hash identically; no NaN/Infinity
-  enters certificates.
-- **Explicit exclusions:** Pricing engines.
+- **Objective:** define explicit, versioned market-data snapshots with deterministic
+  identity and rejection of ambiguous numeric input.
+- **Excluded:** pricing engines.
 
-## Stage 3 — Black–Scholes, tree, and Monte Carlo reference engines
+## Stage 3 — Reference numerical engines
 
 - **Status:** Planned.
-- **Objective:** Provide selectable reference numerical engines.
-- **Main deliverables:** Closed-form, lattice, and Monte Carlo engines with
-  explicit seeds, path counts, and time steps.
-- **Acceptance criteria:** Reproducible results under fixed seeds; documented
-  error estimates.
-- **Explicit exclusions:** Automatic model selection.
+- **Objective:** add separately selectable closed-form, lattice and Monte Carlo
+  engines with explicit numerical configuration and reproducibility evidence.
+- **Excluded:** hidden or automatic model selection.
 
 ## Stage 4 — Evidence-carrying valuation certificates
 
 - **Status:** Planned.
-- **Objective:** Emit versioned evidence certificates for valuations.
-- **Main deliverables:** Certificate envelope, hashing procedure, identity,
-  reproducibility configuration.
-- **Acceptance criteria:** Certificates are self-describing and tamper-evident.
-- **Explicit exclusions:** External digital signatures (planned as optional).
+- **Objective:** emit versioned certificates recording inputs, model, engine,
+  outputs, checks, uncertainty and integrity identifiers.
+- **Excluded:** claims that hashes are digital signatures or proofs of correctness.
 
 ## Stage 5 — Greeks and independent sensitivity verification
 
 - **Status:** Planned.
-- **Objective:** Compute sensitivities and verify them independently.
-- **Main deliverables:** Greeks via multiple methods; cross-check evidence.
-- **Acceptance criteria:** Sensitivities reproducible and independently checked.
-- **Explicit exclusions:** Hedging execution.
+- **Objective:** calculate sensitivities through explicit methods and preserve
+  independent cross-check evidence.
 
 ## Stage 6 — Volatility surfaces and calibration diagnostics
 
 - **Status:** Planned.
-- **Objective:** Represent volatility surfaces and calibration diagnostics.
-- **Main deliverables:** Surface schema, calibration diagnostics, fit evidence.
-- **Acceptance criteria:** Calibration inputs and outputs recorded as evidence.
-- **Explicit exclusions:** Production calibration service.
+- **Objective:** represent calibration inputs, fitted surfaces, diagnostics and
+  uncertainty as evidence.
 
-## Stage 7 — Heston, local volatility, jumps, and model comparison
+## Stage 7 — Additional models and model comparison
 
 - **Status:** Planned.
-- **Objective:** Add stochastic-volatility and local-volatility models.
-- **Main deliverables:** Heston, local volatility, jump-diffusion models;
-  model-disagreement reporting.
-- **Acceptance criteria:** Model comparison recorded as evidence, not a single
-  authoritative answer.
-- **Explicit exclusions:** Model selection automation.
+- **Objective:** add Heston, local-volatility and jump models while reporting model
+  disagreement rather than selecting a hidden authoritative answer.
 
 ## Stage 8 — Hedging laboratory and P&L attribution
 
 - **Status:** Planned.
-- **Objective:** Experiment with hedging strategies and attribute P&L.
-- **Main deliverables:** Hedging simulations, P&L attribution evidence.
-- **Acceptance criteria:** Hedging experiments reproducible.
-- **Explicit exclusions:** Live trading connectivity.
+- **Objective:** support reproducible hedging experiments and attribution.
+- **Excluded:** live execution or brokerage connectivity.
 
 ## Stage 9 — Model-risk and uncertainty decomposition
 
 - **Status:** Planned.
-- **Objective:** Decompose valuation uncertainty across models and engines.
-- **Main deliverables:** Uncertainty decomposition, model-risk reports.
-- **Acceptance criteria:** Uncertainty sources itemized in evidence.
-- **Explicit exclusions:** Regulatory sign-off.
+- **Objective:** separate and report sources of model, parameter and numerical
+  uncertainty.
 
 ## Stage 10 — Path-dependent and callable contracts
 
 - **Status:** Planned.
-- **Objective:** Support path observations, barriers, and exercise rights.
-- **Main deliverables:** Path-dependent nodes, callable/puttable semantics.
-- **Acceptance criteria:** Path logic separated from numerical path generation.
-- **Explicit exclusions:** Exotic pricing guarantees.
+- **Objective:** add explicit path observations, barriers and exercise rights while
+  keeping contract semantics separate from numerical path generation.
 
-## Stage 11 — Interactive graph and certificate explorer
+## Stage 11 — Graph and certificate explorer
 
 - **Status:** Planned.
-- **Objective:** Provide an interactive exploration of contracts and
-  certificates.
-- **Main deliverables:** Graph viewer, certificate explorer.
-- **Acceptance criteria:** UI reflects the deterministic core without altering
-  it.
-- **Explicit exclusions:** AI rewriting of contracts or results.
+- **Objective:** provide a read-only interactive view of deterministic contracts,
+  payoff graphs and evidence certificates.
 
-## Stage 12 — Secure extensions, interoperability, and governance maturity
+## Stage 12 — Secure extensions, interoperability and governance maturity
 
 - **Status:** Planned.
-- **Objective:** Mature the plugin boundaries, interoperability, and governance.
-- **Main deliverables:** Plugin policy, interchange formats, governance review
-  cadence.
-- **Acceptance criteria:** Extensions cannot silently alter the deterministic
-  core.
-- **Explicit exclusions:** Proprietary model substitution without evidence.
+- **Objective:** mature extension boundaries, interchange formats, release
+  security, governance and contributor processes.
+
+## Permanent boundaries
+
+Across every stage, DerivaTrace must not silently alter user-authored contracts,
+select models or engines without explicit configuration, execute arbitrary user
+code, or claim economic, legal, accounting, tax or suitability equivalence from
+structural comparisons.

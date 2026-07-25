@@ -2,56 +2,69 @@
 
 ## Supported versions
 
-DerivaTrace is at **Stage 0** and is **pre-alpha**. There are no supported
-stable releases yet. Security fixes are applied to the `main` branch only.
+DerivaTrace is **pre-alpha**, not published, and has no supported stable releases.
+Security fixes are applied to the `main` branch only.
+
+Current implementation status:
+
+- Stage 1A contract algebra and validation: complete.
+- Stage 1B-R1 canonical runtime: implemented.
+- Stage 1B-R2 payoff-graph runtime: implemented.
+- Stage 1C-R1 private validation-equivalence runtime: complete.
+- Stage 1C-R2 structural diffing and the public Stage 1C API: planned and unimplemented.
 
 ## Reporting a vulnerability
 
-If you discover a security vulnerability, please report it privately. Do **not**
-open a public GitHub issue for security-sensitive problems.
+Please report security vulnerabilities privately. Do **not** open a public GitHub
+issue for security-sensitive problems.
 
-Please report vulnerabilities by opening a private security advisory on the
-project repository or by contacting the maintainers through the repository's
-security reporting mechanism:
+Use the repository's private vulnerability-reporting workflow:
 
 - Repository: <https://github.com/sciwiz7/DerivaTrace>
-- Use the "Security" tab → "Report a vulnerability" workflow provided by GitHub.
+- Open the **Security** tab and select **Report a vulnerability**.
 
-Include as much detail as possible:
+Include:
 
-- A description of the vulnerability and its impact.
-- Steps to reproduce or a proof of concept.
-- Affected versions or commit references.
-- Any suggested mitigation.
+- a description of the vulnerability and its impact;
+- reproduction steps or a proof of concept;
+- affected versions or commit references;
+- suggested mitigation, when available.
 
-You can expect an acknowledgement, and we will work with you on a coordinated
-disclosure timeline.
+The maintainer will acknowledge the report and coordinate investigation,
+remediation and disclosure.
 
 ## Security assumptions
 
-DerivaTrace is designed around the following assumptions, detailed further in
-[docs/threat-model.md](docs/threat-model.md):
+DerivaTrace treats external and caller-owned inputs as untrusted. The threat model
+is documented in [docs/threat-model.md](docs/threat-model.md).
 
-- Contract definitions, market snapshots, serialized certificates, plugin
-  metadata, and future contribution inputs are **untrusted**.
-- The deterministic core must remain authoritative for contract semantics,
-  canonicalization, calculations, tolerances, validation, and certificates.
-- Integrity hashes are **not** digital signatures. Signing, if added later, will
-  be an explicit optional capability.
+The implemented deterministic core uses:
+
+- exact-type and use-time invariant validation;
+- rejection of forged or unsupported objects;
+- iterative bounded graph traversal;
+- cycle and complexity protection;
+- deterministic canonical encodings and identities;
+- collision detection;
+- exception containment at internal orchestration boundaries;
+- no runtime dependencies.
+
+Integrity hashes are **not** digital signatures. Signing, if added later, will be
+an explicit and separately reviewed capability.
 
 ## Incident response
 
 When a vulnerability is confirmed:
 
-1. A maintainer acknowledges receipt and opens a private tracking item.
-2. A fix is developed on a private branch where possible.
-3. A coordinated disclosure date is agreed with the reporter.
-4. The fix is merged to `main` and referenced from the
-   [Changelog](CHANGELOG.md).
-5. If a published release exists at that time, a patched release is prepared.
+1. The maintainer acknowledges receipt and opens a private tracking item.
+2. A fix is developed privately where practical.
+3. The relevant deterministic and security boundaries are reviewed.
+4. The complete CI and packaging suite is run.
+5. The fix is merged to `main` and recorded in the [Changelog](CHANGELOG.md).
+6. A coordinated disclosure is published when appropriate.
 
 ## Scope and non-goals
 
-Security tooling in this repository is for the project's own development and
-governance. It is not a substitute for institutional model-risk or
-cyber-security controls.
+This policy governs the DerivaTrace repository and its development workflow. It
+is not a substitute for institutional model-risk, cyber-security or financial
+controls, and the project is not suitable for production use.

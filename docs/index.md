@@ -1,80 +1,80 @@
 # DerivaTrace documentation
 
-This is the documentation index for **DerivaTrace**, an open-source
-evidence-carrying derivatives compiler and model-risk laboratory. DerivaTrace is at
-**Stage 1A** (pre-alpha, not published).
+DerivaTrace is an open-source evidence-carrying derivatives compiler and model-risk
+laboratory. It is **pre-alpha**, **not published**, and has no pricing or valuation
+functionality.
 
 ## Project status
 
-- Stage 0 established the foundation and the architectural constitution.
-- Stage 1A implements the **contract semantics** and **validation** bounded
-  contexts as a concrete, typed, immutable contract algebra
-  (`derivatrace.contracts`) with whole-graph validation.
-- **Stage 1B architecture baseline is Complete.** The canonical contract
-  representation, canonical payoff graph, and canonical identity are specified in
-  `canonicalization-spec.md`, `payoff-graph-spec.md`, `canonical-test-vectors.md`,
-  and [ADR 0007](./adr/0007-canonical-contract-identity-and-payoff-graph.md).
-- **Stage 1B-R1 canonical runtime is Implemented:** `derivatrace.canonical`
-  canonicalizes a validated contract graph into byte-exact canonical JSON with a
-  deterministic canonical contract identity. The Stage 1B-R2 payoff-graph
-  runtime is Implemented (`derivatrace.payoffgraph`).
-- **Stage 1C architecture baseline is Established.** Graded validation levels,
-  deterministic equivalence reporting, and structural diffing are specified in
-  `validation-equivalence-spec.md` and [ADR 0008](./adr/0008-validation-levels-equivalence-and-structural-diffing.md).
-  Stage 1C-R1 (private validation levels and equivalence reports) and Stage
-  1C-R2 (private diff engine; public API only after R2) are planned runtime
-  increments.
-- No pricing, valuation, Greeks, Monte Carlo, PDE, calibration, or hedging
-  functionality exists yet.
-- The deterministic core and evidence-certificate design are specified here,
-  not fully implemented.
+- Stage 0 foundation, governance, security and CI: complete.
+- Stage 1A contract algebra and validation: complete.
+- Stage 1B-R1 canonical runtime: implemented.
+- Stage 1B-R2 payoff-graph runtime: implemented.
+- Stage 1C architecture baseline: established.
+- Stage 1C-R1A private report foundation: implemented.
+- Stage 1C-R1B private orchestration: implemented.
+- Stage 1C-R1 overall: complete privately.
+- Stage 1C-R2 structural diffing: planned.
+- Public Stage 1C API: unimplemented.
+
+The implemented code is exercised by 1,451 passing tests with 100% statement and
+branch coverage, strict mypy, Ruff, packaging validation and CI on Python
+3.11–3.14.
 
 ## Core principle
 
 > **A valuation without evidence is an incomplete output.**
 
-## Document map
+The project maintains a strict separation of concerns between:
 
-- [Vision](./vision.md) — why a price alone is insufficient and the long-term
-  ambition.
-- [Product specification](./product-spec.md) — users, requirements, scope, and
-  success criteria.
-- [Architecture](./architecture.md) — bounded contexts, dependency direction,
-  diagrams, and forbidden dependencies.
-- [Contract semantics](./contract-semantics.md) — contract AST, primitives, and
-  validation levels.
-- [Contract API (Stage 1A)](./contract-api.md) — the implemented public API,
-  construction rules, and validation semantics with runnable examples.
-- [Canonicalization specification (Stage 1B)](./canonicalization-spec.md) —
-  canonical schema, byte encoding, value encoding, per-node laws, DAG policy,
-  hashing, and error taxonomy (Stage 1B architecture baseline, now implemented as
-  the Stage 1B-R1 canonical runtime).
-- [Payoff-graph specification (Stage 1B)](./payoff-graph-spec.md) — model-
-  independent payoff-graph node taxonomy and compilation mapping (specified;
-  Stage 1B-R2 runtime implemented).
-- [Canonical test vectors (Stage 1B)](./canonical-test-vectors.md) — test-vector
-  format and normative vectors produced and verified by the canonical runtime.
-- [Validation-equivalence specification (Stage 1C)](./validation-equivalence-spec.md) —
-  graded validation levels, deterministic equivalence report schema, structural
-  diffing, versioning, limits, error taxonomy, and normative conformance vectors
-  (Stage 1C architecture baseline; private runtimes planned for 1C-R1 and 1C-R2).
-- [Certificate specification](./certificate-spec.md) — versioned evidence
-  envelope and hashing procedure.
-- [Threat model](./threat-model.md) — assets, actors, attack surfaces, and
-  mitigations.
-- [Glossary](./glossary.md) — definitions of key terms.
-- [Architectural decision records](./adr/) — the constitutional decisions:
-  - [ADR 0001: Separation of contract, model, and engine](./adr/0001-separation-of-contract-model-engine.md)
-  - [ADR 0002: Deterministic canonicalization](./adr/0002-deterministic-canonicalization.md)
-  - [ADR 0003: Evidence-carrying results](./adr/0003-evidence-carrying-results.md)
-  - [ADR 0004: Exact contract terms and numerical boundaries](./adr/0004-exact-contract-terms-and-numerical-boundaries.md)
-  - [ADR 0005: No hidden model selection](./adr/0005-no-hidden-model-selection.md)
-  - [ADR 0006: Stage 1 contract algebra and runtime type system](./adr/0006-stage-1-contract-algebra-and-runtime-type-system.md)
-  - [ADR 0007: Canonical contract identity and payoff graph](./adr/0007-canonical-contract-identity-and-payoff-graph.md)
-  - [ADR 0008: Validation levels, equivalence, and structural diffing](./adr/0008-validation-levels-equivalence-and-structural-diffing.md)
-  - [ADR 0009: Stage 1C runtime delivery seam](./adr/0009-stage-1c-runtime-delivery-seam.md)
+1. contract semantics;
+2. market data;
+3. models;
+4. numerical engines;
+5. risk;
+6. validation;
+7. evidence certificates.
 
-## Related root documents
+No layer may silently absorb another layer's responsibility.
+
+## Implemented documentation
+
+- [Contract API](./contract-api.md) — the public Stage 1A immutable contract and
+  validation API.
+- [Canonicalization specification](./canonicalization-spec.md) — byte-exact
+  canonical representation, identity, limits and error taxonomy implemented by
+  Stage 1B-R1.
+- [Payoff-graph specification](./payoff-graph-spec.md) — deterministic payoff DAG,
+  identity and provenance implemented by Stage 1B-R2.
+- [Canonical test vectors](./canonical-test-vectors.md) — normative canonical and
+  payoff-graph vectors exercised by the runtimes.
+- [Validation-equivalence specification](./validation-equivalence-spec.md) — the
+  established Stage 1C architecture, implemented private R1 report and
+  orchestration foundation, and planned R2 diff engine.
+
+## Architecture and product documents
+
+- [Vision](./vision.md)
+- [Product specification](./product-spec.md)
+- [Architecture](./architecture.md)
+- [Contract semantics](./contract-semantics.md)
+- [Certificate specification](./certificate-spec.md)
+- [Threat model](./threat-model.md)
+- [Glossary](./glossary.md)
+
+## Architectural decision records
+
+- [ADR 0001: Separation of contract, model and engine](./adr/0001-separation-of-contract-model-engine.md)
+- [ADR 0002: Deterministic canonicalization](./adr/0002-deterministic-canonicalization.md)
+- [ADR 0003: Evidence-carrying results](./adr/0003-evidence-carrying-results.md)
+- [ADR 0004: Exact contract terms and numerical boundaries](./adr/0004-exact-contract-terms-and-numerical-boundaries.md)
+- [ADR 0005: No hidden model selection](./adr/0005-no-hidden-model-selection.md)
+- [ADR 0006: Stage 1 contract algebra and runtime type system](./adr/0006-stage-1-contract-algebra-and-runtime-type-system.md)
+- [ADR 0007: Canonical contract identity and payoff graph](./adr/0007-canonical-contract-identity-and-payoff-graph.md)
+- [ADR 0008: Validation levels, equivalence and structural diffing](./adr/0008-validation-levels-equivalence-and-structural-diffing.md)
+- [ADR 0009: Stage 1C runtime delivery seam](./adr/0009-stage-1c-runtime-delivery-seam.md)
+
+## Repository governance
 
 - [README](../README.md)
 - [Roadmap](../ROADMAP.md)
@@ -83,18 +83,10 @@ evidence-carrying derivatives compiler and model-risk laboratory. DerivaTrace is
 - [Security policy](../SECURITY.md)
 - [Governance](../GOVERNANCE.md)
 - [Changelog](../CHANGELOG.md)
-- [Licence](../LICENSE)
+- [MIT License](../LICENSE)
 
-## Separation of concerns
+## Scope boundary
 
-DerivaTrace separates:
-
-1. **Contract semantics** — what the instrument pays.
-2. **Market data** — observable inputs and snapshots.
-3. **Model** — assumptions governing stochastic behaviour.
-4. **Numerical engine** — the method used to calculate results.
-5. **Risk** — sensitivities and uncertainty.
-6. **Validation** — invariants and arbitrage checks.
-7. **Evidence certificate** — what was calculated and how.
-
-No layer may silently absorb another layer's responsibility.
+The repository does not currently calculate prices, values, Greeks or market-risk
+measures. It does not contain numerical engines, market data, calibration or
+hedging functionality, and it is not suitable for production or investment use.
