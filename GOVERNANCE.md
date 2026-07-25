@@ -1,53 +1,82 @@
 # Governance
 
-This document describes the governance model for DerivaTrace during its early
-stage. The model is intentionally lightweight and is expected to mature as the
-project grows (see [ROADMAP.md](ROADMAP.md), Stage 12).
+DerivaTrace currently uses a lightweight maintainer-led governance model suitable
+for an early open-source project. The model is expected to mature as the project
+and contributor base grow.
 
 ## Project roles
 
-- **Maintainer:** Amrut Deshmukh, the founding principal architect. The
-  maintainer is responsible for the architectural constitution, releases, and
-  final decisions on scope.
-- **Contributors:** Anyone who submits issues, documentation, or code.
-- **Reviewers:** Contributors entrusted by the maintainer to review pull
-  requests.
+- **Primary maintainer:** Amrut Deshmukh, creator and founding principal architect.
+  The maintainer owns the roadmap, architectural constitution, release decisions,
+  security coordination and final scope decisions.
+- **Contributors:** anyone who submits issues, documentation, tests or code.
+- **Reviewers:** contributors trusted to review pull requests or specific technical
+  areas.
+
+## Current maintenance responsibilities
+
+The primary maintainer is responsible for:
+
+- triaging issues and reviewing pull requests;
+- maintaining specifications and architectural decision records;
+- preserving deterministic identities and schema compatibility;
+- maintaining tests, CI, packaging and documentation consistency;
+- coordinating vulnerability reports and security fixes;
+- preventing unsupported scope expansion or capability overclaims.
 
 ## Decision-making
 
-- **Architectural decisions** are captured as Architectural Decision Records
-  (ADRs) under [`docs/adr/`](docs/). ADRs are the canonical record of
-  significant design choices and their context.
-- **Routine changes** are made through pull requests and reviewed before merge.
-- **Constitutional changes** (separation of concerns, determinism guarantees,
-  evidence-certificate design, security boundaries) require explicit
-  maintainer approval and an accompanying ADR or ADR update.
+- **Architectural decisions** are captured in Architectural Decision Records under
+  [`docs/adr/`](docs/adr/).
+- **Routine changes** are made through focused pull requests and merged only after
+  required checks pass.
+- **Constitutional changes** require explicit maintainer approval and an ADR or ADR
+  update.
+
+Constitutional changes include:
+
+- boundaries between contract, market, model, engine, risk, validation and
+  certificate layers;
+- deterministic encoding, canonical identity or schema changes;
+- security and trust-boundary changes;
+- introduction or removal of runtime dependencies;
+- public API expansion;
+- introduction of pricing, valuation, model or numerical-engine functionality.
+
+## Proposal and review process
+
+1. Open an issue describing the problem, proposed scope and exclusions.
+2. Add or update an ADR for significant design changes.
+3. Implement the smallest bounded increment on a focused branch.
+4. Add deterministic tests and documentation guards.
+5. Open a pull request referencing the issue and relevant ADR.
+6. Require Ruff, strict mypy, Python 3.11–3.14 tests, 100% statement and branch
+   coverage, and packaging validation.
+7. Merge only after the exact reviewed head is green.
 
 ## Scope control
 
-To protect the integrity of the deterministic core, the following are treated as
-constitutional and require maintainer review:
+The deterministic core must remain authoritative. Contributions must not silently:
 
-- Changes to the separation of contract, market, model, engine, risk,
-  validation, and certificate layers.
-- Changes that could affect determinism or reproducibility.
-- Introduction or removal of runtime dependencies.
-- Introduction of model or engine selection logic.
+- alter user-authored contracts or identities;
+- select models or engines;
+- reinterpret validation or comparison outcomes;
+- execute arbitrary user code;
+- introduce financial advice, production-readiness or ecosystem-adoption claims;
+- bypass the Stage 1C-R2 and public-export gates.
 
-## Proposals and review
+## Security and conflicts
 
-1. Open an issue describing the proposal.
-2. For significant design changes, write or update an ADR.
-3. Submit a pull request referencing the issue and ADR.
-4. Obtain review, run CI, and merge only after checks pass.
+Security-sensitive reports follow [SECURITY.md](SECURITY.md) and should not be
+opened publicly. The maintainer should disclose material conflicts of interest when
+a proposed change could privilege a proprietary integration or commercial user.
 
 ## Amendments
 
-This governance document may be amended by the maintainer through a pull
-request. Substantive changes should be announced in the
-[Changelog](CHANGELOG.md) and discussed with contributors.
+This document may be amended through a reviewed pull request. Substantive changes
+should be recorded in the [Changelog](CHANGELOG.md).
 
 ## Licence
 
-DerivaTrace is released under the [MIT licence](LICENSE). Contributions are
+DerivaTrace is released under the [MIT License](LICENSE). Contributions are
 accepted under the same licence.
