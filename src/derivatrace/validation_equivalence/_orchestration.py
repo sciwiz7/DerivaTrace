@@ -6,17 +6,28 @@ from derivatrace.canonical import (
     CanonicalSchemaVersion,
     canonicalize_contract,
 )
+from derivatrace.canonical._schema import (
+    _validate_canonical_schema_version,
+    _validate_canonicalization_limits,
+)
 from derivatrace.contracts import (
     Contract,
     ContractError,
     ValidationLimits,
     validate_contract,
 )
+from derivatrace.contracts._validation import (
+    _validate_validation_limits_invariants,
+)
 from derivatrace.payoffgraph import (
     PayoffGraphError,
     PayoffGraphLimits,
     PayoffGraphSchemaVersion,
     compile_payoff_graph,
+)
+from derivatrace.payoffgraph._schema import (
+    _validate_payoff_graph_limits,
+    _validate_payoff_schema_version,
 )
 
 from ._errors import (
@@ -35,6 +46,7 @@ from ._schema import (
     FailureStage,
     ValidationLevel,
     ValidationOutcome,
+    _validate_diff_limits,
     _validate_diff_selection,
     _validate_validation_level,
 )
@@ -52,8 +64,10 @@ def _map_validation_error(exc: ContractError) -> CapturedFailure:
     """
     code = exc.code
     classification: CapturedFailureClassification
-    if code.endswith(".complexity") or code.endswith(".cycle"):
+    if code.endswith(".complexity"):
         classification = CapturedFailureClassification.COMPLEXITY_FAILURE
+    elif code.endswith(".cycle"):
+        classification = CapturedFailureClassification.VALIDATION_FAILURE
     else:
         classification = CapturedFailureClassification.VALIDATION_FAILURE
     return CapturedFailure(
@@ -73,12 +87,14 @@ def _map_canonicalization_error(exc: CanonicalizationError) -> CapturedFailure:
     """
     code = exc.code
     classification: CapturedFailureClassification
-    if code.endswith(".complexity") or code.endswith(".cycle"):
+    if code.endswith(".complexity"):
         classification = CapturedFailureClassification.COMPLEXITY_FAILURE
     elif code.endswith(".encoding"):
         classification = CapturedFailureClassification.ENCODING_FAILURE
     elif code.endswith(".collision"):
         classification = CapturedFailureClassification.COLLISION_FAILURE
+    elif code.endswith(".cycle"):
+        classification = CapturedFailureClassification.CANONICALIZATION_FAILURE
     else:
         classification = CapturedFailureClassification.CANONICALIZATION_FAILURE
     return CapturedFailure(
@@ -111,6 +127,61 @@ def _map_payoff_error(exc: PayoffGraphError) -> CapturedFailure:
         code=code,
         classification=classification,
     )
+
+
+def _validate_caller_config(
+    *,
+    canonical_schema_resolved: CanonicalSchemaVersion,
+    payoff_schema_resolved: PayoffGraphSchemaVersion,
+    canonicalization_limits_resolved: CanonicalizationLimits,
+    payoff_limits_resolved: PayoffGraphLimits,
+    validation_limits_resolved: ValidationLimits,
+    diff_limits_resolved: DiffLimits,
+) -> None:
+    """Validate resolved caller-owned configuration using authoritative
+    upstream validators.
+
+    Malformed or unsupported state is translated into
+    ``ValidationEquivalenceInputError`` with a stable generic message.
+    Upstream exception chaining is suppressed with ``from None``.
+    """
+    try:
+        _validate_canonical_schema_version(canonical_schema_resolved)
+    except Exception:
+        raise ValidationEquivalenceInputError(
+            "canonical_schema is malformed or unsupported"
+        ) from None
+
+    try:
+        _validate_payoff_schema_version(payoff_schema_resolved)
+    except Exception:
+        raise ValidationEquivalenceInputError(
+            "payoff_schema is malformed or unsupported"
+        ) from None
+
+    try:
+        _validate_canonicalization_limits(canonicalization_limits_resolved)
+    except Exception:
+        raise ValidationEquivalenceInputError(
+            "canonicalization_limits is malformed"
+        ) from None
+
+    try:
+        _validate_payoff_graph_limits(payoff_limits_resolved)
+    except Exception:
+        raise ValidationEquivalenceInputError("payoff_limits is malformed") from None
+
+    try:
+        _validate_validation_limits_invariants(validation_limits_resolved, ())
+    except Exception:
+        raise ValidationEquivalenceInputError(
+            "validation_limits is malformed"
+        ) from None
+
+    try:
+        _validate_diff_limits(diff_limits_resolved)
+    except Exception:
+        raise ValidationEquivalenceInputError("diff_limits is malformed") from None
 
 
 def _compare_contracts(
@@ -149,7 +220,7 @@ def _compare_contracts(
     # Level validation (raises UnsupportedLevelError)
     _validate_validation_level(level)
 
-    # Canonical schema validation
+    # Exact-type checks for optional configuration (before accessing fields)
     if (
         canonical_schema is not None
         and type(canonical_schema) is not CanonicalSchemaVersion
@@ -157,8 +228,6 @@ def _compare_contracts(
         raise ValidationEquivalenceInputError(
             "canonical_schema must be an exact CanonicalSchemaVersion or None"
         )
-
-    # Payoff schema validation
     if (
         payoff_schema is not None
         and type(payoff_schema) is not PayoffGraphSchemaVersion
@@ -166,8 +235,6 @@ def _compare_contracts(
         raise ValidationEquivalenceInputError(
             "payoff_schema must be an exact PayoffGraphSchemaVersion or None"
         )
-
-    # Canonicalization limits validation
     if (
         canonicalization_limits is not None
         and type(canonicalization_limits) is not CanonicalizationLimits
@@ -175,14 +242,10 @@ def _compare_contracts(
         raise ValidationEquivalenceInputError(
             "canonicalization_limits must be an exact CanonicalizationLimits or None"
         )
-
-    # Payoff limits validation
     if payoff_limits is not None and type(payoff_limits) is not PayoffGraphLimits:
         raise ValidationEquivalenceInputError(
             "payoff_limits must be an exact PayoffGraphLimits or None"
         )
-
-    # Validation limits validation
     if (
         validation_limits is not None
         and type(validation_limits) is not ValidationLimits
@@ -196,7 +259,6 @@ def _compare_contracts(
     if diff_selection is not DiffSelection.NONE:
         raise ValidationEquivalenceInputError("R1B requires diff_selection=none")
 
-    # Diff limits validation
     if diff_limits is not None and type(diff_limits) is not DiffLimits:
         raise ValidationEquivalenceInputError(
             "diff_limits must be an exact DiffLimits or None"
@@ -224,6 +286,21 @@ def _compare_contracts(
         if validation_limits is not None
         else ValidationLimits.default()
     )
+    diff_limits_resolved = (
+        diff_limits if diff_limits is not None else DiffLimits.default()
+    )
+
+    # ------------------------------------------------------------------
+    # 2b. Authoritative validation of resolved configuration
+    # ------------------------------------------------------------------
+    _validate_caller_config(
+        canonical_schema_resolved=canonical_schema_resolved,
+        payoff_schema_resolved=payoff_schema_resolved,
+        canonicalization_limits_resolved=canonicalization_limits_resolved,
+        payoff_limits_resolved=payoff_limits_resolved,
+        validation_limits_resolved=validation_limits_resolved,
+        diff_limits_resolved=diff_limits_resolved,
+    )
 
     # ------------------------------------------------------------------
     # 3. Per-side independent processing
@@ -245,6 +322,10 @@ def _compare_contracts(
         left_validation_outcome = ValidationOutcome.INVALID
         left_structurally_valid = False
         left_structural_failures.append(_map_validation_error(exc))
+    except Exception:
+        raise ValidationEquivalenceComparisonError(
+            "internal comparison error"
+        ) from None
 
     # Right structural validation
     try:
@@ -253,6 +334,10 @@ def _compare_contracts(
         right_validation_outcome = ValidationOutcome.INVALID
         right_structurally_valid = False
         right_structural_failures.append(_map_validation_error(exc))
+    except Exception:
+        raise ValidationEquivalenceComparisonError(
+            "internal comparison error"
+        ) from None
 
     # Canonical-level results
     left_canonical_identity: str | None = None
@@ -276,6 +361,10 @@ def _compare_contracts(
                 left_canonically_valid = True
             except CanonicalizationError as exc:
                 left_canonical_failures.append(_map_canonicalization_error(exc))
+            except Exception:
+                raise ValidationEquivalenceComparisonError(
+                    "internal comparison error"
+                ) from None
 
         if right_structurally_valid:
             try:
@@ -289,6 +378,10 @@ def _compare_contracts(
                 right_canonically_valid = True
             except CanonicalizationError as exc:
                 right_canonical_failures.append(_map_canonicalization_error(exc))
+            except Exception:
+                raise ValidationEquivalenceComparisonError(
+                    "internal comparison error"
+                ) from None
 
     # Payoff-level results
     left_payoff_identity: str | None = None
@@ -325,10 +418,10 @@ def _compare_contracts(
                 raise ValidationEquivalenceComparisonError(
                     "internal second canonicalization failed"
                 ) from None
-            except Exception as exc:
+            except Exception:
                 raise ValidationEquivalenceComparisonError(
                     "internal comparison error"
-                ) from exc
+                ) from None
 
         if right_canonically_valid:
             try:
@@ -356,10 +449,10 @@ def _compare_contracts(
                 raise ValidationEquivalenceComparisonError(
                     "internal second canonicalization failed"
                 ) from None
-            except Exception as exc:
+            except Exception:
                 raise ValidationEquivalenceComparisonError(
                     "internal comparison error"
-                ) from exc
+                ) from None
 
     # ------------------------------------------------------------------
     # 4. Comparison status calculation
@@ -447,7 +540,7 @@ def _compare_contracts(
         validation=validation_limits_resolved,
         canonicalization=canonicalization_limits_resolved,
         payoff=payoff_limits_resolved,
-        diff=DiffLimits(),
+        diff=diff_limits_resolved,
     )
 
     from ._records import SchemaMetadataRecord
