@@ -47,7 +47,7 @@ jobs:
 
       - name: Pytest with coverage
         run: |
-          pytest \
+          pytest -q --tb=short \
             --cov=derivatrace \
             --cov-branch \
             --cov-report=term-missing \
