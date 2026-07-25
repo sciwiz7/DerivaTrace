@@ -1,28 +1,27 @@
 # Contributing to DerivaTrace
 
-Thank you for your interest in DerivaTrace. This document describes how to
-contribute to the project during its early, pre-alpha stage.
+Thank you for your interest in DerivaTrace. The project is pre-alpha and not yet
+published, but contributions are welcome through focused issues and pull requests.
 
 ## Code of conduct
 
-All contributors are expected to follow the
-[Code of Conduct](CODE_OF_CONDUCT.md). By participating, you agree to uphold
-its standards.
+All contributors must follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
-## Project stage
+## Current project stage
 
-DerivaTrace is at **Stage 1B** (architecture baseline) and is **pre-alpha**
-(not yet published). Stage 1A implements the contract semantics and validation
-bounded contexts as the typed, immutable `derivatrace.contracts` module. The
-Stage 1B architecture baseline (canonical contract representation, canonical
-payoff graph, and canonical identity) is specified in `docs/canonicalization-
-spec.md`, `docs/payoff-graph-spec.md`, `docs/canonical-test-vectors.md`, and
-[ADR 0007](docs/adr/0007-canonical-contract-identity-and-payoff-graph.md) as a
-**design baseline**; no canonicalization, serialization, hashing, or payoff-
-graph code exists yet. Contributions that introduce pricing, Greeks, Monte
-Carlo, PDEs, calibration, hedging, canonicalization, hashing, or engine
-functionality are **out of scope** for the baseline and should be discussed in
-an issue first (implementation belongs to later stages).
+Implemented today:
+
+- Stage 1A immutable contract algebra and whole-graph validation;
+- Stage 1B-R1 byte-exact canonicalization and deterministic contract identity;
+- Stage 1B-R2 deterministic payoff-graph compilation, identity and provenance;
+- Stage 1C-R1A private report foundation;
+- Stage 1C-R1B private validation-equivalence orchestration.
+
+Stage 1C-R1 is complete privately. Stage 1C-R2 deterministic structural diffing
+is planned, and no public Stage 1C comparison API is exported.
+
+Pricing, valuation, Greeks, market data, numerical engines, calibration, hedging
+and model selection remain outside the implemented scope.
 
 ## Development setup
 
@@ -31,54 +30,76 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 
-## Workflow
+## Contribution workflow
 
-1. Open or claim an issue describing the change.
-2. Discuss architectural changes in an Architectural Decision Record (ADR)
-   under `docs/adr/` when appropriate. Changes to the contract algebra or its
-   runtime type system must respect [ADR 0006](docs/adr/0006-stage-1-contract-algebra-and-runtime-type-system.md)
-   and the public API documented in [contract-api.md](docs/contract-api.md).
-3. Create a branch from `main` and make focused changes.
-4. Ensure the following pass locally:
-   - `ruff format --check .`
-   - `ruff check .`
-   - `mypy`
-   - `pytest --cov=derivatrace --cov-branch --cov-fail-under=100`
-   - `python -m build`
-5. Open a pull request describing the intent, scope, and acceptance criteria.
+1. Open or claim an issue describing the intended change.
+2. Discuss changes to public semantics, deterministic identity, security
+   boundaries, dependencies or architecture before implementation.
+3. Add or update an ADR under [`docs/adr/`](docs/adr/) for constitutional changes.
+4. Create a focused branch from `main`.
+5. Add tests for every changed behaviour, including hostile and forged inputs when
+   boundary hardening is affected.
+6. Run the complete quality gate.
+7. Open a pull request explaining intent, scope, evidence and exclusions.
+
+## Required checks
+
+```bash
+ruff format .
+ruff format --check .
+ruff check .
+mypy
+pytest --cov=derivatrace --cov-branch --cov-report=term-missing --cov-fail-under=100
+DG_TEST_PACKAGING=1 pytest tests/test_packaging.py -v
+```
+
+Pull requests must preserve Python 3.11–3.14 compatibility, 100% statement and
+branch coverage, strict typing, deterministic behaviour and packaging integrity.
 
 ## Design principles
 
-- **Separation of concerns:** contract semantics, market data, model,
-  numerical engine, risk, validation, and evidence certificate are distinct.
-- **Determinism:** identical inputs must produce identical, reproducible
-  outputs within the declared policy.
-- **Immutability and typing:** contract values and nodes are frozen, slotted,
-  explicitly typed structures; mutation after construction (including via
-  `object.__setattr__` forgery) is rejected or re-checked by validation.
-- **Exact numbers:** contract quantities use `Decimal`-backed `ExactNumber`;
-  `float`, `bool`, `NaN`, and `Infinity` are never accepted.
-- **Supported-node policy:** only the exact set of implemented concrete node
-  types is accepted; third-party subclasses of the abstract bases are rejected.
-- **No hidden intelligence:** the deterministic core is authoritative; assistive
-  tooling must not silently alter contracts, models, inputs, engines, or
-  validation outcomes.
-- **Evidence by default:** a result without evidence is incomplete. Stage 1A
-  provides structural and semantic validation, not an evidence certificate.
-- **Security by default:** treat external inputs as untrusted.
+- **Separation of concerns:** contract semantics, market data, models, numerical
+  engines, risk, validation and evidence certificates remain distinct.
+- **Determinism:** identical supported inputs produce identical canonical outputs
+  and identities under the declared schema and policy.
+- **Immutability and typing:** implemented domain values and graph nodes are frozen,
+  slotted and explicitly typed.
+- **Use-time validation:** caller-owned or forged state is re-checked at trusted
+  boundaries.
+- **Exact numbers:** ambiguous floating-point contract terms are rejected.
+- **Supported-node policy:** only explicitly implemented concrete node types are
+  accepted.
+- **No hidden intelligence:** assistive tooling must not silently alter contracts,
+  schemas, models, inputs, engines or validation outcomes.
+- **Security by default:** external inputs are untrusted and processing is bounded.
+- **Evidence by design:** future results should carry enough information to be
+  audited and reproduced.
+
+## Scope discipline
+
+Do not introduce any of the following without a separately reviewed roadmap and
+architecture decision:
+
+- runtime dependencies;
+- pricing or valuation functionality;
+- market-data access;
+- numerical engines;
+- automatic model selection;
+- arbitrary executable user code;
+- changes to existing canonical identities or schemas;
+- a public Stage 1C API before the R2 export gate.
 
 ## Documentation
 
-Keep documentation links valid. Every Markdown link to a local file must
-resolve. Avoid absolute local filesystem paths. Do not claim capabilities that
-do not yet exist, and do not claim formal verification or "first ever" status.
+Keep documentation links valid and status claims consistent across the README,
+roadmap, specifications, ADRs and changelog. Do not claim formal verification,
+production readiness, ecosystem adoption or capabilities that do not exist.
 
 ## Security
 
-If you discover a security issue, please follow the
-[Security policy](SECURITY.md). Do not open public issues for vulnerabilities.
+Follow the [Security policy](SECURITY.md) for vulnerabilities. Never disclose a
+security-sensitive issue in a public ticket before coordinated review.
 
 ## Licence
 
-By contributing, you agree that your contributions will be licensed under the
-[MIT licence](LICENSE).
+Contributions are accepted under the [MIT License](LICENSE).
